@@ -1,0 +1,11 @@
+% SU2 config template — Tier 0 (3D steady, full fan)
+% Renderer: src/fanopt/cfd/configs.py
+% Source-of-truth: docs/plan_R11.md §9.4.1 CROSS_TIER + TIER_SPECIFIC[0]
+%
+% Phase 0 scaffold. Real .cfg.j2 content (key/value pairs + Jinja2 substitutions
+% for the locked constants in §9.4.1 CROSS_TIER / TIER_SPECIFIC dicts) lands
+% when Phase 0 step 0.0 + Spike 0.6c (.1 / .2) complete.
+%
+% Locks the rendered .cfg must satisfy (tested by tests/test_cfd/):
+%   - test_unsteady_freestream_consistency.py (HIGH-12 Round-9)
+%   - test_su2_config_generation.py (§9.4.1 §12 CI gate)

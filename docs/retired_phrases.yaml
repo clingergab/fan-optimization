@@ -1,0 +1,307 @@
+# Retired-Phrase Regex Inventory
+#
+# Catalog of architectural phrases retired across review rounds. Each entry
+# names the regex pattern, the lock that replaced the phrase, and an allow-list
+# of contexts where the phrase may still legally appear (revision history,
+# CI-gate descriptions, explicit "earlier draft" historical notes).
+#
+# Schema (Round-9 lock):
+#   - pattern: Python regex
+#     retired_by: round + lock that replaced the phrase
+#     allow_list_sections:   markdown section headings where matches are allowed
+#                            (matched as substring against the line's nearest
+#                            preceding heading, case-insensitive)
+#     allow_list_disclaimers: phrases that, if present on the matching line,
+#                             mark the match as a legitimate historical reference
+#                             (case-insensitive)
+#
+# Consumed by `tests/test_audit/test_no_stale_architecture_refs.py` which scans
+# `docs/report-final.md` + `src/fanopt/**/*.py` and fails on any match outside
+# both allow-lists.
+#
+# Maintenance: every review round that retires an architectural pattern adds an
+# entry here BEFORE the prose edits land. See docs/review_process.md §4.
+
+retired_phrases:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ROUND 1 retirements (51-item batch — material, units, GP noise, cost tuple)
+  # ─────────────────────────────────────────────────────────────────────
+
+  - pattern: '\bpanel[^.\n]{0,40}\b2\s*-\s*5\s*mm\b|\b2\s*-\s*5\s*mm\b[^.\n]{0,40}panel'
+    retired_by: 'panel_thickness range tightened to 2-3.8 then 2.2-3.8 (Round 1 + Round 5 cleanup)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'was 2-5'
+
+  - pattern: '\bσ_y_Z\s*=\s*55\b|\bsigma_y_z\s*[=:]\s*55\b'
+    retired_by: 'σ_y_Z = 30 MPa per FDM anisotropy (Round 1)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+      - '§10.1'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'was 55'
+      - 'prior 55 MPa'
+      - 'non-conservative σ_y_Z = 55'
+
+  - pattern: '\bheteroscedastic\b'
+    retired_by: 'fixed-floor epistemic GP noise (Round 1)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'NOT heteroscedastic'
+      - 'test_no_heteroscedastic'
+      - 'earlier draft'
+      - 'was heteroscedastic'
+
+  - pattern: '\bFREESTREAM_DIRECTION_(FORWARD|BACKWARD)\b'
+    retired_by: 'FREESTREAM_PRODUCTIVE / FREESTREAM_RETURN (C2 sign convention, Round 1)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'pre-C2'
+
+  - pattern: '\(1,\s*5,\s*50\)'
+    retired_by: '(2, 10, 50) cost tuple — two-eval delta doubled Tier -1 + Tier 0 (Round 1)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'was (1, 5, 50)'
+      - 'test_cost_tuple_single_source'
+      - 'legacy literal'
+
+  - pattern: '\b5\.97\s*MPa\b'
+    retired_by: '5.58 MPa tension at K_tt = 2.42 in 12 mm boss (Round 1)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'prior 5.97 MPa'
+      - 'earlier draft'
+      - 'obsolete'
+
+  - pattern: '\b3\.67\s*MPa\b'
+    retired_by: '2.00 MPa bearing (Z, σ_y_Z = 30 MPa) (Round 1)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'prior 3.67 MPa'
+      - 'earlier draft'
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ROUND 2 retirements (42-item batch — wrist axis, AOA, panel-pivot)
+  # ─────────────────────────────────────────────────────────────────────
+
+  - pattern: '\b(wrist\s+(axis|rotation\s+axis))\s*=\s*\+x\b'
+    retired_by: 'wrist axis = +y (Round 2)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft mislabeled'
+
+  - pattern: '^AOA\s*='
+    retired_by: 'FREESTREAM_DIRECTION explicit vector (Round 2)'
+    allow_list_sections: []
+    allow_list_disclaimers:
+      - 'NOT used'
+      - 'intentionally not used'
+      - 'AOA = 0/180'
+      - 'earlier draft'
+
+  - pattern: '\brib pivot hole\b|\bpivot hole in.{0,5}rib\b|\brib carries.{0,5}pivot\b|\brib stacks? on.{0,5}pin\b|\b20 ribs stack on.{0,5}pin\b'
+    retired_by: 'panel-pivot architecture (Round 2; 10 panels stack on pin, ribs off-axis)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'rib has no pivot'
+      - 'do NOT carry pivot'
+      - 'no longer carries'
+      - 'test_no_rib_pivot_hole'
+      - 'rib SIMP TO no longer carries'
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ROUND 5 retirements (mass cap, spread angle, PITCHING sign, midplane)
+  # ─────────────────────────────────────────────────────────────────────
+
+  - pattern: '\bm_total\s*<\s*(60\s*g|0\.060\s*kg)\b'
+    retired_by: 'C9 mass-cap relax to 100 g — trapezoidal panel mass budget (Round 5)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'was 60 g'
+      - 'earlier bound'
+      - 'pre-C9'
+
+  - pattern: '\bspread angle\b.*90\s*-\s*150|\bFan macro: spread angle\b'
+    retired_by: 'C8 derived-spread lock — spread = blade_count × 13.3° (Round 5)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'Earlier drafts treated spread as independent'
+      - 'spread becomes derived'
+      - 'DELETED per C8'
+      - 'pre-C8'
+
+  - pattern: 'PITCHING_OMEGA\s*=\s*\(?0[.,]\s*\+?12\.5664'
+    retired_by: 'C11 PITCHING_OMEGA = (0, -12.5664, 0) NEGATIVE sign — right-hand-rule on productive stroke (Round 5)'
+    allow_list_sections: []
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'WRONG sign'
+      - 'pre-C11'
+
+  - pattern: '\bL\s*=\s*200\.0\s+(mm|#\s*mm).{0,40}rib|w_base\s*=\s*12\.0\s*#|rib.{0,5}L\s*=\s*0\.200\b'
+    retired_by: 'C13 rib code SI/correct-dimensions — rib_radial_length = 0.165 m, base_width = 0.004 m (Round 7)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'pre-Round-5'
+      - 'pedagogical'
+
+  - pattern: '\bmidplane symmetric\b.{0,30}rib-flat|symmetric corrugation.{0,30}rib-flat'
+    retired_by: 'C10 Architectural E — print-orientation-conditional midplane (rib-flat → one-sided +z only) (Round 5)'
+    allow_list_sections: []
+    allow_list_disclaimers:
+      - 'earlier draft asserted midplane symmetry under rib-flat'
+      - 'pre-C10'
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ROUND 7 retirements (blade count 14, crank, dashed namespace)
+  # ─────────────────────────────────────────────────────────────────────
+
+  - pattern: '\{8,?\s*/?\s*10,?\s*/?\s*12,?\s*/?\s*14\}'
+    retired_by: 'MED-10 14-blade ergonomic trim — 186.2° past straight-line (Round 7)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - '14-blade trimmed per MED-10'
+      - '14-blade option'
+      - '14 blades produces 186.2°'
+      - '14 removed'
+      - 'pre-MED-10'
+
+  - pattern: '\bcrank\b'
+    retired_by: 'panel-edge z-lap — crank concept gone from V1 (item #3 + C12 § 2.2 rewrite, Round 7)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'crank" terminology used in earlier drafts'
+      - 'rib-mounted structural crank'
+      - 'click on rib face, crank Z-contained in rib'
+      - 'crank concept is gone'
+      - 'no crank'
+
+  - pattern: '\b(C-[1-5]|H-[6-9]|M-1[1-3])\b'
+    retired_by: 'HIGH-11 dashed namespace absorbed into continuing Round-1 numbering: C7-C11, H11-H14, M18-M20 (Round 7)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'test_no_lock_namespace_collision'
+      - 'dashed namespace'
+      - 'forbidden pattern'
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ROUND 8 retirements (outer-rib click prose, round-internal bare labels)
+  # ─────────────────────────────────────────────────────────────────────
+
+  - pattern: "(outer ribs mate|click features on outer ribs|click feature geometry on outer ribs|exclusion band around the click-feature footprint on every blade's outer rib|click-mating outer rib)"
+    retired_by: 'item #3 panel-edge click relocation — click lives on panel outer tangential edge (Round 2-3 + MED-10 Round-8 propagation)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'is NOT used'
+      - 'geometrically impossible'
+      - 'no longer'
+      - 'do not carry'
+      - 'rib has no'
+      - 'moved from'
+      - 'relocated'
+      - 'outer rib boundary'
+      - 'pre-Round-2'
+
+  - pattern: '\b(CRIT|HIGH|MED|LOW)-[0-9]+\b'
+    retired_by: 'LOW-12 round-internal label absorption — bare CRIT-N / HIGH-N forbidden in production prose (Round 8)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'Round-7 CRIT'
+      - 'Round-7 HIGH'
+      - 'Round-8 HIGH'
+      - 'Round-8 LOW'
+      - 'Round-8 MED'
+      - 'Round-9 HIGH'
+      - 'Round-9 MED'
+      - 'Round-9 LOW'
+      - 'test_no_lock_namespace_collision'
+      - 'CI gate descriptions'
+      - 'forbidden pattern'
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ROUND 9 retirements (chamfer geometry Option A)
+  # ─────────────────────────────────────────────────────────────────────
+
+  - pattern: 'spans the full panel_thickness in z|chamfer.{0,10}spans.{0,10}full.{0,10}panel|\+z panel face overlaps|−z panel face overlaps|\bpanel face overlaps\b'
+    retired_by: 'HIGH-8 Round-9 chamfer geometry Option A lock — chamfer is 0.5-1 mm corner bevel, NOT full-panel-z face; no Z-overlap, panels meet at 45° butt line'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'is NOT used'
+      - 'no longer'
+      - 'pre-HIGH-8'
+      - 'Option A lock retires'
+
+  # Round-10 entry — catches reintroduction of the retired phrasing that
+  # claimed unsteady cfg "KEEPS MACH_NUMBER = 0.0064 for SU2's
+  # nondimensionalization". Under HIGH-12 Round-9, unsteady cfg uses
+  # MACH = 1e-9 + FREESTREAM_OPTION = FREESTREAM_VELOCITY override. The
+  # 0.0064 value is correct for STEADY tiers (Tier -1 / Tier 0 use V_tip
+  # as freestream); the regex is tightened to require both the verb KEEPS
+  # and the literal 0.0064 within the same line so steady-context uses
+  # don't trip.
+  - pattern: 'KEEPS\s+MACH_NUMBER\s*=\s*0\.0064'
+    retired_by: 'HIGH-12 Round-9 unsteady MACH = 1e-9 + FREESTREAM_OPTION override'
+    allow_list_sections:
+      - 'revision history'
+      - 'appendix'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired by HIGH-12'
+      - 'is retired'
+      - 'pre-HIGH-12'
+      - 'no longer'
+
+# ─────────────────────────────────────────────────────────────────────
+# Maintenance policy (Round 9 lock):
+# When a new review round retires an architectural pattern:
+#   1. Add a new entry to this file with the regex, retired_by, and allow-lists.
+#   2. Run tests/test_audit/test_no_stale_architecture_refs.py to verify the
+#      catalog entry doesn't false-positive on current spec (false positives =
+#      regex too broad; tune the pattern or widen the allow_list).
+#   3. Commit spec edits AND catalog entry in the same PR.
+# See docs/review_process.md §4 for the full procedure.

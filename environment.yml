@@ -1,0 +1,46 @@
+name: fanopt
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  # Core scientific stack
+  - numpy>=1.26
+  - scipy>=1.11
+  - matplotlib>=3.8
+  - pyyaml>=6.0
+  - jinja2>=3.1
+  - jsonschema>=4.21
+  # Geometry: CadQuery is conda-only on macOS/Linux
+  - cadquery>=2.4
+  - cadquery-ocp
+  # Meshing
+  - gmsh>=4.12
+  - python-gmsh>=4.12
+  # CFD post-processing / mesh IO
+  - vtk>=9.3
+  - meshio>=5.3
+  # Topology-opt / FEA
+  - fenics-dolfinx>=0.7
+  - mpi4py
+  - petsc4py
+  - scikit-fem>=9
+  # Bayesian optimization
+  - pytorch>=2.2
+  - botorch>=0.10
+  - gpytorch>=1.11
+  # Dev / test
+  - pytest>=8
+  - pytest-cov>=4
+  - pytest-xdist>=3
+  - ruff>=0.4
+  - black>=24
+  - mypy>=1.10
+  - pre-commit>=3.7
+  - jupyterlab>=4.1
+  - ipykernel>=6.29
+  # SU2 is NOT in conda-forge — install separately:
+  #   conda activate fanopt
+  #   pip install --upgrade su2  # or build from source per https://su2code.github.io
+  - pip
+  - pip:
+      - su2

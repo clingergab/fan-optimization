@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtualenvs / conda
+.venv/
+venv/
+env/
+ENV/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.cache
+
+# Mypy / ruff
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Project data (large, not source-controlled)
+data/
+!data/.gitkeep
+# but keep the data/ subdirectory structure markers
+!data/designs/.gitkeep
+!data/results/.gitkeep
+!data/meshes/.gitkeep
+!data/physical/.gitkeep
+
+# Local Drive sync
+gdrive/
+*.bak
+
+# SU2 outputs that may land in repo root from quick experiments
+history*.csv
+flow.vtu
+restart_flow.dat
+surface_flow.vtu
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo

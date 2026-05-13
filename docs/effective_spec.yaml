@@ -1,0 +1,440 @@
+# Flattened effective spec for the 3D-printed folding fan TO/ASO project.
+#
+# This file is the SINGLE SOURCE OF TRUTH for all locked values used by
+# production code, CI tests, SU2 templates, and Phase-N launch scripts.
+#
+# - Contains ONLY currently-locked rules. No history, no "dropped X", no
+#   amendment cross-references, no strike-throughs.
+# - The narrative plan at ../report-final.md retains the full design rationale;
+#   Appendix D of that file holds the per-decision history table.
+# - When a spec changes: update this file FIRST, then update report-final.md to
+#   match. CI tests in tests/test_audit/test_effective_spec_consistency.py
+#   re-read this file on every push and fail if any test fixture or code
+#   constant references a value that differs from what's here.
+#
+# Schema version: 3 (bumped 2026-05-12 — C-series + H-series + M-series + L-series + cleanup).
+
+schema_version: 3
+
+# ============================================================================
+# Geometry and architecture
+# ============================================================================
+architecture:
+  blade:
+    type: V-unit  # 2 ribs + 1 panel as one rigid body
+    n_blades: 10  # default; BO bandit explores {8, 10, 12, 14}
+    length_mm: 200  # L_blade; pinned, NOT a BO variable
+    panel_x_start_mm: 0  # panel runs the FULL x ∈ [0, L_blade] under panel-pivot architecture
+  pivot:
+    axis: +z  # stacking direction
+    pin_diameter_mm: 3
+    pin_length_min_mm: 45
+    pin_material: steel  # steel or brass; PETG pin would fail in fatigue (NOT permitted)
+    hole_in: panel  # pin through panel at y=0, NOT through ribs
+    panel_pivot_hole_diameter_mm: 3
+    panel_pivot_boss_od_mm: 12  # local boss centered on pivot hole; e/d_boss = 2.0
+    pivot_center_x_mm: 8
+    pivot_boss_radius_mm: 6
+    pivot_keep_out_radius_mm: 7  # boss + 1 mm clearance; PANEL_PIVOT_REGION
+    n_panels_stacked: 10
+  wrist_axis: +y
+  wrist_origin_world: [0.0, 0.0, 0.0]  # locked single convention
+  d_handle_m: 0.05
+
+# ============================================================================
+# Dimensions and ranges
+# ============================================================================
+dimensions:
+  rib:
+    width_base_mm: 12
+    width_tip_mm: 6
+    thickness_mm: 2.0
+  panel:
+    width_between_ribs_at_pivot_mm: [6, 8]
+    # Cleanup lock: lower bound bumped from 2.0 to 2.2 mm so the click chamfer has
+    # 0.1 mm Z-clearance on each side; rib_thickness < panel_thickness strictly.
+    thickness_control_points_mm: [2.2, 3.8]
+    thickness_min_lock: "rib_thickness + 2·chamfer_clearance = 2 + 0.2 = 2.2 mm"
+    thickness_max_lock: "2·rib_thickness − folded_clearance = 3.8 mm"
+    n_control_points: 3
+    thickness_pivot_named: panel_thickness(pivot_center_x)
+    thickness_tip_named: panel_thickness(L_blade)
+    thickness_max_named: max(knots)
+    thickness_mid_named: panel_thickness(L_blade/2)
+  blade:
+    tangential_width_derivation: "tangential_pitch(r) − 2·rib_width(r) − 0.5 mm"
+  fan:
+    spread_angle_deg: 120
+    inter_blade_angle_deg: 13.3
+    folded_stack_mm: [22, 42]
+  click_feature:
+    engagement: z_lap_with_crank_contained_in_rib_z_extent  # cleanup lock
+    crank_z_constraint: "|z_click − z_rib_midplane| ≤ rib_thickness/2 = 0.001 m"  # never protrudes past rib face
+    chamfer_angle_deg: 45
+    chamfer_overlap_mm: [0.5, 1.0]
+    chamfer_clearance_mm: 0.1  # per side; sets panel_thickness_min lower bound
+    detent_radius_mm: [0.3, 0.5]
+    design_clearance_mm: [0.15, 0.20]
+    naming:
+      click_detent: reserved_for_inter_blade_click
+      locking_detent: deferred_to_V2
+
+# ============================================================================
+# Kinematics — H8 symbol table lock; bare `ω` forbidden in code
+# ============================================================================
+kinematics:
+  f_wave_hz: 2.0
+  T_cycle_s: 0.5
+  theta_max_rad: 0.6981
+  omega_shm_rads: 12.5664        # 2π·f; SU2 PITCHING_OMEGA
+  omega_blade_max_rads: 8.8      # θ_max · ω_shm; peak instantaneous angular velocity
+  v_tip_mps: 2.20                # ω_blade_max · L_wrist_to_tip
+  v_mid_mps: 1.32                # ω_blade_max · r_wrist_mid
+  alpha_max_rads2: 110           # θ_max · ω_shm²
+  alpha_tip_mps2: 27.5
+  k_reduced: 0.57
+  L_blade_m: 0.20                # rib + panel radial extent from pivot to tip
+  L_wrist_to_tip_m: 0.25         # d_handle + L_blade; canonical lever arm for τ→F conversions
+  lever_arm_audit_lock: "torque-to-force conversions outside pivot region MUST use L_wrist_to_tip = 0.25 m"
+
+# ============================================================================
+# SU2 / CFD lock
+# ============================================================================
+su2:
+  build_commit: <pin_at_phase_4_launch>
+  ampl_unit: radians
+  mach_number: 0.0064
+  # Tier-specific (L5: PITCHING_*_AXIS moved to TIER_SPECIFIC[1])
+  reynolds_length_tier_minus1_m: 0.20
+  reynolds_length_tier_0_and_1_m: 0.25
+  reynolds_number_tier_minus1: 18000
+  reynolds_number_tier_0_and_1: 37000
+  motion_origin: [0.0, 0.0, 0.0]
+  # PITCHING_*_AXIS is tier-specific (Tier 1 unsteady only); not in cross-tier
+  pitching_omega_axis_tier_1: [0.0, 1.0, 0.0]
+  pitching_ampl_axis_tier_1: [0.0, 1.0, 0.0]
+  pitching_omega_mag_rads_tier_1: 12.5664
+  pitching_ampl_rad_tier_1: 0.6981
+  # C2 sign convention: productive = -z (fan sweeps +z toward user → air in fan frame flows -z)
+  freestream_productive: [0.0, 0.0, -1.0]
+  freestream_return: [0.0, 0.0, +1.0]
+  unsteady_ambient_velocity_mps: 0.001    # near-zero (H10 cfg sanity: fall back to MACH=1e-9 + REF_* if FREESTREAM_VELOCITY directive unsupported)
+  unsteady_grid_movement: rigid_motion_pitching_about_y
+  time_step_s: 0.0025
+  max_time_s: 2.5
+  time_iter: 1000
+  n_cycles: 5
+  cfl_number: 10.0
+  cfl_excursion_max_retries: 1
+  cfl_excursion_param_modifier: halve_cfl
+
+j_fan:
+  plane_forward_m: 0.300
+  plane_size_m: 0.600
+  plane_centerline: pivot
+  rho_freestream_kgm3: 1.225
+  cycles_discarded: 1
+  cycle_2_vs_3_threshold_pct: 5.0
+  cycle_threshold_denominator_floor: "0.10 * J_fan_baseline_magnitude"
+  per_cycle_definition: "(1/T) ∫_{(k-1)T}^{kT} [∫_Σ ρ_0 · u_n · (u · t̂) dA] dt"
+  t_hat: [0.0, 0.0, 1.0]
+  steady_proxy_sign_convention:  # C2 lock
+    productive_drag: "Drag at FREESTREAM_PRODUCTIVE = (0, 0, -1)"
+    return_drag: "Drag at FREESTREAM_RETURN = (0, 0, +1)"
+    j_fan_steady_proxy: "Drag_productive − Drag_return"
+    sign_for_productive_louver: positive
+
+# ============================================================================
+# Material constants (§10.1)
+# ============================================================================
+materials:
+  petg:
+    rho_kgm3: 1270
+    E_xy_mpa: 1300
+    E_z_mpa: 1000
+    sigma_y_xy_mpa: 45
+    sigma_y_z_mpa: 30
+    fatigue_factor_xy_cyclic: 0.30
+    fatigue_factor_z_cyclic: 0.20
+    fatigue_factor_z_bearing: 0.10
+  pin:
+    rho_steel_kgm3: 7850
+    rho_brass_kgm3: 8500
+  bed_surface: smooth_pei  # M13 lock; Bambu AP05 or equivalent Ra ≤ 5 µm
+  filter2_p_aero_reference_pa: 10.0  # M3 lock; fixed canonical baseline (not per-design CFD)
+
+stress_concentrations:
+  panel_pivot_tension: 2.42
+  panel_pivot_bending: 3.2
+  panel_pivot_bearing: 1.5
+  click_detent: 3.0
+  click_detent_z_floor: 3.0
+  tpms_through_hole: 2.5
+  rib_panel_fillet: 1.5
+  slot_end_louver: 2.0
+
+cyclic_allowables_mpa_nominal:
+  panel_pivot_tension: 5.58
+  panel_pivot_bending: 4.22
+  panel_pivot_bearing: 2.00       # binds for canonical baseline
+  click_detent_xy: 4.50
+  click_detent_z: 2.00
+  tpms_through_hole: 5.40
+  rib_panel_fillet: 9.00
+  slot_end_louver: 6.75
+
+static_allowables_mpa_nominal:
+  panel_pivot_tension: 12.40
+  panel_pivot_bearing_z: 13.33
+  rib_panel_fillet: 20.00
+
+binding_hotspot_canonical: panel_pivot_bearing
+
+# ============================================================================
+# Constraints and Pareto objectives
+# ============================================================================
+constraints:
+  m_total_max_kg: 0.060
+  r_com_wrist_max_m: 0.160
+  r_com_xz_projection_required: true  # C1 lock; perpendicular distance to +y axis is √(x²+z²)
+  manufacturability_score_min: 0.5
+
+pareto_objectives:
+  - id: J_fan
+    direction: max
+    units: N
+    has_cfd_fidelity: true
+  - id: i_wrist
+    direction: min
+    units: kg*m^2
+    about_axis: +y
+    has_cfd_fidelity: false
+    rationale_lock: "peak felt torque τ_peak ≈ I_wrist·α_max; cycle work dominated by aero (C4)"
+  - id: peak_pivot_stress
+    direction: min
+    units: MPa
+    evaluated_at: panel_pivot_hole
+    fidelity_chain: [filter_2_closed_form, fea_59_5, phase_6_measurement]
+    has_cfd_fidelity: false
+  - id: folded_form_factor
+    direction: min
+    units: mm
+    measured: stack_thickness
+    has_cfd_fidelity: false
+
+filter_chain:
+  filter_1:
+    name: hard_constraint
+    checks: [m_total, r_com_wrist, manufacturability]
+    soft_penalty_band: [0.5, 0.8]
+  filter_2:
+    name: structural_three_mode
+    p_aero_reference_pa: 10.0  # M3
+    modes:
+      - {mode: bending, location: panel_skin, allowable_mpa: 4.22}
+      - {mode: tension, location: hole_equator, allowable_mpa: 5.58}
+      - {mode: bearing, location: pin_bore, allowable_mpa: 2.00}
+    pass_condition: all_three_pass
+    canonical_headroom: 0.6
+    hotspot_tightening: 0.40
+    # H4: explicit hotspot list, not rib-axis proximity criterion
+    hotspot_list_for_tightening:
+      - panel_pivot_hole_all_three_modes
+      - click_detent_at_rib_tip
+      - rib_panel_fillet_full_length
+      - slot_ends_layer_2_louver
+      - tpms_through_holes
+      - layer_3_primitive_boundaries
+    tip_deflection_threshold_mm: 0.6
+  filter_3:
+    name: deprecated_pass_through
+    behavior: always_returns_passed_true
+  filter_4_plus:
+    name: reserved_for_future
+
+# ============================================================================
+# Acquisition + per-objective models
+# ============================================================================
+bo:
+  n_dims_total: [37, 46]
+  cost_tuple: [2.0, 10.0, 50.0]
+  cost_tuple_drift_threshold_pct: 25
+  hv_baseline_round: 200
+  hv_early_stop_floor_rounds: 500
+  hv_50_round_gain_threshold: 1.0e-4
+  acquisition_cap: 35
+  # H3 dual-source K decision
+  K_seed_at_phase4_launch:
+    source: phase_3_R2_2d_steady_vs_2d_unsteady
+    rule: "K=3 if R²≥0.6; K=4 if 0.5≤R²<0.6; K=5 if R²<0.5"
+  K_running_update_during_phase4:
+    source: phase_4_spearman_rho2_on_tier0_tier1_overlap
+    recompute_every_n_tier0: 20
+    requires_overlap_N: 30
+  K_locked_range: [3, 4, 5]
+  K_fallback_at_1000h_with_N_below_30: hold_K_force_grow_overlap_with_tier1_evals
+  rho_freeze_threshold: 0.4
+  rho_freeze_threshold_tpms_or_noise: 0.2
+  rho_recover_threshold: 0.5
+  gp_noise:
+    mode: fixed_floor
+    epistemic_floor: 1.0e-6
+    per_design_se_stored_as: J_fan_cycle_variance
+    se_formula: "std / sqrt(n_cycles − 1)"
+  acquisition_pipeline_two_stage:
+    stage_1: qMultiFidelityKnowledgeGradient_on_J_fan_only
+    stage_2: qNoisyExpectedHypervolumeImprovement_over_all_4_objectives_at_target_fidelity
+  per_objective_models:
+    J_fan: SingleTaskMultiFidelityGP
+    i_wrist: deterministic_or_near_zero_noise_gp
+    folded_form_factor: deterministic_or_near_zero_noise_gp
+    peak_pivot_stress: single_fidelity_gp_on_filter2_closed_form
+  # H5 stop-criteria priority ladder
+  stop_criteria_ladder:
+    1_hv_plateau: "(HV[-1] - HV[-50])/HV_baseline < 1e-4 after round 500 → converge + reallocate"
+    2_1000h_force_grow: "hold K within {3,4,5}; force-grow Tier-1 overlap until N≥30 → CONTINUE, not terminate"
+    3_1300h_ceiling: "hard stop; hand off current Pareto"
+    precedence: "if #1 and #2 both fire, #1 wins; #2 then #3 if BO has not converged by then"
+  # L7 empirical bias diagnostic
+  l7_tier_minus_1_bias_check:
+    window_first_n_tier0: 100
+    threshold_delta_over_mean_tier0: 0.30
+    action_if_exceeded: switch_to_tier0_only_promotion_for_affected_architectures
+
+# C6 radial-correction calibration
+c6_radial_correction:
+  phase: 0
+  n_designs: [15, 20]
+  radii_m: [0.10, 0.15, 0.20]
+  fit_form: "J_fan_corrected = J_fan_at_mid + β · directional_asymmetry_score"
+  artifact: "gdrive/fan-optimization/phase0/radial_correction_v1.json"
+  escalation_if_R2_below_0_70: "N=18 LHS × 3 radii per architecture; 360-1080 h fallback"
+
+# H1 Layer 2 enumeration
+layer_2_activation_profiles_locked_count: 20
+layer_2_pruning_rules:
+  drop_n_active_geq_4: true
+  drop_combinations_with_both_noise_and_tpms: true
+  drop_weak_singletons_texture_only_edge_only: true
+
+# H6 V1 lock force balance
+h6_v1_lock_force_balance:
+  spike: "0.4"
+  pass_criterion: "F_friction_cumulative >= 2 * F_inertial_at_click"
+  f_inertial_at_click_formula: "tau_inertial_peak / L_wrist_to_tip = I_wrist * alpha_max / 0.25"
+  fallback_geometry: "3 mm × 5 mm × 1.5 mm printed rib-tab on each guard blade; 0.2 mm mating pocket"
+  fallback_flag: params.layer4.v1_lock_fallback_enabled  # default False
+
+# H10 Tier 1 cfg + benchmark
+h10_spike_0_6c:
+  gates_phase4_launch: true
+  cfg_sanity_subspike: 0.6c.1
+  benchmark_subspike: 0.6c.2
+  benchmark_pass_criterion: "lift/drag coefficients within ±15% of published NACA 0012 oscillating-airfoil results at k=0.5-0.6, Re ~30-50k"
+  fallback_cfg_syntax: "MACH_NUMBER=1e-9 + REF_DIMENSIONALIZATION=FREESTREAM_PRESS_EQ_ONE if FREESTREAM_VELOCITY directive unsupported"
+
+# §59.5 stress-test (H9)
+fea_59_5:
+  uniform_load_canonical: "p_stagnation_peak = 0.5 * rho_0 * V_local_max^2 ≈ 3.0 Pa"
+  v_local_max_mps: 2.20  # ω_blade_max · L_wrist_to_tip
+  uniform_load_stress_test: "2.5 · p_stagnation_peak ≈ 7.5 Pa"
+  compute_h: 0.5  # 5 min × 3 designs × 2 load cases; L15 fix
+
+# ============================================================================
+# Phase 1.9 SIMP sanity
+# ============================================================================
+phase_1_9:
+  n_simp_per_branch: 30  # H2 lock (bumped from 10 for 3.5σ power)
+  total_compute_h: [10, 60]  # 30 × 2 × 5-30 min/each
+
+# ============================================================================
+# Campaign infrastructure
+# ============================================================================
+campaign:
+  parallel_sessions: [2, 4]
+  parallelism_su2_per_session: 5
+  retrain_interval_min: 30
+  slice_size: [30, 60]
+  compute_budget_hours:
+    expected: [600, 1100]
+    pessimistic: 1300
+    favorable: [300, 600]
+    stop_rule_h: 1000
+    # H7: Phase 0 sub-spikes booked separately; the 1000 h begins at git tag phase4-launch
+    phase0_separate_allocations:
+      spike_0_6c_h: 12   # H10 cfg sanity + benchmark
+      spike_0_7c_h: 430  # Sobol-vs-BO
+      c6_radial_correction_h: 50
+  slice_assignments_file_pattern: "slice_assignments_v{N}.json"
+  drive_pointer_format: two_version
+  drive_pointer_bootstrap: zero_sha_sentinel
+  drive_propagation_guard_s: 60
+  m3_heartbeat_interval_s: 60
+  m3_heartbeat_stale_held_paused_s: [300, 900]
+  m3_heartbeat_stopped_s: 900
+  dead_session_detection_latency_s: 90
+  cross_session_claim: o_creat_o_excl_local_lock_files
+  claim_reap_age_s: 900
+  cross_session_claim_post_open_sleep_s: 30  # M6 lock (bumped from 5 s)
+  drive_latency_monitoring:
+    log_path: "phase4/diagnostics/drive_latency_<date>.json"
+    p99_escalation_threshold_s: 25
+    p99_escalation_action: "bump sleep to 60 s; log change"
+  schema_version_current: 3
+  dedup_composite_key: [design_hash, physics_hash, config_hash, material_hash, fidelity, run_direction]
+  jsonl_done_marker_path: "designs/{design_hash}/runs/{config_hash[:8]}-{physics_hash[:8]}-{material_hash[:8]}-{fidelity}-{direction}.done"
+  hash_dependency: "physics_hash = blake2b(config_hash || material_hash || motion_blob)"
+
+# ============================================================================
+# JSONL schema nullability (cleanup CLEANUP-2)
+# ============================================================================
+jsonl_schema:
+  required_all_tiers: [design_hash, session_id, timestamp_utc, tier, status, J_fan]
+  tier_minus_1_and_0_populate: [J_fan_productive, J_fan_return, J_fan_delta]
+  tier_1_nulls: [J_fan_productive, J_fan_return, J_fan_delta]   # C2-renamed; Tier 1 has only J_fan
+  tier_1_se_diagnostics: [J_fan_se, J_fan_peak]  # both Optional[float]; Tier -1/0 set to None
+
+# ============================================================================
+# Phase ordering
+# ============================================================================
+phases:
+  - id: 0
+    name: scaffold_spikes_baseline
+    weeks: [1, 2]
+    sub_spikes: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, "0.6c (H10)", 0.7, "0.7c (H7)", "C6 radial-correction"]
+  - id: 1
+    name: 4_layer_generative_geometry
+    weeks: 3
+  - id: 1.9
+    name: simp_strip_sanity_check
+    weeks: 3.7
+    gates: [phase2_launch]
+    n_per_branch: 30  # H2 lock
+  - id: 2a
+    name: baseline_2d_cfd_for_phase2_loads
+    weeks: 3.5
+  - id: 2
+    name: rib_simp_to
+    weeks: 4
+  - id: 2.5
+    name: rib_panel_fillet_fea_revalidation
+    weeks: 4.5
+  - id: 2b
+    name: generative_panel_optimization
+    weeks: [5, 8]
+  - id: 3
+    name: 2d_cfd_slice
+    weeks: 6
+  - id: 4
+    name: multi_fidelity_bo
+    weeks: [8, 10]
+    launch_gates: [spike_0_6c_passed, spike_0_7c_completed, c6_radial_correction_committed]
+  - id: 5
+    name: verification_pyfr_top3
+    weeks: [11, 12]
+  - id: 5.5
+    name: combined_blade_fea_gate_step_59_5
+    runs_within_phase5: true
+  - id: 6
+    name: print_imu_acoustic_top3
+    weeks: [12, 13]

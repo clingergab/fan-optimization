@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fanopt"
+version = "0.1.0a0"
+description = "3D-printed folding fan: topology + aerodynamic shape optimization (R11 plan)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "fan-optimization" }]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+]
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
+    "pyyaml>=6.0",
+    "jinja2>=3.1",
+    "jsonschema>=4.21",
+]
+
+[project.optional-dependencies]
+bo = [
+    "torch>=2.2",
+    "botorch>=0.10",
+    "gpytorch>=1.11",
+]
+cfd = [
+    "vtk>=9.3",
+    "meshio>=5.3",
+]
+topopt = [
+    # FEniCSx is conda-only on macOS; install via environment.yml.
+    "scikit-fem>=9",
+]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=4",
+    "pytest-xdist>=3",
+    "ruff>=0.4",
+    "black>=24",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+]
+
+[project.urls]
+"Plan (R11)" = "docs/plan_R11.md"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["fanopt*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "slow: marks tests as slow (deselect with -m 'not slow')",
+    "cfd: requires SU2 binary on PATH",
+    "topopt: requires FEniCSx / CalculiX",
+    "audit: prose-vs-locks gates run as part of Round-N reviews",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]  # black owns line length
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+ignore_missing_imports = true
+files = ["src/fanopt", "tests"]
