@@ -44,6 +44,10 @@ data/
 gdrive/
 *.bak
 
+# Per-run Fusion spike params — params.example.json is the canonical schema;
+# params.json carries the operator's actual run values and is local-only.
+configs/fusion/params.json
+
 # SU2 outputs that may land in repo root from quick experiments
 history*.csv
 flow.vtu

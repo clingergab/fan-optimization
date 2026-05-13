@@ -1,0 +1,24 @@
+{
+    "_comment": "Spike 0.1 example params. Copy to params.json (same dir) before running.",
+    "_schema": "fanopt/spike_0_1/v0",
+    "_spec_ref": "docs/plan_R11.md §Phase 0 Spike 0.1",
+
+    "export_name": "blade_test",
+    "output_dir": "~/Projects/fan-optimization/data/meshes/spike_0_1",
+    "export_stl": true,
+    "export_step": true,
+    "stl_refinement": "medium",
+
+    "user_parameters": {
+        "_comment": "Names must match User Parameters that exist in the Fusion test file. The values are Fusion expressions — include units ('120 mm', '2.5 mm', '0.232 rad') or rely on the document's default unit.",
+        "L_blade":           "200 mm",
+        "panel_thickness":   "2.5 mm",
+        "rib_base_width":    "4 mm",
+        "rib_tip_width":     "6 mm",
+        "rib_thickness":     "2 mm",
+        "hub_radius":        "20 mm",
+        "rib_tip_taper":     "15 mm",
+        "pivot_center_x":    "8 mm",
+        "click_chamfer_dim": "0.75 mm"
+    }
+}

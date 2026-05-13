@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion360",
+    "type": "addin",
+    "id": "fan-optimization.spike_0_1",
+    "author": "fan-optimization",
+    "description": {
+        "": "Spike 0.1 — headless params.json -> User Parameters -> STL/STEP export. See docs/plan_R11.md §Phase 0 Spike 0.1."
+    },
+    "version": "0.1.0",
+    "runOnStartup": false,
+    "supportedOS": "mac|windows",
+    "editEnabled": true
+}
