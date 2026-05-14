@@ -6,8 +6,10 @@ Exercises the CV computation and the Spike 0.5 roll-up gates (J_fan, mass,
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.5; protocol in
 docs/spike_0_5_protocol.md.
 """
+
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import asdict
 
 import pytest
@@ -21,7 +23,6 @@ from fanopt.physical.fab_noise import (
     analyze_fab_noise,
     coefficient_of_variation_pct,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────
 # Fixture helpers
@@ -216,9 +217,9 @@ def test_dimension_cv_aggregates_across_10_points() -> None:
       points 2-9: all 10.0                → CV = 0.0% each
     Mean per-point CV = (2.0 + 1.0 + 8 × 0.0) / 10 = 0.30%. Well under 5%.
     """
-    blade1_dims = (9.8, 9.9) + tuple([10.0] * 8)
-    blade2_dims = (10.0, 10.0) + tuple([10.0] * 8)
-    blade3_dims = (10.2, 10.1) + tuple([10.0] * 8)
+    blade1_dims = (9.8, 9.9, *tuple([10.0] * 8))
+    blade2_dims = (10.0, 10.0, *tuple([10.0] * 8))
+    blade3_dims = (10.2, 10.1, *tuple([10.0] * 8))
     blades = [
         BladeMeasurements(1, 5.0, blade1_dims, 1.2, 0.35),
         BladeMeasurements(2, 5.0, blade2_dims, 1.2, 0.35),
@@ -301,5 +302,5 @@ def test_constants_match_spec() -> None:
 
 def test_per_measurement_cv_is_frozen() -> None:
     cv = PerMeasurementCV(metric_name="x", mean=1.0, std=0.0, cv_pct=0.0, passed=True)
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         cv.cv_pct = 99.0  # type: ignore[misc]

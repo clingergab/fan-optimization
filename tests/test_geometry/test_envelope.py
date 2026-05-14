@@ -1,4 +1,5 @@
 """Unit tests for fanopt.geometry.envelope (Layer 1 BO design parameters)."""
+
 from __future__ import annotations
 
 import math
@@ -87,6 +88,14 @@ def test_twist_outside_range_fails() -> None:
     kw = _canonical_kwargs()
     kw["twist_knots_rad"] = (0.0, math.radians(15.0))  # 15° > 10° cap
     with pytest.raises(ValueError, match="twist_knots_rad"):
+        Layer1Params(**kw)
+
+
+def test_twist_rejects_1_knot() -> None:
+    """twist_knots_rad must have 2 or 3 elements."""
+    kw = _canonical_kwargs()
+    kw["twist_knots_rad"] = (0.0,)  # only 1 knot
+    with pytest.raises(ValueError, match="twist_knots_rad must have 2-3 elements"):
         Layer1Params(**kw)
 
 

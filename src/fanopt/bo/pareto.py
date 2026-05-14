@@ -7,6 +7,7 @@ helper will raise NotImplementedError via the package-level guard.
 
 Reference: docs/plan_R11.md §6.4
 """
+
 from __future__ import annotations
 
 __all__: list[str] = []

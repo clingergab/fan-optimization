@@ -55,12 +55,13 @@ References:
 * H7 budget-allocation lock: 430 h booked under Phase 0 only.
 * §6.2.3 stop-rule accounting: same cumulative-compute axis.
 """
+
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Mapping
 
 __all__ = [
     "BUDGETS_HOURS",
@@ -235,16 +236,10 @@ def compute_iso_compute_point(
     sobol_used = _truncate_at_budget(
         sobol_results, float(budget_hours), wall_time_key=wall_time_key
     )
-    bo_used = _truncate_at_budget(
-        bo_results, float(budget_hours), wall_time_key=wall_time_key
-    )
+    bo_used = _truncate_at_budget(bo_results, float(budget_hours), wall_time_key=wall_time_key)
 
-    sobol_best = (
-        min(float(r[j_fan_key]) for r in sobol_used) if sobol_used else float("inf")
-    )
-    bo_best = (
-        min(float(r[j_fan_key]) for r in bo_used) if bo_used else float("inf")
-    )
+    sobol_best = min(float(r[j_fan_key]) for r in sobol_used) if sobol_used else float("inf")
+    bo_best = min(float(r[j_fan_key]) for r in bo_used) if bo_used else float("inf")
 
     if sobol_best == float("inf") and bo_best == float("inf"):
         pct = 0.0

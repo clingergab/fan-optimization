@@ -6,6 +6,7 @@ references. Synthesizes IMU traces at the locked spec amplitudes/frequencies
 
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.3, §3.2.3 kinematics.
 """
+
 from __future__ import annotations
 
 import math
@@ -26,17 +27,20 @@ from fanopt.physical.imu import (
     load_imu_csv,
 )
 
-
 # Locked kinematics (§3.2.3).
-F_HZ = F_WAVE_TARGET_HZ          # 2.0 Hz
-OMEGA = 2.0 * math.pi * F_HZ     # 12.566 rad/s SHM angular frequency
-THETA_MAX = THETA_MAX_TARGET_RAD # 0.6981 rad = 40°
+F_HZ = F_WAVE_TARGET_HZ  # 2.0 Hz
+OMEGA = 2.0 * math.pi * F_HZ  # 12.566 rad/s SHM angular frequency
+THETA_MAX = THETA_MAX_TARGET_RAD  # 0.6981 rad = 40°
 OMEGA_MAX = OMEGA_MAX_TARGET_RAD_PER_S  # 8.8 rad/s = θ_max · ω_SHM
 SAMPLE_HZ = 500.0
 
 
-def _shm_trace(duration_s: float = 5.0, theta_max: float = THETA_MAX,
-               omega_shm: float = OMEGA, sample_hz: float = SAMPLE_HZ) -> IMUTrace:
+def _shm_trace(
+    duration_s: float = 5.0,
+    theta_max: float = THETA_MAX,
+    omega_shm: float = OMEGA,
+    sample_hz: float = SAMPLE_HZ,
+) -> IMUTrace:
     """θ(t) = θ_max · sin(ω·t), ω(t) = θ_max · ω · cos(ω·t)."""
     t = np.arange(0.0, duration_s, 1.0 / sample_hz)
     theta = theta_max * np.sin(omega_shm * t)
@@ -57,12 +61,12 @@ def test_w_cycle_matches_analytic_2_I_omega_max_squared() -> None:
     Multiply by I and we get I·ω_max². But the rectified integral covers TWO
     half-cycles of |sin|, so over one full period we get 2·I·ω_max².
     """
-    I = 1.0e-3  # kg·m²
+    I = 1.0e-3  # noqa: E741 -- moment of inertia, kg·m² (scientific convention)
     # 5 full cycles to make n_cycles-averaging robust against edge effects.
     trace = _shm_trace(duration_s=5.0 / F_HZ)
     W = compute_w_cycle(trace, I)
-    expected = 2.0 * I * OMEGA_MAX ** 2
-    assert W == pytest.approx(expected, rel=0.02)
+    expected = 2.0 * I * OMEGA_MAX**2
+    assert pytest.approx(expected, rel=0.02) == W
 
 
 def test_w_cycle_scales_with_I_wrist() -> None:
@@ -120,7 +124,7 @@ def test_load_imu_csv_round_trip(tmp_path: Path) -> None:
     trace = _shm_trace(duration_s=2.5)
     path = tmp_path / "trial1.csv"
     lines = ["t_s,theta_rad,omega_rad_per_s"]
-    for ti, th, om in zip(trace.t_s, trace.theta_rad, trace.omega_rad_per_s):
+    for ti, th, om in zip(trace.t_s, trace.theta_rad, trace.omega_rad_per_s, strict=True):
         lines.append(f"{ti:.6f},{th:.8f},{om:.8f}")
     path.write_text("\n".join(lines) + "\n")
 
@@ -136,7 +140,7 @@ def test_load_imu_csv_synthesizes_theta_when_omitted(tmp_path: Path) -> None:
     trace = _shm_trace(duration_s=2.5)
     path = tmp_path / "trial_no_theta.csv"
     lines = ["t_s,omega_rad_per_s"]
-    for ti, om in zip(trace.t_s, trace.omega_rad_per_s):
+    for ti, om in zip(trace.t_s, trace.omega_rad_per_s, strict=True):
         lines.append(f"{ti:.6f},{om:.8f}")
     path.write_text("\n".join(lines) + "\n")
 
@@ -173,7 +177,7 @@ def test_load_imu_csv_skips_comments_and_blanks(tmp_path: Path) -> None:
     trace = _shm_trace(duration_s=1.5)
     path = tmp_path / "with_comments.csv"
     lines = ["# header comment", "", "t_s,theta_rad,omega_rad_per_s"]
-    for ti, th, om in zip(trace.t_s, trace.theta_rad, trace.omega_rad_per_s):
+    for ti, th, om in zip(trace.t_s, trace.theta_rad, trace.omega_rad_per_s, strict=True):
         lines.append(f"{ti:.6f},{th:.8f},{om:.8f}")
     path.write_text("\n".join(lines) + "\n")
     loaded = load_imu_csv(path)

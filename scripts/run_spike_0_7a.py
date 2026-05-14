@@ -184,9 +184,7 @@ def shim_generator_fn(params: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def shim_manuf_fn(
-    params: dict[str, Any], blade: dict[str, Any]
-) -> tuple[bool, tuple[str, ...]]:
+def shim_manuf_fn(params: dict[str, Any], blade: dict[str, Any]) -> tuple[bool, tuple[str, ...]]:
     """Bbox-level manufacturability filter shim.
 
     Implements the subset of §N7 checks that can be answered from the
@@ -263,8 +261,12 @@ def shim_click_check_fn(
     click_xs = (L_BLADE_M, L_BLADE_M - RIB_TIP_TAPER_M)
     click_ys = (+PANEL_TANGENTIAL_OUTER_M, -PANEL_TANGENTIAL_OUTER_M)
     click_boxes = [
-        (x - CLICK_FOOTPRINT_RADIUS_M, x + CLICK_FOOTPRINT_RADIUS_M,
-         y - CLICK_FOOTPRINT_RADIUS_M, y + CLICK_FOOTPRINT_RADIUS_M)
+        (
+            x - CLICK_FOOTPRINT_RADIUS_M,
+            x + CLICK_FOOTPRINT_RADIUS_M,
+            y - CLICK_FOOTPRINT_RADIUS_M,
+            y + CLICK_FOOTPRINT_RADIUS_M,
+        )
         for x in click_xs
         for y in click_ys
     ]
@@ -277,12 +279,7 @@ def shim_click_check_fn(
             continue
         fx_lo, fx_hi, fy_lo, fy_hi = feat["bbox"]
         for cx_lo, cx_hi, cy_lo, cy_hi in click_boxes:
-            if (
-                fx_lo < cx_hi
-                and fx_hi > cx_lo
-                and fy_lo < cy_hi
-                and fy_hi > cy_lo
-            ):
+            if fx_lo < cx_hi and fx_hi > cx_lo and fy_lo < cy_hi and fy_hi > cy_lo:
                 reasons.append(
                     f"{feat['kind']} bbox "
                     f"({fx_lo:.4f},{fy_lo:.4f})-({fx_hi:.4f},{fy_hi:.4f}) "
@@ -330,12 +327,7 @@ def shim_rib_check_fn(
             continue
         fx_lo, fx_hi, fy_lo, fy_hi = feat["bbox"]
         for rx_lo, rx_hi, ry_lo, ry_hi in rib_boxes:
-            if (
-                fx_lo < rx_hi
-                and fx_hi > rx_lo
-                and fy_lo < ry_hi
-                and fy_hi > ry_lo
-            ):
+            if fx_lo < rx_hi and fx_hi > rx_lo and fy_lo < ry_hi and fy_hi > ry_lo:
                 reasons.append(
                     f"{feat['kind']} bbox overlaps rib bbox "
                     f"y∈[{ry_lo:.4f},{ry_hi:.4f}] (panel-domain invariant)"

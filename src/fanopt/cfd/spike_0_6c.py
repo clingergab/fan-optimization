@@ -52,12 +52,13 @@ References:
 * Lock callouts: Round-9 HIGH-12 (= C12, unsteady MACH lock).
 * Companion CI gate: ``tests/test_cfd/test_unsteady_freestream_consistency.py``.
 """
+
 from __future__ import annotations
 
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 __all__ = [
     "CONVERGENCE_TOLERANCE_PCT",
@@ -231,17 +232,12 @@ def check_tier1_cfg_sanity(
         mach_value = float(mach_str)
 
         freestream_option = _parse_cfg_directive(cfg_text, "FREESTREAM_OPTION") or ""
-        ref_dimensionalization = _parse_cfg_directive(
-            cfg_text, "REF_DIMENSIONALIZATION"
-        )
+        ref_dimensionalization = _parse_cfg_directive(cfg_text, "REF_DIMENSIONALIZATION")
         parsed_ok = True
     except (ValueError, TypeError) as e:
         error = str(e)
 
-    if su2_log is not None:
-        outer_steps = _count_completed_outer_steps(su2_log)
-    else:
-        outer_steps = 0
+    outer_steps = _count_completed_outer_steps(su2_log) if su2_log is not None else 0
 
     # Pass criterion:
     #  - cfg parsed
@@ -410,7 +406,7 @@ def check_symmetry(
     c_l_max_mean = sum(c.c_l_max for c in kept_t) / len(kept_t)
     c_l_min_mean = sum(c.c_l_min for c in kept_t) / len(kept_t)
     denom = max(abs(c_l_max_mean), abs(c_l_min_mean))
-    if denom < 1e-9:
+    if denom < 1e-9:  # noqa: SIM108 -- explicit if/else preserves the comment context
         # Both averages near zero — vacuously symmetric, but the spike has
         # almost certainly failed for other reasons. Pass the check; the
         # convergence gate will catch the degenerate case.

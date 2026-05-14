@@ -20,6 +20,7 @@ the failure mode the spike's adversarial set (b) is designed to expose
 (a Layer 2 TPMS at minimum cell size rotated to put through-cuts across the
 ribs).
 """
+
 from __future__ import annotations
 
 import sys
@@ -32,6 +33,7 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+import run_spike_0_7a as runner  # noqa: E402
 from fanopt.geometry.spike_0_7a import (  # noqa: E402
     ADVERSARIAL_PARAM_SETS,
     HUB_RADIUS_M,
@@ -39,8 +41,6 @@ from fanopt.geometry.spike_0_7a import (  # noqa: E402
     RIB_TIP_TAPER_M,
     evaluate_param_set,
 )
-
-import run_spike_0_7a as runner  # noqa: E402
 
 BBOX_SHIM: bool = True  # flip to False when bit-for-bit voxel comparator lands
 
@@ -67,9 +67,9 @@ def test_rib_bbox_matches_panel_pivot_architecture_lock() -> None:
     """Under panel-pivot architecture the rib radial extent is locked to
     [HUB_RADIUS, L_blade − RIB_TIP_TAPER] = [0.020, 0.185] m. The bbox
     used in the panel-domain invariant check must match that lock."""
-    assert HUB_RADIUS_M == pytest.approx(0.020)
-    assert L_BLADE_M == pytest.approx(0.200)
-    assert RIB_TIP_TAPER_M == pytest.approx(0.015)
+    assert pytest.approx(0.020) == HUB_RADIUS_M
+    assert pytest.approx(0.200) == L_BLADE_M
+    assert pytest.approx(0.015) == RIB_TIP_TAPER_M
     rib_x_hi = L_BLADE_M - RIB_TIP_TAPER_M
     assert rib_x_hi == pytest.approx(0.185)
     # Rib lives outside the panel's tangential half-width (panel-pivot
@@ -112,8 +112,7 @@ def test_tpms_min_cell_with_rib_crossing_rotation_is_blocked() -> None:
     caught_at_rib = not rec.rib_material_preserved
     caught_at_click = not rec.click_footprint_intact
     assert caught_at_rib or caught_at_click, (
-        "Set was blocked but neither rib nor click flagged it — "
-        f"reasons={rec.rejection_reasons}"
+        "Set was blocked but neither rib nor click flagged it — " f"reasons={rec.rejection_reasons}"
     )
 
 
@@ -131,9 +130,9 @@ def test_safe_params_preserve_rib_material() -> None:
         click_check_fn=runner.shim_click_check_fn,
         rib_check_fn=runner.shim_rib_check_fn,
     )
-    assert rec.rib_material_preserved, (
-        f"Safe params somehow violated rib invariant — reasons={rec.rejection_reasons}"
-    )
+    assert (
+        rec.rib_material_preserved
+    ), f"Safe params somehow violated rib invariant — reasons={rec.rejection_reasons}"
 
 
 # ── Assertion 4: additive Layer 3 primitive does NOT count as carving ────

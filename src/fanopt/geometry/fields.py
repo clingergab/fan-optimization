@@ -15,6 +15,7 @@ active at once. The H1 lock further restricts {noise, TPMS} to not
 co-active — enforced at the architecture-enumeration level, not at this
 dataclass level. This module enforces only the cardinality bound.
 """
+
 from __future__ import annotations
 
 import math
@@ -125,9 +126,7 @@ class LouverField:
             return
         c_lo, c_hi = LOUVER_COUNT_RANGE
         if not (c_lo <= self.count <= c_hi):
-            raise ValueError(
-                f"LouverField.count = {self.count} outside range [{c_lo}, {c_hi}]"
-            )
+            raise ValueError(f"LouverField.count = {self.count} outside range [{c_lo}, {c_hi}]")
         _check_range("LouverField.angle_rad", self.angle_rad, *LOUVER_ANGLE_RANGE_RAD)
         _check_range("LouverField.width_m", self.width_m, *LOUVER_WIDTH_RANGE_M)
         _check_choice(
@@ -180,18 +179,13 @@ class EdgeFeatureField:
     def __post_init__(self) -> None:
         if not self.active:
             return
-        _check_choice(
-            "EdgeFeatureField.feature_type", self.feature_type, EDGE_FEATURE_TYPES
-        )
+        _check_choice("EdgeFeatureField.feature_type", self.feature_type, EDGE_FEATURE_TYPES)
         c_lo, c_hi = EDGE_FEATURE_COUNT_RANGE
         if not (c_lo <= self.count <= c_hi):
             raise ValueError(
-                f"EdgeFeatureField.count = {self.count} outside range "
-                f"[{c_lo}, {c_hi}]"
+                f"EdgeFeatureField.count = {self.count} outside range " f"[{c_lo}, {c_hi}]"
             )
-        _check_range(
-            "EdgeFeatureField.depth_m", self.depth_m, *EDGE_FEATURE_DEPTH_RANGE_M
-        )
+        _check_range("EdgeFeatureField.depth_m", self.depth_m, *EDGE_FEATURE_DEPTH_RANGE_M)
         _check_choice(
             "EdgeFeatureField.application",
             self.application,
@@ -215,9 +209,7 @@ class NoiseField:
             return
         _check_range("NoiseField.x_scale", self.x_scale, *NOISE_SCALE_RANGE)
         _check_range("NoiseField.y_scale", self.y_scale, *NOISE_SCALE_RANGE)
-        _check_range(
-            "NoiseField.rotation_rad", self.rotation_rad, *NOISE_ROTATION_RANGE_RAD
-        )
+        _check_range("NoiseField.rotation_rad", self.rotation_rad, *NOISE_ROTATION_RANGE_RAD)
         if self.threshold_retention < NOISE_THRESHOLD_RETENTION_MIN:
             raise ValueError(
                 f"NoiseField.threshold_retention = {self.threshold_retention} "
@@ -246,9 +238,7 @@ class TpmsField:
     def __post_init__(self) -> None:
         if not self.active:
             return
-        _check_choice(
-            "TpmsField.lattice_type", self.lattice_type, TPMS_LATTICE_TYPES
-        )
+        _check_choice("TpmsField.lattice_type", self.lattice_type, TPMS_LATTICE_TYPES)
         if self.cell_size_m < TPMS_CELL_SIZE_MIN_M:
             raise ValueError(
                 f"TpmsField.cell_size_m = {self.cell_size_m} below floor "
@@ -286,9 +276,12 @@ class Layer2Params:
             )
 
     def active_count(self) -> int:
-        return sum(
-            1 for f in (self.louver, self.texture, self.edge, self.noise, self.tpms)
-            if f.active
+        return (
+            int(self.louver.active)
+            + int(self.texture.active)
+            + int(self.edge.active)
+            + int(self.noise.active)
+            + int(self.tpms.active)
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -301,7 +294,7 @@ class Layer2Params:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Layer2Params":
+    def from_dict(cls, d: dict[str, Any]) -> Layer2Params:
         return cls(
             louver=LouverField(**d["louver"]),
             texture=TextureField(**d["texture"]),
@@ -311,7 +304,7 @@ class Layer2Params:
         )
 
     @classmethod
-    def all_inactive(cls) -> "Layer2Params":
+    def all_inactive(cls) -> Layer2Params:
         """Canonical 'no Layer 2 features' design (zero active fields)."""
         return cls(
             louver=LouverField(active=False),

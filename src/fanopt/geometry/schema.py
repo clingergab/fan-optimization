@@ -24,6 +24,7 @@ Locks referenced:
 - §3.1.2 PANEL_PIVOT_REGION + CLICK_FOOTPRINT_*
 - §3.2.3 H8 kinematics symbol table
 """
+
 from __future__ import annotations
 
 import math
@@ -230,7 +231,7 @@ OMEGA_SHM_RAD_PER_S: float = 2.0 * math.pi * F_WAVE_HZ
 OMEGA_BLADE_MAX_RAD_PER_S: float = THETA_MAX_RAD * OMEGA_SHM_RAD_PER_S
 """≈ 8.8 rad/s. Peak instantaneous blade angular velocity."""
 
-ALPHA_MAX_RAD_PER_S2: float = THETA_MAX_RAD * OMEGA_SHM_RAD_PER_S ** 2
+ALPHA_MAX_RAD_PER_S2: float = THETA_MAX_RAD * OMEGA_SHM_RAD_PER_S**2
 """≈ 110 rad/s². Peak angular acceleration (Phase 2 inertial load)."""
 
 V_TIP_M_PER_S: float = OMEGA_BLADE_MAX_RAD_PER_S * L_WRIST_TO_TIP_M

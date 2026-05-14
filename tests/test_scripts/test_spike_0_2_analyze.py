@@ -10,6 +10,7 @@ Exercises:
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.2; protocol in
 docs/spike_0_2_protocol.md.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,7 +20,6 @@ from pathlib import Path
 import pytest
 
 import spike_0_2_analyze as cli
-
 
 # ---- fixtures --------------------------------------------------------------
 
@@ -64,10 +64,14 @@ def test_cli_pass(tmp_path: Path, calibration_csv: Path, kappa_value: float) -> 
 
     rc = cli.main(
         [
-            "--calibration", str(calibration_csv),
-            "--measurements", str(meas),
-            "--generator-i-wrist", str(I_gen),
-            "--out", str(out),
+            "--calibration",
+            str(calibration_csv),
+            "--measurements",
+            str(meas),
+            "--generator-i-wrist",
+            str(I_gen),
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -94,9 +98,12 @@ def test_cli_no_generator_value_still_passes_on_repeatability(
     out = tmp_path / "results.json"
     rc = cli.main(
         [
-            "--calibration", str(calibration_csv),
-            "--measurements", str(meas),
-            "--out", str(out),
+            "--calibration",
+            str(calibration_csv),
+            "--measurements",
+            str(meas),
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -109,18 +116,12 @@ def test_cli_no_generator_value_still_passes_on_repeatability(
 # ---- failing-gate exit codes -----------------------------------------------
 
 
-def test_cli_fails_repeatability(
-    tmp_path: Path, calibration_csv: Path
-) -> None:
+def test_cli_fails_repeatability(tmp_path: Path, calibration_csv: Path) -> None:
     """Periods spread enough that std/mean > 3% → exit 1."""
-    meas = _measurements_csv(
-        tmp_path / "measurements.csv", [1.20, 1.30, 1.40, 1.25, 1.35]
-    )
+    meas = _measurements_csv(tmp_path / "measurements.csv", [1.20, 1.30, 1.40, 1.25, 1.35])
     out = tmp_path / "results.json"
     rc = cli.main(
-        ["--calibration", str(calibration_csv),
-         "--measurements", str(meas),
-         "--out", str(out)]
+        ["--calibration", str(calibration_csv), "--measurements", str(meas), "--out", str(out)]
     )
     assert rc == 1
     r = json.loads(out.read_text())["result"]
@@ -128,19 +129,23 @@ def test_cli_fails_repeatability(
     assert r["passed"] is False
 
 
-def test_cli_fails_cross_check(
-    tmp_path: Path, calibration_csv: Path, kappa_value: float
-) -> None:
+def test_cli_fails_cross_check(tmp_path: Path, calibration_csv: Path, kappa_value: float) -> None:
     """Tight trials but generator off by 20% → cross-check fails → exit 1."""
     T = 1.50
     meas = _measurements_csv(tmp_path / "measurements.csv", [T] * 5)
     out = tmp_path / "results.json"
     I_gen = _i_wrist(kappa_value, T) * 1.20  # 20% off
     rc = cli.main(
-        ["--calibration", str(calibration_csv),
-         "--measurements", str(meas),
-         "--generator-i-wrist", str(I_gen),
-         "--out", str(out)]
+        [
+            "--calibration",
+            str(calibration_csv),
+            "--measurements",
+            str(meas),
+            "--generator-i-wrist",
+            str(I_gen),
+            "--out",
+            str(out),
+        ]
     )
     assert rc == 1
     r = json.loads(out.read_text())["result"]
@@ -155,20 +160,28 @@ def test_cli_fails_cross_check(
 def test_cli_missing_calibration_file(tmp_path: Path) -> None:
     meas = _measurements_csv(tmp_path / "measurements.csv", [1.50] * 5)
     rc = cli.main(
-        ["--calibration", str(tmp_path / "does_not_exist.csv"),
-         "--measurements", str(meas),
-         "--out", str(tmp_path / "results.json")]
+        [
+            "--calibration",
+            str(tmp_path / "does_not_exist.csv"),
+            "--measurements",
+            str(meas),
+            "--out",
+            str(tmp_path / "results.json"),
+        ]
     )
     assert rc == 2
 
 
-def test_cli_missing_measurements_file(
-    tmp_path: Path, calibration_csv: Path
-) -> None:
+def test_cli_missing_measurements_file(tmp_path: Path, calibration_csv: Path) -> None:
     rc = cli.main(
-        ["--calibration", str(calibration_csv),
-         "--measurements", str(tmp_path / "does_not_exist.csv"),
-         "--out", str(tmp_path / "results.json")]
+        [
+            "--calibration",
+            str(calibration_csv),
+            "--measurements",
+            str(tmp_path / "does_not_exist.csv"),
+            "--out",
+            str(tmp_path / "results.json"),
+        ]
     )
     assert rc == 2
 
@@ -178,80 +191,98 @@ def test_cli_calibration_missing_kappa_column(tmp_path: Path) -> None:
     bad_calib.write_text("T_ref_s,m_ref_kg\n1.540,0.050\n")
     meas = _measurements_csv(tmp_path / "measurements.csv", [1.50] * 5)
     rc = cli.main(
-        ["--calibration", str(bad_calib),
-         "--measurements", str(meas),
-         "--out", str(tmp_path / "results.json")]
+        [
+            "--calibration",
+            str(bad_calib),
+            "--measurements",
+            str(meas),
+            "--out",
+            str(tmp_path / "results.json"),
+        ]
     )
     assert rc == 2
 
 
 def test_cli_calibration_nonnumeric_kappa(tmp_path: Path) -> None:
     bad_calib = tmp_path / "bad_calib.csv"
-    bad_calib.write_text(
-        "kappa_Nm_per_rad,T_ref_s\n"
-        "not_a_number,1.540\n"
-    )
+    bad_calib.write_text("kappa_Nm_per_rad,T_ref_s\n" "not_a_number,1.540\n")
     meas = _measurements_csv(tmp_path / "measurements.csv", [1.50] * 5)
     rc = cli.main(
-        ["--calibration", str(bad_calib),
-         "--measurements", str(meas),
-         "--out", str(tmp_path / "results.json")]
+        [
+            "--calibration",
+            str(bad_calib),
+            "--measurements",
+            str(meas),
+            "--out",
+            str(tmp_path / "results.json"),
+        ]
     )
     assert rc == 2
 
 
-def test_cli_measurements_missing_t_osc_column(
-    tmp_path: Path, calibration_csv: Path
-) -> None:
+def test_cli_measurements_missing_t_osc_column(tmp_path: Path, calibration_csv: Path) -> None:
     bad_meas = tmp_path / "bad_meas.csv"
     bad_meas.write_text("trial,amplitude_deg,notes\n1,8,\n2,8,\n")
     rc = cli.main(
-        ["--calibration", str(calibration_csv),
-         "--measurements", str(bad_meas),
-         "--out", str(tmp_path / "results.json")]
+        [
+            "--calibration",
+            str(calibration_csv),
+            "--measurements",
+            str(bad_meas),
+            "--out",
+            str(tmp_path / "results.json"),
+        ]
     )
     assert rc == 2
 
 
-def test_cli_measurements_nonnumeric_t_osc(
-    tmp_path: Path, calibration_csv: Path
-) -> None:
+def test_cli_measurements_nonnumeric_t_osc(tmp_path: Path, calibration_csv: Path) -> None:
     bad_meas = tmp_path / "bad_meas.csv"
     bad_meas.write_text("trial,T_osc_s,amplitude_deg,notes\n1,oops,8,\n2,1.50,8,\n")
     rc = cli.main(
-        ["--calibration", str(calibration_csv),
-         "--measurements", str(bad_meas),
-         "--out", str(tmp_path / "results.json")]
+        [
+            "--calibration",
+            str(calibration_csv),
+            "--measurements",
+            str(bad_meas),
+            "--out",
+            str(tmp_path / "results.json"),
+        ]
     )
     assert rc == 2
 
 
-def test_cli_only_one_trial_errors(
-    tmp_path: Path, calibration_csv: Path
-) -> None:
+def test_cli_only_one_trial_errors(tmp_path: Path, calibration_csv: Path) -> None:
     """analyze_trials requires ≥ 2 trials — single-trial CSV → exit 2."""
     meas = _measurements_csv(tmp_path / "measurements.csv", [1.50])
     rc = cli.main(
-        ["--calibration", str(calibration_csv),
-         "--measurements", str(meas),
-         "--out", str(tmp_path / "results.json")]
+        [
+            "--calibration",
+            str(calibration_csv),
+            "--measurements",
+            str(meas),
+            "--out",
+            str(tmp_path / "results.json"),
+        ]
     )
     assert rc == 2
 
 
-def test_cli_empty_measurements_errors(
-    tmp_path: Path, calibration_csv: Path
-) -> None:
+def test_cli_empty_measurements_errors(tmp_path: Path, calibration_csv: Path) -> None:
     """Measurements file with header but no rows → exit 2."""
     bad_meas = tmp_path / "empty_meas.csv"
     bad_meas.write_text(
-        "# operator notes; no rows recorded\n"
-        "trial,T_osc_s,amplitude_deg,notes\n"
+        "# operator notes; no rows recorded\n" "trial,T_osc_s,amplitude_deg,notes\n"
     )
     rc = cli.main(
-        ["--calibration", str(calibration_csv),
-         "--measurements", str(bad_meas),
-         "--out", str(tmp_path / "results.json")]
+        [
+            "--calibration",
+            str(calibration_csv),
+            "--measurements",
+            str(bad_meas),
+            "--out",
+            str(tmp_path / "results.json"),
+        ]
     )
     assert rc == 2
 
@@ -259,15 +290,17 @@ def test_cli_empty_measurements_errors(
 def test_cli_empty_calibration_errors(tmp_path: Path) -> None:
     """No data rows (only header / comments) → exit 2."""
     bad_calib = tmp_path / "empty_calib.csv"
-    bad_calib.write_text(
-        "# comments only\n"
-        "kappa_Nm_per_rad,T_ref_s\n"
-    )
+    bad_calib.write_text("# comments only\n" "kappa_Nm_per_rad,T_ref_s\n")
     meas = _measurements_csv(tmp_path / "measurements.csv", [1.50] * 5)
     rc = cli.main(
-        ["--calibration", str(bad_calib),
-         "--measurements", str(meas),
-         "--out", str(tmp_path / "results.json")]
+        [
+            "--calibration",
+            str(bad_calib),
+            "--measurements",
+            str(meas),
+            "--out",
+            str(tmp_path / "results.json"),
+        ]
     )
     assert rc == 2
 
@@ -283,10 +316,16 @@ def test_cli_subtracts_mount_inertia(
     meas = _measurements_csv(tmp_path / "measurements.csv", [T] * 5)
     out = tmp_path / "results.json"
     rc = cli.main(
-        ["--calibration", str(calibration_csv),
-         "--measurements", str(meas),
-         "--mount-i-wrist", str(mount),
-         "--out", str(out)]
+        [
+            "--calibration",
+            str(calibration_csv),
+            "--measurements",
+            str(meas),
+            "--mount-i-wrist",
+            str(mount),
+            "--out",
+            str(out),
+        ]
     )
     assert rc == 0
     r = json.loads(out.read_text())["result"]

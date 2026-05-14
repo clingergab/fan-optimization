@@ -7,6 +7,7 @@ SU2 cfg numerics, structural FEA loads, BO Pareto axes, etc.
 
 Spec references: see schema.py docstring.
 """
+
 from __future__ import annotations
 
 import math
@@ -14,7 +15,6 @@ import math
 import pytest
 
 from fanopt.geometry import schema as s
-
 
 # ---- radial geometry (§0 row 45 dual rib-band lock) ------------------------
 
@@ -29,7 +29,7 @@ def test_handle_offset_locked() -> None:
 
 def test_wrist_to_tip_is_handle_plus_blade() -> None:
     """L_WRIST_TO_TIP_M = d_handle + L_blade = 0.25 m (H8 lever-arm lock)."""
-    assert s.L_WRIST_TO_TIP_M == pytest.approx(0.250, abs=1e-12)
+    assert pytest.approx(0.250, abs=1e-12) == s.L_WRIST_TO_TIP_M
 
 
 def test_hub_radius_locked() -> None:
@@ -42,7 +42,7 @@ def test_rib_tip_taper_locked() -> None:
 
 def test_rib_radial_extent_is_165_mm() -> None:
     """L_RIB = L_blade − HUB_RADIUS − RIB_TIP_TAPER = 0.165 m."""
-    assert s.L_RIB_M == pytest.approx(0.165, abs=1e-12)
+    assert pytest.approx(0.165, abs=1e-12) == s.L_RIB_M
 
 
 # ---- rib cross-section (H12) ----------------------------------------------
@@ -72,7 +72,7 @@ def test_pivot_boss_geometry() -> None:
 
 def test_panel_pivot_region_radius_includes_1mm_clearance() -> None:
     """7 mm = 6 mm boss radius + 1 mm clearance."""
-    assert s.PANEL_PIVOT_REGION_RADIUS_M == pytest.approx(0.007, abs=1e-12)
+    assert pytest.approx(0.007, abs=1e-12) == s.PANEL_PIVOT_REGION_RADIUS_M
 
 
 def test_pivot_mask_contains_origin_and_boss_edge() -> None:
@@ -118,7 +118,7 @@ def test_detent_radius_range() -> None:
 
 def test_chamfer_clearance_0_1mm() -> None:
     """0.1 mm per-face design clearance (§0 row 33)."""
-    assert s.CHAMFER_CLEARANCE_M == pytest.approx(0.0001, abs=1e-12)
+    assert pytest.approx(0.0001, abs=1e-12) == s.CHAMFER_CLEARANCE_M
 
 
 # ---- panel thickness range ------------------------------------------------
@@ -133,7 +133,7 @@ def test_panel_thickness_range() -> None:
 def test_panel_thickness_min_respects_chamfer_floor() -> None:
     """min ≥ rib_thickness + 2·chamfer_clearance."""
     floor = s.RIB_THICKNESS_M + 2 * s.CHAMFER_CLEARANCE_M
-    assert s.PANEL_THICKNESS_MIN_M >= floor
+    assert floor <= s.PANEL_THICKNESS_MIN_M
 
 
 # ---- blade count + pitch (C8 + MED-10) -------------------------------------
@@ -152,7 +152,7 @@ def test_blade_counts_excludes_14() -> None:
 def test_inter_blade_angle_radians() -> None:
     """13.3° ≈ 0.232 rad."""
     assert s.INTER_BLADE_ANGLE_DEG == 13.3
-    assert s.INTER_BLADE_ANGLE_RAD == pytest.approx(0.232, abs=1e-3)
+    assert pytest.approx(0.232, abs=1e-3) == s.INTER_BLADE_ANGLE_RAD
 
 
 def test_deployed_extent_for_10_blades_is_133deg() -> None:
@@ -170,7 +170,7 @@ def test_mass_cap_c9() -> None:
 
 def test_com_cap() -> None:
     """d_handle + 0.55·L_blade = 0.05 + 0.55·0.20 = 0.16 m."""
-    assert s.MAX_R_COM_WRIST_M == pytest.approx(0.160, abs=1e-12)
+    assert pytest.approx(0.160, abs=1e-12) == s.MAX_R_COM_WRIST_M
 
 
 # ---- kinematics (H8 symbol table) ------------------------------------------
@@ -180,10 +180,10 @@ def test_kinematics_h8_symbol_table() -> None:
     assert s.F_WAVE_HZ == 2.0
     assert s.T_CYCLE_S == 0.5
     assert s.THETA_MAX_RAD == 0.6981
-    assert s.OMEGA_SHM_RAD_PER_S == pytest.approx(2.0 * math.pi * 2.0, abs=1e-9)
-    assert s.OMEGA_BLADE_MAX_RAD_PER_S == pytest.approx(8.77, abs=0.05)
-    assert s.ALPHA_MAX_RAD_PER_S2 == pytest.approx(110.0, abs=1.0)
-    assert s.V_TIP_M_PER_S == pytest.approx(2.20, abs=0.02)
+    assert pytest.approx(2.0 * math.pi * 2.0, abs=1e-9) == s.OMEGA_SHM_RAD_PER_S
+    assert pytest.approx(8.77, abs=0.05) == s.OMEGA_BLADE_MAX_RAD_PER_S
+    assert pytest.approx(110.0, abs=1.0) == s.ALPHA_MAX_RAD_PER_S2
+    assert pytest.approx(2.20, abs=0.02) == s.V_TIP_M_PER_S
 
 
 # ---- C11 sign lock --------------------------------------------------------

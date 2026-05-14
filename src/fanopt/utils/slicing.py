@@ -17,12 +17,13 @@ the M3 calls `rebalance_dead_session` which produces the next assignment
 version with the dead session's remaining hashes redistributed round-
 robin across the survivors.
 """
+
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
 
 __all__ = [
     "SLICE_FILENAME_TEMPLATE",
@@ -115,9 +116,7 @@ def write_assignment(
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": assignment.version,
-        "by_session": {
-            sid: list(hashes) for sid, hashes in assignment.by_session.items()
-        },
+        "by_session": {sid: list(hashes) for sid, hashes in assignment.by_session.items()},
     }
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return path
@@ -131,9 +130,7 @@ def read_assignment(
     missing — sessions usually call `load_pointer_version` first."""
     path = _slice_path(drive_dir, version)
     payload = json.loads(path.read_text(encoding="utf-8"))
-    by_session = {
-        sid: tuple(hashes) for sid, hashes in payload.get("by_session", {}).items()
-    }
+    by_session = {sid: tuple(hashes) for sid, hashes in payload.get("by_session", {}).items()}
     return SliceAssignment(version=int(payload["version"]), by_session=by_session)
 
 
@@ -182,18 +179,14 @@ def rebalance_dead_session(
         )
     survivors = [sid for sid in current.by_session if sid != dead_session_id]
     if not survivors:
-        raise ValueError(
-            f"cannot rebalance {dead_session_id!r}: no surviving sessions"
-        )
+        raise ValueError(f"cannot rebalance {dead_session_id!r}: no surviving sessions")
 
     def _unfinished(sid: str) -> list[str]:
         done = set(completed_hashes_by_session.get(sid, ()))
         return [h for h in current.by_session.get(sid, ()) if h not in done]
 
     # Survivors carry their own unfinished hashes forward.
-    new_by_session: dict[str, list[str]] = {
-        sid: _unfinished(sid) for sid in survivors
-    }
+    new_by_session: dict[str, list[str]] = {sid: _unfinished(sid) for sid in survivors}
     # Dead session's leftovers get round-robin'd onto survivors.
     dead_leftover = _unfinished(dead_session_id)
     for i, h in enumerate(dead_leftover):

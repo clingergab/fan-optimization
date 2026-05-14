@@ -90,7 +90,12 @@ src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
-ignore = ["E501"]  # black owns line length
+ignore = [
+    "E501",   # black owns line length
+    "RUF001", # ambiguous Unicode chars in strings — legitimate × in scientific notation
+    "RUF002", # ambiguous Unicode chars in docstrings — legitimate × in scientific notation
+    "RUF003", # ambiguous Unicode chars in comments — legitimate × in scientific notation
+]
 
 [tool.black]
 line-length = 100
@@ -100,4 +105,5 @@ target-version = ["py310", "py311"]
 python_version = "3.10"
 strict = false
 ignore_missing_imports = true
+disable_error_code = ["import-untyped"]  # silences "Library stubs not installed for X"
 files = ["src/fanopt", "tests"]

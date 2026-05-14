@@ -1,4 +1,5 @@
 """Unit tests for fanopt.geometry.primitives (Layer 3 BO design parameters)."""
+
 from __future__ import annotations
 
 import math
@@ -12,7 +13,6 @@ from fanopt.geometry.primitives import (
     PRIMITIVE_TYPES,
     Layer3Primitive,
 )
-
 
 # 5 cm × 5 cm × 5 mm envelope — comfortable test box.
 ENV = (0.050, 0.050, 0.005)
@@ -147,4 +147,12 @@ def test_polarity_add_subtract_both_pass() -> None:
     for pol in ("add", "subtract"):
         kw = _canonical_kwargs()
         kw["polarity"] = pol
+        Layer3Primitive(**kw)
+
+
+def test_unknown_polarity_fails() -> None:
+    """polarity must be 'add' or 'subtract' — no other strings."""
+    kw = _canonical_kwargs()
+    kw["polarity"] = "neutral"
+    with pytest.raises(ValueError, match="polarity"):
         Layer3Primitive(**kw)

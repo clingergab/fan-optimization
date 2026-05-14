@@ -4,6 +4,7 @@ Validates the design_hash deterministic-rounding property (the spec's
 canonical regression case from §6.2.5), the LedgerRow schema, JSONL
 round-trip, and the dedupe-by-design-hash merger helper.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,7 +27,6 @@ from fanopt.utils.ledger import (
     read_rows,
 )
 
-
 # ---- design_hash ----------------------------------------------------------
 
 
@@ -37,16 +37,12 @@ def test_design_hash_deterministic_round_off_canonical_case() -> None:
 
 def test_design_hash_nested_dict_round_off() -> None:
     """Plan §6.2.5 required regression: nested dicts also round."""
-    assert design_hash({"nested": {"x": 0.1 + 0.2}}) == design_hash(
-        {"nested": {"x": 0.3}}
-    )
+    assert design_hash({"nested": {"x": 0.1 + 0.2}}) == design_hash({"nested": {"x": 0.3}})
 
 
 def test_design_hash_handles_lists_and_tuples_equivalently() -> None:
     """list and tuple serialize the same way under canonical JSON."""
-    assert design_hash({"v": [0.1 + 0.2, 1.0]}) == design_hash(
-        {"v": (0.3, 1.0)}
-    )
+    assert design_hash({"v": [0.1 + 0.2, 1.0]}) == design_hash({"v": (0.3, 1.0)})
 
 
 def test_design_hash_handles_numpy_scalars() -> None:

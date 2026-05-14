@@ -9,17 +9,18 @@ Covers the three pass-gates the spike enforces:
 * Architecture-bandit K_promoted gate (= 4 for the synthetic objective).
 * TuRBO trust-region update gate (shrink-on-fail + grow-on-success).
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
 from fanopt.bo.spike_0_7b import (
-    ArchitectureBanditRecord,
     EPISTEMIC_NOISE_FLOOR_DEFAULT,
     GP_FIT_TIME_GATE_S,
-    GpFitTiming,
     K_PROMOTED_SANITY,
+    ArchitectureBanditRecord,
+    GpFitTiming,
     Spike07bResult,
     TurboTRRecord,
     analyze_07b,
@@ -27,7 +28,6 @@ from fanopt.bo.spike_0_7b import (
     lhs_sample,
     synthetic_objective,
 )
-
 
 # ---- synthetic_objective ----------------------------------------------------
 
@@ -90,9 +90,7 @@ def test_lhs_sample_one_per_stratum() -> None:
         strata = np.clip(strata, 0, n - 1)
         # Exactly one sample per stratum.
         counts = np.bincount(strata, minlength=n)
-        assert np.all(counts == 1), (
-            f"axis {j}: stratum counts = {counts.tolist()}"
-        )
+        assert np.all(counts == 1), f"axis {j}: stratum counts = {counts.tolist()}"
 
 
 def test_lhs_sample_rejects_bad_sizes() -> None:
@@ -154,8 +152,9 @@ def test_k_promoted_4_passes_for_synthetic() -> None:
         ArchitectureBanditRecord(architecture_id=f"a{i}", screened_count=2, promoted=True)
         for i in range(K_PROMOTED_SANITY)
     ] + [
-        ArchitectureBanditRecord(architecture_id=f"a{i+K_PROMOTED_SANITY}",
-                                  screened_count=2, promoted=False)
+        ArchitectureBanditRecord(
+            architecture_id=f"a{i+K_PROMOTED_SANITY}", screened_count=2, promoted=False
+        )
         for i in range(4)
     ]
     res = analyze_07b(
@@ -187,14 +186,11 @@ def test_k_promoted_3_fails() -> None:
 def test_turbo_tr_shrinks_on_failure_grows_on_success() -> None:
     """A TR log with one valid shrink and one valid grow passes the gate."""
     tr_log = (
-        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0,
-                      failure_count=0),
+        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0, failure_count=0),
         # Grow: success_count up, length up.
-        TurboTRRecord(iteration=1, center=(0.5,), length=0.6, success_count=1,
-                      failure_count=0),
+        TurboTRRecord(iteration=1, center=(0.5,), length=0.6, success_count=1, failure_count=0),
         # Shrink: failure_count up, length down.
-        TurboTRRecord(iteration=2, center=(0.5,), length=0.3, success_count=1,
-                      failure_count=1),
+        TurboTRRecord(iteration=2, center=(0.5,), length=0.3, success_count=1, failure_count=1),
     )
     res = analyze_07b(
         [GpFitTiming(iteration=0, wall_time_s=0.1, n_train=8, d=40, passed=True)],
@@ -208,12 +204,9 @@ def test_turbo_tr_shrinks_on_failure_grows_on_success() -> None:
 def test_turbo_tr_no_shrink_fails() -> None:
     """A TR log with only growth fails the gate."""
     tr_log = (
-        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0,
-                      failure_count=0),
-        TurboTRRecord(iteration=1, center=(0.5,), length=0.6, success_count=1,
-                      failure_count=0),
-        TurboTRRecord(iteration=2, center=(0.5,), length=0.8, success_count=2,
-                      failure_count=0),
+        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0, failure_count=0),
+        TurboTRRecord(iteration=1, center=(0.5,), length=0.6, success_count=1, failure_count=0),
+        TurboTRRecord(iteration=2, center=(0.5,), length=0.8, success_count=2, failure_count=0),
     )
     res = analyze_07b(
         [GpFitTiming(iteration=0, wall_time_s=0.1, n_train=8, d=40, passed=True)],
@@ -227,8 +220,7 @@ def test_turbo_tr_no_shrink_fails() -> None:
 def test_turbo_tr_too_short_fails() -> None:
     """A 1-record TR log cannot show a shrink + grow → fails."""
     tr_log = (
-        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0,
-                      failure_count=0),
+        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0, failure_count=0),
     )
     res = analyze_07b(
         [GpFitTiming(iteration=0, wall_time_s=0.1, n_train=8, d=40, passed=True)],
@@ -273,10 +265,8 @@ def test_spike_07b_aggregates_all_three_gates() -> None:
     assert analyze_07b(timings, tr_log, bad_bandit).passed is False
 
     bad_tr = (
-        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0,
-                      failure_count=0),
-        TurboTRRecord(iteration=1, center=(0.5,), length=0.4, success_count=0,
-                      failure_count=0),
+        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0, failure_count=0),
+        TurboTRRecord(iteration=1, center=(0.5,), length=0.4, success_count=0, failure_count=0),
     )
     assert analyze_07b(timings, bad_tr, bandit).passed is False
 
@@ -286,19 +276,17 @@ def test_spike_07b_aggregates_all_three_gates() -> None:
 
 def _make_passing_tr_log() -> tuple[TurboTRRecord, ...]:
     return (
-        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0,
-                      failure_count=0),
-        TurboTRRecord(iteration=1, center=(0.5,), length=0.6, success_count=1,
-                      failure_count=0),
-        TurboTRRecord(iteration=2, center=(0.5,), length=0.3, success_count=1,
-                      failure_count=1),
+        TurboTRRecord(iteration=0, center=(0.5,), length=0.4, success_count=0, failure_count=0),
+        TurboTRRecord(iteration=1, center=(0.5,), length=0.6, success_count=1, failure_count=0),
+        TurboTRRecord(iteration=2, center=(0.5,), length=0.3, success_count=1, failure_count=1),
     )
 
 
 def _make_passing_bandit() -> tuple[ArchitectureBanditRecord, ...]:
     return tuple(
-        ArchitectureBanditRecord(architecture_id=f"a{i}", screened_count=2,
-                                  promoted=(i < K_PROMOTED_SANITY))
+        ArchitectureBanditRecord(
+            architecture_id=f"a{i}", screened_count=2, promoted=(i < K_PROMOTED_SANITY)
+        )
         for i in range(K_PROMOTED_SANITY + 4)
     )
 

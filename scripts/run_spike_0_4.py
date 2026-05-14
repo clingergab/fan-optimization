@@ -107,8 +107,7 @@ def _require_columns(path: Path, row: dict, required: tuple[str, ...], row_idx: 
     missing = [c for c in required if c not in row]
     if missing:
         raise ValueError(
-            f"{path} row {row_idx}: missing column(s) {missing} "
-            f"(found: {list(row.keys())})"
+            f"{path} row {row_idx}: missing column(s) {missing} " f"(found: {list(row.keys())})"
         )
 
 
@@ -188,9 +187,7 @@ def _read_engagement_force(
                 f"{path} row {i}: regime must be 'low' or 'high', got {row['regime']!r}"
             )
     if not low:
-        raise ValueError(
-            f"{path}: no rows with regime='low' (canonical 0.5-2 N band required)"
-        )
+        raise ValueError(f"{path}: no rows with regime='low' (canonical 0.5-2 N band required)")
     return low, high, rows
 
 
@@ -333,8 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         if using_analytic:
             if args.i_wrist_analytic <= 0:
                 print(
-                    f"[spike_0_4] --i-wrist-analytic must be > 0, got "
-                    f"{args.i_wrist_analytic}",
+                    f"[spike_0_4] --i-wrist-analytic must be > 0, got " f"{args.i_wrist_analytic}",
                     file=sys.stderr,
                 )
                 return 2
@@ -360,9 +356,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Pick the safety factor based on whether I_wrist is measured or analytic.
     safety_factor = (
-        FORCE_BALANCE_SAFETY_FACTOR_ANALYTIC
-        if using_analytic
-        else FORCE_BALANCE_SAFETY_FACTOR
+        FORCE_BALANCE_SAFETY_FACTOR_ANALYTIC if using_analytic else FORCE_BALANCE_SAFETY_FACTOR
     )
 
     try:
@@ -374,9 +368,7 @@ def main(argv: list[str] | None = None) -> int:
         clearance = analyze_clearance(clearances, labels=labels)
         engagement_force = analyze_engagement_force(low_forces, high_amplitude=False)
         high_amp_ef = (
-            analyze_engagement_force(high_forces, high_amplitude=True)
-            if high_forces
-            else None
+            analyze_engagement_force(high_forces, high_amplitude=True) if high_forces else None
         )
         cycle_life = analyze_cycle_life(
             inspections=inspections,
@@ -459,10 +451,7 @@ def _print_table(payload: dict, out_path: Path) -> None:
     cy = r["cycle_life"]
     haf = r.get("high_amp_engagement_force")
 
-    print(
-        f"\n[spike_0_4] I_wrist                = "
-        f"{fb['I_wrist_kgm2']:.6e} kg·m²"
-    )
+    print(f"\n[spike_0_4] I_wrist                = " f"{fb['I_wrist_kgm2']:.6e} kg·m²")
     print(
         f"[spike_0_4] τ_inertial_peak        = "
         f"{fb['tau_inertial_peak_Nm']:.4f} N·m  "
@@ -479,10 +468,7 @@ def _print_table(payload: dict, out_path: Path) -> None:
         f"(required ≥ {fb['required_friction_N']:.4f} N)  "
         f"{_mark(fb['passed'])}"
     )
-    print(
-        f"[spike_0_4] V1 fallback armed      = "
-        f"{fb['v1_lock_fallback_armed']}"
-    )
+    print(f"[spike_0_4] V1 fallback armed      = " f"{fb['v1_lock_fallback_armed']}")
     print(
         f"[spike_0_4] clearance              = "
         f"{cl['min_mm']:.3f}-{cl['max_mm']:.3f} mm "

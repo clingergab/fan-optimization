@@ -3,6 +3,7 @@
 Validates SU2-history column detection, per-cycle aggregation, hysteresis
 area calculation, and the end-to-end CLI on synthetic SU2 history files.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,6 @@ import pytest
 
 import parse_su2_history_to_cycles as cli
 import run_spike_0_6c_2 as sub2
-
 
 # ---- column detection ----------------------------------------------------
 
@@ -149,17 +149,13 @@ def _sinusoidal_history(n_outer: int, n_cycles: int) -> list[dict[str, float]]:
 
 def test_cycles_from_rows_produces_n_cycles() -> None:
     rows = _sinusoidal_history(n_outer=1000, n_cycles=5)
-    cycles = cli.cycles_from_rows(
-        rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0
-    )
+    cycles = cli.cycles_from_rows(rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0)
     assert len(cycles) == 5
 
 
 def test_cycles_from_rows_cl_max_and_min() -> None:
     rows = _sinusoidal_history(n_outer=1000, n_cycles=5)
-    cycles = cli.cycles_from_rows(
-        rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0
-    )
+    cycles = cli.cycles_from_rows(rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0)
     # Each cycle covers one full sine period → max ≈ 1, min ≈ -1.
     for c in cycles:
         assert c["c_l_max"] == pytest.approx(1.0, abs=0.02)
@@ -168,9 +164,7 @@ def test_cycles_from_rows_cl_max_and_min() -> None:
 
 def test_cycles_from_rows_cd_mean_constant() -> None:
     rows = _sinusoidal_history(n_outer=1000, n_cycles=5)
-    cycles = cli.cycles_from_rows(
-        rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0
-    )
+    cycles = cli.cycles_from_rows(rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0)
     for c in cycles:
         assert c["c_d_mean"] == pytest.approx(0.05, abs=1e-9)
 
@@ -188,9 +182,7 @@ def test_cycles_from_rows_explicit_alpha_column_used() -> None:
                 "alpha": 0.1745 * math.sin(2 * math.pi * i / 200),
             }
         )
-    cycles = cli.cycles_from_rows(
-        rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0
-    )
+    cycles = cli.cycles_from_rows(rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0)
     assert len(cycles) == 5
     # Hysteresis area should be finite (we have real alpha + real CL).
     assert all(c["c_l_hysteresis_area"] >= 0.0 for c in cycles)
@@ -199,9 +191,7 @@ def test_cycles_from_rows_explicit_alpha_column_used() -> None:
 def test_cycles_from_rows_no_alpha_no_time_uses_index() -> None:
     """No alpha and no time → fall back to row-index x-axis."""
     rows = [{"time_iter": float(i), "cl": math.sin(0.1 * i), "cd": 0.05} for i in range(1000)]
-    cycles = cli.cycles_from_rows(
-        rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0
-    )
+    cycles = cli.cycles_from_rows(rows, n_cycles=5, theta_max_rad=0.1745, omega_shm_rad_per_s=2.0)
     # Doesn't raise; hysteresis area is computed against the index proxy.
     assert len(cycles) == 5
 
@@ -211,10 +201,7 @@ def test_cycles_from_rows_no_alpha_no_time_uses_index() -> None:
 
 def _write_history(path: Path, header: list[str], rows: list[list[float]]) -> Path:
     path.write_text(
-        ",".join(header)
-        + "\n"
-        + "\n".join(",".join(f"{v}" for v in r) for r in rows)
-        + "\n"
+        ",".join(header) + "\n" + "\n".join(",".join(f"{v}" for v in r) for r in rows) + "\n"
     )
     return path
 
@@ -287,10 +274,14 @@ def test_cli_end_to_end(tmp_path: Path) -> None:
     out = tmp_path / "measured.csv"
     rc = cli.main(
         [
-            "--history", str(history),
-            "--n-cycles", "5",
-            "--omega-shm-rad-per-s", "31.4",  # arbitrary positive
-            "--out", str(out),
+            "--history",
+            str(history),
+            "--n-cycles",
+            "5",
+            "--omega-shm-rad-per-s",
+            "31.4",  # arbitrary positive
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -304,10 +295,14 @@ def test_cli_end_to_end(tmp_path: Path) -> None:
 def test_cli_missing_history_exits_2(tmp_path: Path) -> None:
     rc = cli.main(
         [
-            "--history", str(tmp_path / "nope.csv"),
-            "--n-cycles", "5",
-            "--omega-shm-rad-per-s", "31.4",
-            "--out", str(tmp_path / "measured.csv"),
+            "--history",
+            str(tmp_path / "nope.csv"),
+            "--n-cycles",
+            "5",
+            "--omega-shm-rad-per-s",
+            "31.4",
+            "--out",
+            str(tmp_path / "measured.csv"),
         ]
     )
     assert rc == 2
@@ -318,10 +313,14 @@ def test_cli_malformed_history_exits_2(tmp_path: Path) -> None:
     p.write_text("Time_Iter,CL,CD\n0,abc,0.05\n")
     rc = cli.main(
         [
-            "--history", str(p),
-            "--n-cycles", "5",
-            "--omega-shm-rad-per-s", "31.4",
-            "--out", str(tmp_path / "measured.csv"),
+            "--history",
+            str(p),
+            "--n-cycles",
+            "5",
+            "--omega-shm-rad-per-s",
+            "31.4",
+            "--out",
+            str(tmp_path / "measured.csv"),
         ]
     )
     assert rc == 2
@@ -338,10 +337,14 @@ def test_omega_sign_does_not_matter(tmp_path: Path) -> None:
     )
     rc = cli.main(
         [
-            "--history", str(history),
-            "--n-cycles", "5",
-            "--omega-shm-rad-per-s", "-31.4",  # negative
-            "--out", str(tmp_path / "measured.csv"),
+            "--history",
+            str(history),
+            "--n-cycles",
+            "5",
+            "--omega-shm-rad-per-s",
+            "-31.4",  # negative
+            "--out",
+            str(tmp_path / "measured.csv"),
         ]
     )
     assert rc == 0
@@ -397,10 +400,10 @@ def test_pipeline_parse_then_analyzer_yields_pass(tmp_path: Path) -> None:
             i = cyc * n_per_cycle + step
             phase = 2.0 * math.pi * step / n_per_cycle
             if cyc == 0:
-                cl_val = 3.0 * math.sin(phase)       # transient — out of range
+                cl_val = 3.0 * math.sin(phase)  # transient — out of range
                 cd_val = 0.20
             else:
-                cl_val = 0.700 * math.sin(phase)     # steady-state
+                cl_val = 0.700 * math.sin(phase)  # steady-state
                 cd_val = 0.060
             rows.append([i, i * 1e-3, cl_val, cd_val])
     history = _write_history(
@@ -413,10 +416,14 @@ def test_pipeline_parse_then_analyzer_yields_pass(tmp_path: Path) -> None:
     measured = tmp_path / "measured.csv"
     rc = cli.main(
         [
-            "--history", str(history),
-            "--n-cycles", "5",
-            "--omega-shm-rad-per-s", str(2.0 * math.pi / (n_per_cycle * 1e-3)),
-            "--out", str(measured),
+            "--history",
+            str(history),
+            "--n-cycles",
+            "5",
+            "--omega-shm-rad-per-s",
+            str(2.0 * math.pi / (n_per_cycle * 1e-3)),
+            "--out",
+            str(measured),
         ]
     )
     assert rc == 0, "parser stage failed"
@@ -426,11 +433,16 @@ def test_pipeline_parse_then_analyzer_yields_pass(tmp_path: Path) -> None:
     result_json = tmp_path / "sub_2_result.json"
     rc2 = sub2.main(
         [
-            "--measured", str(measured),
-            "--k-reduced", "0.55",
-            "--reynolds", "40000",
-            "--result-json", str(result_json),
-            "--marker-dir", str(tmp_path),
+            "--measured",
+            str(measured),
+            "--k-reduced",
+            "0.55",
+            "--reynolds",
+            "40000",
+            "--result-json",
+            str(result_json),
+            "--marker-dir",
+            str(tmp_path),
         ]
     )
     assert rc2 == 0, "analyzer stage failed"

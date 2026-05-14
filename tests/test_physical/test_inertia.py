@@ -6,6 +6,7 @@ Validates the formula `I = κ · (T / 2π)²` against analytic reference geometr
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.2; protocol in
 docs/spike_0_2_protocol.md.
 """
+
 from __future__ import annotations
 
 import math
@@ -21,7 +22,6 @@ from fanopt.physical.inertia import (
     kappa_from_reference,
     rod_transverse_inertia,
 )
-
 
 # ----- analytic round-trip ---------------------------------------------------
 
@@ -161,6 +161,7 @@ def test_cross_check_fails_outside_10pct() -> None:
         T_osc_trials_s=[T_measured] * 5,
         generator_I_wrist_kgm2=I_measured * 1.20,  # 20% off
     )
+    assert res.cross_check_pct is not None  # non-None when generator value supplied
     assert res.cross_check_pct > CROSS_CHECK_GATE_PCT
     assert res.cross_check_passed is False
     assert res.passed is False

@@ -20,7 +20,6 @@ import sys
 import time
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PARAMS_PATH = REPO_ROOT / "configs" / "fusion" / "params.json"
 DEFAULT_SCRIPT_PATH = REPO_ROOT / "configs" / "fusion" / "fan_script.py"
@@ -47,12 +46,7 @@ def _discover_fusion_app() -> Path | None:
     for name in FUSION_BUNDLE_NAMES:
         candidates.append(Path("/Applications") / name)
     webdeploy = (
-        Path.home()
-        / "Library"
-        / "Application Support"
-        / "Autodesk"
-        / "webdeploy"
-        / "production"
+        Path.home() / "Library" / "Application Support" / "Autodesk" / "webdeploy" / "production"
     )
     if webdeploy.exists():
         for name in FUSION_BUNDLE_NAMES:
@@ -206,8 +200,7 @@ def report(kind: str, payload: dict, out_dir: Path) -> int:
         step_path = payload.get("step_path")
         missing = payload.get("missing_parameters", [])
         log(
-            f"PASS — wrote {len(stl_paths)} STL "
-            f"+ {'1' if step_path else '0'} STEP to {out_dir}"
+            f"PASS — wrote {len(stl_paths)} STL " f"+ {'1' if step_path else '0'} STEP to {out_dir}"
         )
         if missing:
             log(f"  warning: {len(missing)} User Parameter(s) not found in active document:")
@@ -251,7 +244,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if result is None:
         log(f"timeout after {args.timeout} s without a marker.")
-        log("  hint: open Fusion → Scripts and Add-Ins → run fan_script.py manually to see the error dialog.")
+        log(
+            "  hint: open Fusion → Scripts and Add-Ins → run fan_script.py manually to see the error dialog."
+        )
         return 3
 
     kind, payload = result

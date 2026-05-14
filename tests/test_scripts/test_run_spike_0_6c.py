@@ -12,6 +12,7 @@ Exercises:
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.6c; protocol in
 docs/spike_0_6c_protocol.md.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,6 @@ import pytest
 import run_spike_0_6c as agg
 import run_spike_0_6c_1 as sub1
 import run_spike_0_6c_2 as sub2
-
 
 # ---- fixtures -------------------------------------------------------------
 
@@ -218,10 +218,7 @@ def test_sub_2_symmetry_failure_fails(tmp_path: Path) -> None:
 
 def test_sub_2_missing_column_returns_2(tmp_path: Path) -> None:
     bad = tmp_path / "bad.csv"
-    bad.write_text(
-        "cycle_index,c_l_max,c_l_min,c_d_mean\n"
-        "1,1.2,-1.2,0.085\n"
-    )
+    bad.write_text("cycle_index,c_l_max,c_l_min,c_d_mean\n" "1,1.2,-1.2,0.085\n")
     rc = sub2.main(
         [
             "--measured",
@@ -263,11 +260,16 @@ def test_sub_2_diagnostic_hysteresis_logged_in_payload(tmp_path: Path) -> None:
     result_json = tmp_path / "sub_2_result.json"
     rc = sub2.main(
         [
-            "--measured", str(measured),
-            "--k-reduced", "0.55",
-            "--reynolds", "40000",
-            "--result-json", str(result_json),
-            "--marker-dir", str(tmp_path),
+            "--measured",
+            str(measured),
+            "--k-reduced",
+            "0.55",
+            "--reynolds",
+            "40000",
+            "--result-json",
+            str(result_json),
+            "--marker-dir",
+            str(tmp_path),
         ]
     )
     assert rc == 0
@@ -332,12 +334,27 @@ def _write_sub_2_json(path: Path, *, passed: bool) -> Path:
             "reynolds": 40000.0,
             "cycles": cycles,
             "convergence": [
-                {"metric_name": "c_l_max", "values": [0.7, 0.7, 0.7, 0.7],
-                 "mean": 0.7, "relative_range_pct": 0.0, "passed": True},
-                {"metric_name": "c_l_min", "values": [-0.7, -0.7, -0.7, -0.7],
-                 "mean": -0.7, "relative_range_pct": 0.0, "passed": True},
-                {"metric_name": "c_d_mean", "values": [0.06, 0.06, 0.06, 0.06],
-                 "mean": 0.06, "relative_range_pct": 0.0, "passed": True},
+                {
+                    "metric_name": "c_l_max",
+                    "values": [0.7, 0.7, 0.7, 0.7],
+                    "mean": 0.7,
+                    "relative_range_pct": 0.0,
+                    "passed": True,
+                },
+                {
+                    "metric_name": "c_l_min",
+                    "values": [-0.7, -0.7, -0.7, -0.7],
+                    "mean": -0.7,
+                    "relative_range_pct": 0.0,
+                    "passed": True,
+                },
+                {
+                    "metric_name": "c_d_mean",
+                    "values": [0.06, 0.06, 0.06, 0.06],
+                    "mean": 0.06,
+                    "relative_range_pct": 0.0,
+                    "passed": True,
+                },
             ],
             "symmetry": {
                 "c_l_max_mean": 0.7,
@@ -442,11 +459,16 @@ def test_sub_2_fails_when_k_reduced_out_of_band(tmp_path: Path) -> None:
     measured = _measured_csv(tmp_path / "measured.csv", mode="passing")
     rc = sub2.main(
         [
-            "--measured", str(measured),
-            "--k-reduced", "2.0",  # WAY outside [0.5, 0.6]
-            "--reynolds", "40000",
-            "--result-json", str(tmp_path / "sub_2_result.json"),
-            "--marker-dir", str(tmp_path),
+            "--measured",
+            str(measured),
+            "--k-reduced",
+            "2.0",  # WAY outside [0.5, 0.6]
+            "--reynolds",
+            "40000",
+            "--result-json",
+            str(tmp_path / "sub_2_result.json"),
+            "--marker-dir",
+            str(tmp_path),
         ]
     )
     assert rc == 2
@@ -457,11 +479,16 @@ def test_sub_2_fails_when_reynolds_out_of_band(tmp_path: Path) -> None:
     measured = _measured_csv(tmp_path / "measured.csv", mode="passing")
     rc = sub2.main(
         [
-            "--measured", str(measured),
-            "--k-reduced", "0.55",
-            "--reynolds", "1000000",  # outside [30000, 50000]
-            "--result-json", str(tmp_path / "sub_2_result.json"),
-            "--marker-dir", str(tmp_path),
+            "--measured",
+            str(measured),
+            "--k-reduced",
+            "0.55",
+            "--reynolds",
+            "1000000",  # outside [30000, 50000]
+            "--result-json",
+            str(tmp_path / "sub_2_result.json"),
+            "--marker-dir",
+            str(tmp_path),
         ]
     )
     assert rc == 2
@@ -472,11 +499,16 @@ def test_sub_2_allow_out_of_band_permits_override(tmp_path: Path) -> None:
     measured = _measured_csv(tmp_path / "measured.csv", mode="passing")
     rc = sub2.main(
         [
-            "--measured", str(measured),
-            "--k-reduced", "2.0",
-            "--reynolds", "40000",
-            "--result-json", str(tmp_path / "sub_2_result.json"),
-            "--marker-dir", str(tmp_path),
+            "--measured",
+            str(measured),
+            "--k-reduced",
+            "2.0",
+            "--reynolds",
+            "40000",
+            "--result-json",
+            str(tmp_path / "sub_2_result.json"),
+            "--marker-dir",
+            str(tmp_path),
             "--allow-out-of-band",
         ]
     )

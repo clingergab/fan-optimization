@@ -1,4 +1,5 @@
 """Unit tests for fanopt.geometry.fields (Layer 2 BO design parameters)."""
+
 from __future__ import annotations
 
 import math
@@ -20,7 +21,6 @@ from fanopt.geometry.fields import (
     TextureField,
     TpmsField,
 )
-
 
 # ---- per-field validation -------------------------------------------------
 
@@ -58,9 +58,7 @@ def test_louver_width_below_min_fails() -> None:
 
 def test_louver_spacing_profile_unknown_fails() -> None:
     with pytest.raises(ValueError, match="LouverField.spacing_profile"):
-        LouverField(
-            active=True, count=6, width_m=0.001, spacing_profile="diagonally-rotated"
-        )
+        LouverField(active=True, count=6, width_m=0.001, spacing_profile="diagonally-rotated")
 
 
 def test_louver_all_locked_spacing_profiles_pass() -> None:
@@ -86,6 +84,18 @@ def test_edge_feature_type_unknown_fails() -> None:
 def test_edge_feature_all_locked_types_pass() -> None:
     for ft in EDGE_FEATURE_TYPES:
         EdgeFeatureField(active=True, feature_type=ft, count=5, depth_m=0.001)
+
+
+def test_edge_feature_count_above_24_fails() -> None:
+    """EDGE_FEATURE_COUNT_RANGE upper bound is 24."""
+    with pytest.raises(ValueError, match="EdgeFeatureField.count"):
+        EdgeFeatureField(active=True, feature_type="serration", count=25, depth_m=0.001)
+
+
+def test_edge_feature_count_below_3_fails() -> None:
+    """EDGE_FEATURE_COUNT_RANGE lower bound is 3."""
+    with pytest.raises(ValueError, match="EdgeFeatureField.count"):
+        EdgeFeatureField(active=True, feature_type="serration", count=2, depth_m=0.001)
 
 
 def test_noise_threshold_below_40pct_fails() -> None:

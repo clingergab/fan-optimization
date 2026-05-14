@@ -10,6 +10,7 @@ the panel at y = 0, NOT through the rib. The rib radial extent under C7 +
 Architectural A is [HUB_RADIUS, L_blade − RIB_TIP_TAPER] = [0.020, 0.185] m —
 the rib doesn't even reach the pivot's blade-frame x = 0.008 m position.
 """
+
 from __future__ import annotations
 
 import re

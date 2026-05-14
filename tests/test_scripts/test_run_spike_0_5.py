@@ -8,6 +8,7 @@ Exercises:
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.5; protocol in
 docs/spike_0_5_protocol.md.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,18 +16,13 @@ from pathlib import Path
 
 import run_spike_0_5 as cli
 
-
 # ─────────────────────────────────────────────────────────────────────
 # Canonical-input fixture
 # ─────────────────────────────────────────────────────────────────────
 
 
 _DIM_COLS = [f"d{i}_mm" for i in range(1, 11)]
-_HEADER = (
-    "blade_id,mass_g,"
-    + ",".join(_DIM_COLS)
-    + ",bend_deflection_mm,j_fan_proxy,notes"
-)
+_HEADER = "blade_id,mass_g," + ",".join(_DIM_COLS) + ",bend_deflection_mm,j_fan_proxy,notes"
 
 
 def _row(
@@ -168,9 +164,7 @@ def test_cli_fails_on_mass_cv_over_5pct(tmp_path: Path) -> None:
 def test_cli_missing_column_exits_2(tmp_path: Path) -> None:
     """Missing 'j_fan_proxy' column → exit 2."""
     bad_header = (
-        "blade_id,mass_g,"
-        + ",".join(_DIM_COLS)
-        + ",bend_deflection_mm,notes"  # NO j_fan_proxy
+        "blade_id,mass_g," + ",".join(_DIM_COLS) + ",bend_deflection_mm,notes"  # NO j_fan_proxy
     )
     rows = [
         bad_header,
@@ -190,16 +184,10 @@ def test_cli_missing_column_exits_2(tmp_path: Path) -> None:
 def test_cli_too_few_dimension_columns_exits_2(tmp_path: Path) -> None:
     """Only 9 dimension columns → exit 2 (spec floor is 10)."""
     nine_dims = [f"d{i}_mm" for i in range(1, 10)]
-    header = (
-        "blade_id,mass_g,"
-        + ",".join(nine_dims)
-        + ",bend_deflection_mm,j_fan_proxy,notes"
-    )
+    header = "blade_id,mass_g," + ",".join(nine_dims) + ",bend_deflection_mm,j_fan_proxy,notes"
     rows = [header]
     for i, m in enumerate([5.000, 5.010, 4.990], start=1):
-        rows.append(
-            f"{i},{m}," + ",".join(["25.000"] * 9) + ",1.200,0.3500,"
-        )
+        rows.append(f"{i},{m}," + ",".join(["25.000"] * 9) + ",1.200,0.3500,")
     meas = tmp_path / "measurements.csv"
     meas.write_text("\n".join(rows) + "\n")
     rc = cli.main(["--measurements", str(meas), "--out", str(tmp_path / "results.json")])
@@ -220,8 +208,10 @@ def test_cli_too_few_blades_exits_2(tmp_path: Path) -> None:
 def test_cli_missing_file_exits_2(tmp_path: Path) -> None:
     rc = cli.main(
         [
-            "--measurements", str(tmp_path / "does_not_exist.csv"),
-            "--out", str(tmp_path / "results.json"),
+            "--measurements",
+            str(tmp_path / "does_not_exist.csv"),
+            "--out",
+            str(tmp_path / "results.json"),
         ]
     )
     assert rc == 2

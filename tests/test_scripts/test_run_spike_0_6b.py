@@ -6,6 +6,7 @@ Validates the M3-FEA-viability gate behavior:
 - Real (non-dry-run) solver path raises NotImplementedError until the
   real dolfinx-based cantilever code lands.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -53,9 +54,11 @@ def test_real_solver_raises_not_implemented(out_csv: Path) -> None:
     (which would silently return the analytic value and trivially pass
     the 5% gate without exercising any FEA).
     """
-    with patch.object(cli, "_fenicsx_available", return_value=True):
-        with pytest.raises(NotImplementedError, match="real solver"):
-            cli.main(["--out", str(out_csv)])
+    with (
+        patch.object(cli, "_fenicsx_available", return_value=True),
+        pytest.raises(NotImplementedError, match="real solver"),
+    ):
+        cli.main(["--out", str(out_csv)])
 
 
 # ---- analytic-only helpers ------------------------------------------------
@@ -67,7 +70,7 @@ def test_analytic_tip_deflection_positive_for_positive_load() -> None:
         P=5.0,
         L=0.200,
         E=1.30e9,
-        I=cli._i_rect_m4(cli.B_M, cli.H_M),
+        I_m4=cli._i_rect_m4(cli.B_M, cli.H_M),
     )
     assert delta > 0
 

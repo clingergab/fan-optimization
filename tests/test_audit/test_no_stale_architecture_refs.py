@@ -29,6 +29,7 @@ Runs as part of:
     the plan-prose pass is performed manually against the same catalog
   - The `phase4-launch` Git tag pre-flight check
 """
+
 from __future__ import annotations
 
 import re
@@ -102,9 +103,7 @@ def _scan_file(path: Path, catalog: list[dict]) -> list[dict]:
         try:
             rgx = re.compile(entry["pattern"], re.IGNORECASE | re.MULTILINE)
         except re.error as e:
-            pytest.fail(
-                f"retired_phrases.yaml: invalid regex {entry['pattern']!r}: {e}"
-            )
+            pytest.fail(f"retired_phrases.yaml: invalid regex {entry['pattern']!r}: {e}")
         allow_sections = entry.get("allow_list_sections", []) or []
         allow_disclaimers = entry.get("allow_list_disclaimers", []) or []
 

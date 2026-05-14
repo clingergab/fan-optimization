@@ -21,6 +21,7 @@ can be compared bit-for-bit against the SIMP TO output, replace the bbox
 helper here with the bit-for-bit voxel comparison and remove the
 ``BBOX_SHIM`` marker.
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,6 +34,7 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+import run_spike_0_7a as runner  # noqa: E402
 from fanopt.geometry.spike_0_7a import (  # noqa: E402
     ADVERSARIAL_PARAM_SETS,
     L_BLADE_M,
@@ -40,8 +42,6 @@ from fanopt.geometry.spike_0_7a import (  # noqa: E402
     RIB_TIP_TAPER_M,
     evaluate_param_set,
 )
-
-import run_spike_0_7a as runner  # noqa: E402
 
 BBOX_SHIM: bool = True  # flip to False when the bit-for-bit comparator lands
 

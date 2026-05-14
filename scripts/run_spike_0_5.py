@@ -49,7 +49,6 @@ from fanopt.physical.fab_noise import (
     analyze_fab_noise,
 )
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = REPO_ROOT / "data" / "spike_0_5"
 DEFAULT_MEASUREMENTS = DEFAULT_DATA_DIR / "measurements.csv"
@@ -81,18 +80,14 @@ def _parse_float(path: Path, row_idx: int, col: str, raw: str) -> float:
     try:
         return float(raw)
     except (TypeError, ValueError) as e:
-        raise ValueError(
-            f"{path} row {row_idx}: {col} is not a float: {raw!r}"
-        ) from e
+        raise ValueError(f"{path} row {row_idx}: {col} is not a float: {raw!r}") from e
 
 
 def _parse_int(path: Path, row_idx: int, col: str, raw: str) -> int:
     try:
         return int(raw)
     except (TypeError, ValueError) as e:
-        raise ValueError(
-            f"{path} row {row_idx}: {col} is not an int: {raw!r}"
-        ) from e
+        raise ValueError(f"{path} row {row_idx}: {col} is not an int: {raw!r}") from e
 
 
 def _dimension_columns(fieldnames: list[str]) -> list[str]:
@@ -126,10 +121,7 @@ def _read_measurements(path: Path) -> tuple[list[BladeMeasurements], list[dict],
     required = ("blade_id", "mass_g", "bend_deflection_mm", "j_fan_proxy")
     for col in required:
         if col not in fieldnames:
-            raise ValueError(
-                f"{path}: missing required column {col!r} "
-                f"(found: {fieldnames})"
-            )
+            raise ValueError(f"{path}: missing required column {col!r} " f"(found: {fieldnames})")
 
     blades: list[BladeMeasurements] = []
     for i, row in enumerate(rows, start=1):
@@ -138,8 +130,7 @@ def _read_measurements(path: Path) -> tuple[list[BladeMeasurements], list[dict],
         missing = [c for c in required if c not in row]
         if missing:
             raise ValueError(
-                f"{path} row {i}: missing column(s) {missing} "
-                f"(found: {list(row.keys())})"
+                f"{path} row {i}: missing column(s) {missing} " f"(found: {list(row.keys())})"
             )
         for c in dim_cols:
             if c not in row:
@@ -150,13 +141,9 @@ def _read_measurements(path: Path) -> tuple[list[BladeMeasurements], list[dict],
 
         blade_id = _parse_int(path, i, "blade_id", row["blade_id"])
         mass_g = _parse_float(path, i, "mass_g", row["mass_g"])
-        bend_mm = _parse_float(
-            path, i, "bend_deflection_mm", row["bend_deflection_mm"]
-        )
+        bend_mm = _parse_float(path, i, "bend_deflection_mm", row["bend_deflection_mm"])
         j_fan = _parse_float(path, i, "j_fan_proxy", row["j_fan_proxy"])
-        dims = tuple(
-            _parse_float(path, i, c, row[c]) for c in dim_cols
-        )
+        dims = tuple(_parse_float(path, i, c, row[c]) for c in dim_cols)
         blades.append(
             BladeMeasurements(
                 blade_id=blade_id,
@@ -169,8 +156,7 @@ def _read_measurements(path: Path) -> tuple[list[BladeMeasurements], list[dict],
 
     if len(blades) < N_BLADES_REQUIRED:
         raise ValueError(
-            f"{path}: need ≥ {N_BLADES_REQUIRED} blade rows per spec, "
-            f"got {len(blades)}"
+            f"{path}: need ≥ {N_BLADES_REQUIRED} blade rows per spec, " f"got {len(blades)}"
         )
 
     return blades, rows, dim_cols
@@ -253,13 +239,8 @@ def _print_table(payload: dict, out_path: Path) -> None:
     r = payload["result"]
     n = payload["inputs"]["n_blades"]
     print(f"\n[spike_0_5] n_blades       = {n} (required ≥ {N_BLADES_REQUIRED})")
-    print(
-        f"[spike_0_5] CV gate        = < {CV_GATE_PCT}% (per metric)"
-    )
-    print(
-        f"[spike_0_5] {'metric':<22} {'mean':>12} {'std':>12} "
-        f"{'cv_pct':>8}   verdict"
-    )
+    print(f"[spike_0_5] CV gate        = < {CV_GATE_PCT}% (per metric)")
+    print(f"[spike_0_5] {'metric':<22} {'mean':>12} {'std':>12} " f"{'cv_pct':>8}   verdict")
     for cv in (r["mass_cv"], r["dimension_cv"], r["bend_cv"], r["j_fan_cv"]):
         print(
             f"[spike_0_5] {cv['metric_name']:<22} "

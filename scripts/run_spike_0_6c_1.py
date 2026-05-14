@@ -185,13 +185,9 @@ def main(argv: list[str] | None = None) -> int:
     if _su2_available():
         probe_workdir = args.probe_workdir or (DEFAULT_OUTPUT_DIR / "probe")
         su2_log = _invoke_su2_one_step(cfg_text, probe_workdir)
-        print(
-            f"[spike_0_6c_1] SU2_CFD found on PATH — ran probe in {probe_workdir}"
-        )
+        print(f"[spike_0_6c_1] SU2_CFD found on PATH — ran probe in {probe_workdir}")
     else:
-        print(
-            "[spike_0_6c_1] SU2 not installed locally — parsing cfg-only sanity check"
-        )
+        print("[spike_0_6c_1] SU2 not installed locally — parsing cfg-only sanity check")
         su2_log = None
 
     result = check_tier1_cfg_sanity(
@@ -211,9 +207,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"[spike_0_6c_1] freestream_option    {result.freestream_option!r}")
     print(f"[spike_0_6c_1] ref_dimensionaliz.   {result.ref_dimensionalization!r}")
-    print(
-        f"[spike_0_6c_1] outer_time_steps     {result.outer_time_steps_completed}"
-    )
+    print(f"[spike_0_6c_1] outer_time_steps     {result.outer_time_steps_completed}")
     if result.error:
         print(f"[spike_0_6c_1] error                {result.error}")
     print(f"[spike_0_6c_1] passed               {result.passed}")

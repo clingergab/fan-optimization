@@ -44,7 +44,6 @@ from fanopt.physical.imu import (
     load_imu_csv,
 )
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INERTIA_JSON = REPO_ROOT / "data" / "spike_0_2" / "results.json"
 DEFAULT_OUT = REPO_ROOT / "data" / "spike_0_3" / "baseline.json"
@@ -98,8 +97,7 @@ def _load_inertia(path: Path) -> float:
         I_wrist = float(payload["result"]["I_wrist_kgm2"])
     except (KeyError, TypeError, ValueError) as e:
         raise ValueError(
-            f"{path}: cannot read result.I_wrist_kgm2 — "
-            f"is this a Spike 0.2 results.json?"
+            f"{path}: cannot read result.I_wrist_kgm2 — " f"is this a Spike 0.2 results.json?"
         ) from e
     passed = payload.get("result", {}).get("passed")
     return I_wrist, passed
@@ -140,9 +138,7 @@ def main(argv: list[str] | None = None) -> int:
 
     W_cycle_per_trial = [r.W_cycle_J for (_, r) in imu_results]
     W_cycle_mean = statistics.fmean(W_cycle_per_trial)
-    W_cycle_std = (
-        statistics.stdev(W_cycle_per_trial) if len(W_cycle_per_trial) > 1 else 0.0
-    )
+    W_cycle_std = statistics.stdev(W_cycle_per_trial) if len(W_cycle_per_trial) > 1 else 0.0
 
     # Apples-to-apples ratio: peak proxy / mean per-cycle work
     J_per_W = anem_result.J_fan_proxy_N / W_cycle_mean if W_cycle_mean > 0 else float("nan")
@@ -153,9 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     sanity_all_ok = all(r.sanity_ok for (_, r) in imu_results)
-    trial_consistency_ok = (
-        (W_cycle_std / W_cycle_mean) < 0.20 if W_cycle_mean > 0 else False
-    )
+    trial_consistency_ok = (W_cycle_std / W_cycle_mean) < 0.20 if W_cycle_mean > 0 else False
 
     # ---- payload -------------------------------------------------------
     payload: dict[str, Any] = {
@@ -213,24 +207,32 @@ def _print_summary(payload: dict, out_path: Path) -> None:
     a = p["anemometer"]
     im = p["imu"]
     b = p["baseline"]
-    print(f"[spike_0_3] I_wrist     = {p['inputs']['I_wrist_kgm2']:.6e} kg·m²  "
-          f"(Spike 0.2 passed: {p['inputs']['spike_0_2_passed']})")
-    print(f"[spike_0_3] ⟨v⟩_grid    = {a['v_mean_grid_m_per_s']:.3f} m/s  "
-          f"(std {a['v_mean_grid_std_m_per_s']:.3f})")
-    print(f"[spike_0_3] J_fan_proxy = {a['J_fan_proxy_N']:.3e} N "
-          f"(rho={p['inputs']['rho_air_kg_per_m3']}, A={p['inputs']['A_plane_m2']} m²)")
-    print(f"[spike_0_3] W_cycle     = {im['W_cycle_J_mean']:.3e} J  "
-          f"(std {im['W_cycle_J_std']:.3e}, "
-          f"trial-consistency-OK: {im['trial_consistency_ok']})")
+    print(
+        f"[spike_0_3] I_wrist     = {p['inputs']['I_wrist_kgm2']:.6e} kg·m²  "
+        f"(Spike 0.2 passed: {p['inputs']['spike_0_2_passed']})"
+    )
+    print(
+        f"[spike_0_3] ⟨v⟩_grid    = {a['v_mean_grid_m_per_s']:.3f} m/s  "
+        f"(std {a['v_mean_grid_std_m_per_s']:.3f})"
+    )
+    print(
+        f"[spike_0_3] J_fan_proxy = {a['J_fan_proxy_N']:.3e} N "
+        f"(rho={p['inputs']['rho_air_kg_per_m3']}, A={p['inputs']['A_plane_m2']} m²)"
+    )
+    print(
+        f"[spike_0_3] W_cycle     = {im['W_cycle_J_mean']:.3e} J  "
+        f"(std {im['W_cycle_J_std']:.3e}, "
+        f"trial-consistency-OK: {im['trial_consistency_ok']})"
+    )
     print(f"[spike_0_3] J/W         = {b['J_per_W']:.3e} N/J  ← canonical baseline")
     if b["J_peak_per_W"] is not None:
         print(f"[spike_0_3] J_peak/W    = {b['J_peak_per_W']:.3e} N/J  (peak-velocity proxy)")
-    print(f"[spike_0_3] kinematics sanity (per trial):")
+    print("[spike_0_3] kinematics sanity (per trial):")
     for entry in im["per_trial"]:
         flags = (
-            ("f" if entry["f_wave_ok"] else "F") +
-            ("ω" if entry["omega_max_ok"] else "Ω") +
-            ("θ" if entry["theta_max_ok"] else "Θ")
+            ("f" if entry["f_wave_ok"] else "F")
+            + ("ω" if entry["omega_max_ok"] else "Ω")
+            + ("θ" if entry["theta_max_ok"] else "Θ")
         )
         print(
             f"  {Path(entry['file']).name:30s}  "
@@ -240,8 +242,10 @@ def _print_summary(payload: dict, out_path: Path) -> None:
             f"[{flags}]"
         )
     if not im["kinematic_sanity_all_ok"]:
-        print("[spike_0_3] WARNING: at least one trial drifted outside the kinematic "
-              "sanity band — re-shoot if the wandering trial dominates W_cycle.")
+        print(
+            "[spike_0_3] WARNING: at least one trial drifted outside the kinematic "
+            "sanity band — re-shoot if the wandering trial dominates W_cycle."
+        )
     print(f"[spike_0_3] wrote      {out_path}")
 
 

@@ -16,6 +16,7 @@ Reference:
 - Protocol: `docs/spike_0_3_protocol.md`
 - Plane definition: §9.4 (600×600 mm at z = +300 mm above pivot)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -48,13 +49,13 @@ PLANE_Z_M: float = 0.300  # 300 mm in +z from pivot
 _PITCH_M: float = 0.200
 GRID_POINTS_M: tuple[tuple[float, float], ...] = (
     (-_PITCH_M, -_PITCH_M),  # p1
-    (0.0,       -_PITCH_M),  # p2
+    (0.0, -_PITCH_M),  # p2
     (+_PITCH_M, -_PITCH_M),  # p3
-    (-_PITCH_M, 0.0),        # p4
-    (0.0,       0.0),        # p5
-    (+_PITCH_M, 0.0),        # p6
+    (-_PITCH_M, 0.0),  # p4
+    (0.0, 0.0),  # p5
+    (+_PITCH_M, 0.0),  # p6
     (-_PITCH_M, +_PITCH_M),  # p7
-    (0.0,       +_PITCH_M),  # p8
+    (0.0, +_PITCH_M),  # p8
     (+_PITCH_M, +_PITCH_M),  # p9
 )
 _EXPECTED_POINTS = len(GRID_POINTS_M)
@@ -124,9 +125,7 @@ def load_anemometer_csv(path: Path | str) -> AnemometerGrid:
         raise ValueError(f"{path}: no rows found")
 
     if len(raw) != _EXPECTED_POINTS:
-        raise ValueError(
-            f"{path}: expected {_EXPECTED_POINTS} grid points, got {len(raw)}"
-        )
+        raise ValueError(f"{path}: expected {_EXPECTED_POINTS} grid points, got {len(raw)}")
 
     labels: list[str] = []
     xy: list[tuple[float, float]] = []
@@ -216,7 +215,9 @@ def analyze_anemometer_grid(
 
 def _grid_matches(xy: tuple[tuple[float, float], ...], tol_m: float = 0.005) -> bool:
     """True if `xy` corresponds (in any order) to the locked grid within tol."""
-    if len(xy) != len(GRID_POINTS_M):  # pragma: no cover  (load_anemometer_csv enforces count first)
+    if len(xy) != len(
+        GRID_POINTS_M
+    ):  # pragma: no cover  (load_anemometer_csv enforces count first)
         return False
     remaining = list(GRID_POINTS_M)
     for x, y in xy:

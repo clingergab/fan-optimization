@@ -6,6 +6,7 @@ positions.
 
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.3, §Phase 6 step 78 (L8 lock).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,7 +22,6 @@ from fanopt.physical.anemometer import (
     j_fan_proxy_from_grid,
     load_anemometer_csv,
 )
-
 
 # ----- analytic plane integrals ---------------------------------------------
 
@@ -67,9 +67,7 @@ def test_peak_proxy_separate_from_mean_proxy() -> None:
         v_peak_m_per_s=(1.5,) * 9,
     )
     res = analyze_anemometer_grid(grid)
-    assert res.J_fan_proxy_N == pytest.approx(
-        RHO_AIR_KG_PER_M3 * 0.5 * PLANE_AREA_M2, rel=1e-12
-    )
+    assert res.J_fan_proxy_N == pytest.approx(RHO_AIR_KG_PER_M3 * 0.5 * PLANE_AREA_M2, rel=1e-12)
     assert res.J_fan_proxy_peak_N is not None
     assert res.J_fan_proxy_peak_N == pytest.approx(
         RHO_AIR_KG_PER_M3 * 1.5 * PLANE_AREA_M2, rel=1e-12
@@ -83,12 +81,12 @@ def test_peak_proxy_separate_from_mean_proxy() -> None:
 
 def test_scalar_proxy_with_overrides() -> None:
     J = j_fan_proxy_from_grid(2.0, rho_air_kg_per_m3=1.2, A_plane_m2=0.5)
-    assert J == pytest.approx(1.2 * 2.0 * 0.5, rel=1e-12)
+    assert pytest.approx(1.2 * 2.0 * 0.5, rel=1e-12) == J
 
 
 def test_scalar_proxy_defaults_match_locked_constants() -> None:
     J = j_fan_proxy_from_grid(1.0)
-    assert J == pytest.approx(RHO_AIR_KG_PER_M3 * 1.0 * PLANE_AREA_M2, rel=1e-12)
+    assert pytest.approx(RHO_AIR_KG_PER_M3 * 1.0 * PLANE_AREA_M2, rel=1e-12) == J
 
 
 # ----- CSV loader -----------------------------------------------------------
@@ -101,10 +99,7 @@ def _write_csv(path: Path, rows: list[tuple]) -> None:
 
 
 def _ok_rows() -> list[tuple]:
-    return [
-        (f"p{i + 1}", x, y, 0.3, 0.5, 1.0, "")
-        for i, (x, y) in enumerate(GRID_POINTS_M)
-    ]
+    return [(f"p{i + 1}", x, y, 0.3, 0.5, 1.0, "") for i, (x, y) in enumerate(GRID_POINTS_M)]
 
 
 def test_load_anemometer_csv_round_trip(tmp_path: Path) -> None:
@@ -139,19 +134,14 @@ def test_load_anemometer_csv_rejects_wrong_count(tmp_path: Path) -> None:
 def test_load_anemometer_csv_tolerates_missing_peak(tmp_path: Path) -> None:
     """v_peak_m_per_s column present but values blank → grid.v_peak_m_per_s is None."""
     path = tmp_path / "no_peak.csv"
-    rows = [
-        (f"p{i + 1}", x, y, 0.3, 0.5, "", "")
-        for i, (x, y) in enumerate(GRID_POINTS_M)
-    ]
+    rows = [(f"p{i + 1}", x, y, 0.3, 0.5, "", "") for i, (x, y) in enumerate(GRID_POINTS_M)]
     _write_csv(path, rows)
     grid = load_anemometer_csv(path)
     assert grid.v_peak_m_per_s is None
     # Analyzer also handles None peak gracefully.
     res = analyze_anemometer_grid(grid)
     assert res.J_fan_proxy_peak_N is None
-    assert res.J_fan_proxy_N == pytest.approx(
-        RHO_AIR_KG_PER_M3 * 0.5 * PLANE_AREA_M2, rel=1e-12
-    )
+    assert res.J_fan_proxy_N == pytest.approx(RHO_AIR_KG_PER_M3 * 0.5 * PLANE_AREA_M2, rel=1e-12)
 
 
 def test_load_anemometer_csv_rejects_empty_file(tmp_path: Path) -> None:
@@ -168,10 +158,7 @@ def test_load_anemometer_csv_rejects_missing_required_column(tmp_path: Path) -> 
     # Drop the v_mean_m_per_s column entirely.
     path = tmp_path / "no_vmean.csv"
     header = "point,x_m,y_m,z_m,v_peak_m_per_s,notes"
-    rows = [
-        f"p{i + 1},{x},{y},0.3,1.0,"
-        for i, (x, y) in enumerate(GRID_POINTS_M)
-    ]
+    rows = [f"p{i + 1},{x},{y},0.3,1.0," for i, (x, y) in enumerate(GRID_POINTS_M)]
     path.write_text(header + "\n" + "\n".join(rows) + "\n")
     with pytest.raises(ValueError, match="v_mean_m_per_s"):
         load_anemometer_csv(path)
@@ -181,10 +168,7 @@ def test_load_anemometer_csv_skips_comments_and_blanks(tmp_path: Path) -> None:
     """Comment lines and blank lines inside the file are silently skipped."""
     path = tmp_path / "with_comments.csv"
     header = "point,x_m,y_m,z_m,v_mean_m_per_s,v_peak_m_per_s,notes"
-    body_lines = [
-        f"p{i + 1},{x},{y},0.3,0.5,1.0,"
-        for i, (x, y) in enumerate(GRID_POINTS_M)
-    ]
+    body_lines = [f"p{i + 1},{x},{y},0.3,0.5,1.0," for i, (x, y) in enumerate(GRID_POINTS_M)]
     # Interleave with comment and blank lines.
     full = "\n".join(
         ["# operator notes line 1", "", header, "# mid-file comment", body_lines[0]]

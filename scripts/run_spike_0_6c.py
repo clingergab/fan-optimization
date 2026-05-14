@@ -131,9 +131,7 @@ def _load_sub_2(path: Path) -> BenchmarkResult:
             cycles=cycles,
             convergence=convergence,
             symmetry=symmetry,
-            diagnostic_hysteresis_area_mean=float(
-                r.get("diagnostic_hysteresis_area_mean", 0.0)
-            ),
+            diagnostic_hysteresis_area_mean=float(r.get("diagnostic_hysteresis_area_mean", 0.0)),
             convergence_passed=bool(r.get("convergence_passed", False)),
             symmetry_passed=bool(r.get("symmetry_passed", False)),
             passed=bool(r.get("passed", False)),
@@ -245,8 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         f"symmetry_passed={result.sub_06c_2.symmetry_passed})"
     )
     print(
-        f"[spike_0_6c] OVERALL    = "
-        f"{'PASS' if result.overall_passed else 'FAIL'}  -> {marker}"
+        f"[spike_0_6c] OVERALL    = " f"{'PASS' if result.overall_passed else 'FAIL'}  -> {marker}"
     )
     print(f"[spike_0_6c] results    = {args.out}")
 

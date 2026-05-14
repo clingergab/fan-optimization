@@ -3,6 +3,7 @@
 Validates round-robin assignment, pointer + slice file I/O, and the
 dead-session rebalance procedure.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,6 @@ from fanopt.utils.slicing import (
     write_pointer_version,
 )
 
-
 # ---- round_robin_assign ---------------------------------------------------
 
 
@@ -36,9 +36,7 @@ def test_round_robin_distributes_evenly() -> None:
 
 def test_round_robin_handles_remainder() -> None:
     """5 hashes / 2 sessions → s0 gets 3, s1 gets 2."""
-    assn = round_robin_assign(
-        ["a", "b", "c", "d", "e"], ["s0", "s1"], version=1
-    )
+    assn = round_robin_assign(["a", "b", "c", "d", "e"], ["s0", "s1"], version=1)
     assert assn.hashes_for("s0") == ("a", "c", "e")
     assert assn.hashes_for("s1") == ("b", "d")
 
@@ -142,9 +140,7 @@ def test_pointer_overwrites_on_bump(tmp_path: Path) -> None:
 
 
 def test_rebalance_redistributes_unfinished_hashes() -> None:
-    current = round_robin_assign(
-        ["a", "b", "c", "d"], ["s0", "s1", "s2"], version=1
-    )
+    current = round_robin_assign(["a", "b", "c", "d"], ["s0", "s1", "s2"], version=1)
     # s2 was assigned 'c'; it goes dead before completing.
     # s0 completed 'a'; s1 completed 'b'.
     new = rebalance_dead_session(
@@ -185,9 +181,7 @@ def test_rebalance_fails_when_no_survivors() -> None:
 
 def test_rebalance_preserves_completed_skipped() -> None:
     """Already-completed hashes are NOT redistributed."""
-    current = round_robin_assign(
-        ["a", "b", "c"], ["s0", "s1", "s2"], version=1
-    )
+    current = round_robin_assign(["a", "b", "c"], ["s0", "s1", "s2"], version=1)
     new = rebalance_dead_session(
         current,
         dead_session_id="s2",

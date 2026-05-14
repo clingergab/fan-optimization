@@ -5,6 +5,7 @@ side-effect-freeness, --force override, tag idempotence, and exit codes.
 
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.6c (H10 lock).
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -14,7 +15,6 @@ import pytest
 
 import launch_phase4 as cli
 
-
 # ---- isolated git repo fixture --------------------------------------------
 
 
@@ -23,9 +23,7 @@ def fake_repo(tmp_path: Path) -> Path:
     """Create a tiny throwaway git repo so tag operations don't touch real state."""
     repo = tmp_path / "fake_repo"
     repo.mkdir()
-    subprocess.run(
-        ["git", "init", "--quiet"], cwd=repo, check=True, capture_output=True
-    )
+    subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True, capture_output=True)
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"],
         cwd=repo,
@@ -40,9 +38,7 @@ def fake_repo(tmp_path: Path) -> Path:
     )
     # Need at least one commit before tagging.
     (repo / "README").write_text("test\n")
-    subprocess.run(
-        ["git", "add", "README"], cwd=repo, check=True, capture_output=True
-    )
+    subprocess.run(["git", "add", "README"], cwd=repo, check=True, capture_output=True)
     subprocess.run(
         ["git", "commit", "-m", "init", "--quiet"],
         cwd=repo,
@@ -96,18 +92,14 @@ def test_creates_tag_when_marker_present(fake_repo: Path, tmp_path: Path) -> Non
     assert _tag_exists(fake_repo, "phase4-launch")
 
 
-def test_refuses_to_create_tag_when_marker_absent(
-    fake_repo: Path, tmp_path: Path
-) -> None:
+def test_refuses_to_create_tag_when_marker_absent(fake_repo: Path, tmp_path: Path) -> None:
     marker = tmp_path / "PASS"  # not created
     rc = cli.main(["--marker", str(marker), "--repo-root", str(fake_repo)])
     assert rc == 1
     assert not _tag_exists(fake_repo, "phase4-launch")
 
 
-def test_idempotent_when_tag_already_exists(
-    fake_repo: Path, tmp_path: Path
-) -> None:
+def test_idempotent_when_tag_already_exists(fake_repo: Path, tmp_path: Path) -> None:
     """Second invocation should return 0 without erroring."""
     marker = tmp_path / "PASS"
     marker.write_text("")
@@ -125,9 +117,7 @@ def test_idempotent_when_tag_already_exists(
 def test_force_bypasses_marker_check(fake_repo: Path, tmp_path: Path) -> None:
     """--force creates the tag even when the marker is absent."""
     marker = tmp_path / "PASS"  # not created
-    rc = cli.main(
-        ["--force", "--marker", str(marker), "--repo-root", str(fake_repo)]
-    )
+    rc = cli.main(["--force", "--marker", str(marker), "--repo-root", str(fake_repo)])
     assert rc == 0
     assert _tag_exists(fake_repo, "phase4-launch")
 

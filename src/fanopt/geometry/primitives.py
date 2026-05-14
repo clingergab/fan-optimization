@@ -12,6 +12,7 @@ wraps it in try/except; on failure the prior-step geometry is returned.
 This module ships only the schema; the apply-primitive function lands
 in Phase 1.
 """
+
 from __future__ import annotations
 
 import math
@@ -135,8 +136,7 @@ class Layer3Primitive:
         ):
             if not (lo <= rot <= hi):
                 raise ValueError(
-                    f"Layer3Primitive.rotation_{axis}_rad = {rot} outside "
-                    f"range [{lo}, {hi}]"
+                    f"Layer3Primitive.rotation_{axis}_rad = {rot} outside " f"range [{lo}, {hi}]"
                 )
 
     def to_dict(self) -> dict[str, Any]:
@@ -154,14 +154,12 @@ class Layer3Primitive:
             "rotation_y_rad": self.rotation_y_rad,
             "rotation_z_rad": self.rotation_z_rad,
             "local_envelope_xyz_m": (
-                list(self.local_envelope_xyz_m)
-                if self.local_envelope_xyz_m is not None
-                else None
+                list(self.local_envelope_xyz_m) if self.local_envelope_xyz_m is not None else None
             ),
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Layer3Primitive":
+    def from_dict(cls, d: dict[str, Any]) -> Layer3Primitive:
         env = d.get("local_envelope_xyz_m")
         return cls(
             present=bool(d["present"]),
@@ -182,6 +180,6 @@ class Layer3Primitive:
         )
 
     @classmethod
-    def absent(cls) -> "Layer3Primitive":
+    def absent(cls) -> Layer3Primitive:
         """Canonical 'no primitive' instance (Layer 3 inactive)."""
         return cls(present=False)

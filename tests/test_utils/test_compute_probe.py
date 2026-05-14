@@ -7,6 +7,7 @@ plus the aggregator's calibration-only roll-up semantics.
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.6; protocol in
 docs/spike_0_6_protocol.md.
 """
+
 from __future__ import annotations
 
 import math
@@ -27,7 +28,6 @@ from fanopt.utils.compute_probe import (
     analyze_spike_06,
 )
 
-
 # ----- analytic cantilever -------------------------------------------------
 
 
@@ -44,7 +44,7 @@ def test_analytic_cantilever_pl3_3ei() -> None:
     assert analytic_cantilever_tip_deflection(P_N=3.0, L_m=1.0, E_Pa=1.0, I_m4=1.0) == 1.0
 
     b, h = 0.012, 0.002
-    I = b * h**3 / 12.0
+    I = b * h**3 / 12.0  # noqa: E741 -- area moment of inertia (scientific convention)
     expected = 5.0 * (0.200**3) / (3.0 * 1.3e9 * I)
     measured = analytic_cantilever_tip_deflection(P_N=5.0, L_m=0.200, E_Pa=1.3e9, I_m4=I)
     assert math.isclose(measured, expected, rel_tol=1e-12)
@@ -269,8 +269,8 @@ def test_subspike_dataclasses_frozen() -> None:
 
 def test_gates_locked_at_spec_values() -> None:
     """Constants match the spec literally (catch accidental edits)."""
-    assert M3_SU2_WALL_TIME_GATE_S == 15 * 60
-    assert M3_FEA_WALL_TIME_GATE_S == 2 * 60
+    assert 15 * 60 == M3_SU2_WALL_TIME_GATE_S
+    assert 2 * 60 == M3_FEA_WALL_TIME_GATE_S
     assert M3_FEA_TIP_DEFLECTION_TOLERANCE_PCT == 5.0
 
 

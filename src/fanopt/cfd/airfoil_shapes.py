@@ -11,6 +11,7 @@ Currently supplies NACA 4-digit symmetric airfoils (just 0012 for Spike 0.6c;
 the formula generalizes trivially). Cosine spacing along the chord clusters
 points near the leading + trailing edges.
 """
+
 from __future__ import annotations
 
 import math
@@ -55,12 +56,10 @@ def naca0012_y(
     if x < 0.0 or x > chord:
         raise ValueError(f"x must be in [0, chord={chord}], got {x}")
     xc = x / chord
-    return (t / 0.2) * chord * (
-        0.2969 * math.sqrt(xc)
-        - 0.1260 * xc
-        - 0.3516 * xc**2
-        + 0.2843 * xc**3
-        - 0.1036 * xc**4
+    return (
+        (t / 0.2)
+        * chord
+        * (0.2969 * math.sqrt(xc) - 0.1260 * xc - 0.3516 * xc**2 + 0.2843 * xc**3 - 0.1036 * xc**4)
     )
 
 

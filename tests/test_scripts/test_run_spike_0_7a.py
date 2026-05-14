@@ -11,6 +11,7 @@ Exercises:
 - bad input (``--n-random 0``) → exit 2.
 - output directory is created on demand.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,9 +27,12 @@ def test_cli_smoke_pass(tmp_path: Path) -> None:
     out_dir = tmp_path / "spike_0_7a"
     rc = cli.main(
         [
-            "--n-random", "10",
-            "--seed", "42",
-            "--output-dir", str(out_dir),
+            "--n-random",
+            "10",
+            "--seed",
+            "42",
+            "--output-dir",
+            str(out_dir),
         ]
     )
     assert rc in (0, 1), f"unexpected exit {rc} (must be 0 PASS or 1 FAIL — not error)"
@@ -54,9 +58,7 @@ def test_cli_smoke_pass(tmp_path: Path) -> None:
 
 def test_cli_writes_per_design_subdirs(tmp_path: Path) -> None:
     out_dir = tmp_path / "spike_0_7a"
-    rc = cli.main(
-        ["--n-random", "3", "--seed", "1", "--output-dir", str(out_dir)]
-    )
+    rc = cli.main(["--n-random", "3", "--seed", "1", "--output-dir", str(out_dir)])
     assert rc in (0, 1)
     payload = json.loads((out_dir / "results.json").read_text())
     # Every record has a per-design subdir with params.json + record.json.
@@ -73,9 +75,12 @@ def test_cli_skip_adversarial_fails(tmp_path: Path) -> None:
     out_dir = tmp_path / "spike_0_7a"
     rc = cli.main(
         [
-            "--n-random", "10",
-            "--seed", "42",
-            "--output-dir", str(out_dir),
+            "--n-random",
+            "10",
+            "--seed",
+            "42",
+            "--output-dir",
+            str(out_dir),
             "--skip-adversarial",
         ]
     )
@@ -87,9 +92,7 @@ def test_cli_skip_adversarial_fails(tmp_path: Path) -> None:
 
 
 def test_cli_rejects_zero_n_random(tmp_path: Path) -> None:
-    rc = cli.main(
-        ["--n-random", "0", "--output-dir", str(tmp_path / "spike_0_7a")]
-    )
+    rc = cli.main(["--n-random", "0", "--output-dir", str(tmp_path / "spike_0_7a")])
     assert rc == 2
 
 
@@ -119,9 +122,7 @@ def test_cli_reproducible_with_same_seed(tmp_path: Path) -> None:
 def test_cli_blocks_every_adversarial_set(tmp_path: Path, adv_id: str) -> None:
     """Every adversarial set must be blocked by the shim pipeline."""
     out_dir = tmp_path / "spike_0_7a"
-    rc = cli.main(
-        ["--n-random", "1", "--seed", "0", "--output-dir", str(out_dir)]
-    )
+    rc = cli.main(["--n-random", "1", "--seed", "0", "--output-dir", str(out_dir)])
     assert rc in (0, 1)
     payload = json.loads((out_dir / "results.json").read_text())
     # Find the adversarial record by walking per-design subdirs and matching
@@ -137,6 +138,5 @@ def test_cli_blocks_every_adversarial_set(tmp_path: Path, adv_id: str) -> None:
     assert matched, f"no adversarial record with id starting {adv_id}"
     for rec in matched:
         assert rec["passed"] is False, (
-            f"adversarial {adv_id} unexpectedly passed every check: "
-            f"{rec['rejection_reasons']}"
+            f"adversarial {adv_id} unexpectedly passed every check: " f"{rec['rejection_reasons']}"
         )

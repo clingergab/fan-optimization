@@ -12,6 +12,7 @@ Covers:
 * Input-error paths -- missing files / empty ledgers / malformed JSON
   must exit 2.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,6 @@ import pytest
 import run_spike_0_7c as cli
 import run_spike_0_7c_smoke as smoke_cli
 
-
 # ---- smoke runner end-to-end PASS ---------------------------------------
 
 
@@ -30,13 +30,20 @@ def test_smoke_runner_passes(tmp_path: Path) -> None:
     """Smoke runner with default args (improvement 25% > 5% gate) -> PASS."""
     rc = smoke_cli.main(
         [
-            "--n-sobol", "20",
-            "--n-bo", "30",
-            "--d", "8",
-            "--seed", "42",
-            "--budgets", "30,100,300",
-            "--target-bo-improvement-pct", "25.0",
-            "--out-dir", str(tmp_path),
+            "--n-sobol",
+            "20",
+            "--n-bo",
+            "30",
+            "--d",
+            "8",
+            "--seed",
+            "42",
+            "--budgets",
+            "30,100,300",
+            "--target-bo-improvement-pct",
+            "25.0",
+            "--out-dir",
+            str(tmp_path),
         ]
     )
     assert rc == 0
@@ -73,10 +80,14 @@ def test_cli_returns_1_when_bo_loses_on_all_budgets(tmp_path: Path) -> None:
 
     rc = cli.main(
         [
-            "--sobol-results", str(sobol_p),
-            "--bo-results", str(bo_p),
-            "--budgets", "5,10,20",
-            "--out", str(out),
+            "--sobol-results",
+            str(sobol_p),
+            "--bo-results",
+            str(bo_p),
+            "--budgets",
+            "5,10,20",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 1
@@ -99,10 +110,14 @@ def test_cli_passes_with_explicit_pass_ledger(tmp_path: Path) -> None:
 
     rc = cli.main(
         [
-            "--sobol-results", str(sobol_p),
-            "--bo-results", str(bo_p),
-            "--budgets", "5,10,20",
-            "--out", str(out),
+            "--sobol-results",
+            str(sobol_p),
+            "--bo-results",
+            str(bo_p),
+            "--budgets",
+            "5,10,20",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -125,11 +140,16 @@ def test_cli_propagates_high_d_label_to_saasbo_fallback(tmp_path: Path) -> None:
 
     rc = cli.main(
         [
-            "--sobol-results", str(sobol_p),
-            "--bo-results", str(bo_p),
-            "--budgets", "5,10,20",
-            "--gp-fit-time-above-60s-on", "high_d",
-            "--out", str(out),
+            "--sobol-results",
+            str(sobol_p),
+            "--bo-results",
+            str(bo_p),
+            "--budgets",
+            "5,10,20",
+            "--gp-fit-time-above-60s-on",
+            "high_d",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 1
@@ -148,11 +168,16 @@ def test_cli_propagates_architecture_label_to_arch_fallback(tmp_path: Path) -> N
 
     rc = cli.main(
         [
-            "--sobol-results", str(sobol_p),
-            "--bo-results", str(bo_p),
-            "--budgets", "5,10,20",
-            "--gp-fit-time-above-60s-on", "wide_architecture_set",
-            "--out", str(out),
+            "--sobol-results",
+            str(sobol_p),
+            "--bo-results",
+            str(bo_p),
+            "--budgets",
+            "5,10,20",
+            "--gp-fit-time-above-60s-on",
+            "wide_architecture_set",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 1
@@ -170,10 +195,14 @@ def test_cli_missing_sobol_returns_2(tmp_path: Path) -> None:
     out = tmp_path / "results.json"
     rc = cli.main(
         [
-            "--sobol-results", str(tmp_path / "missing.jsonl"),
-            "--bo-results", str(bo_p),
-            "--budgets", "5",
-            "--out", str(out),
+            "--sobol-results",
+            str(tmp_path / "missing.jsonl"),
+            "--bo-results",
+            str(bo_p),
+            "--budgets",
+            "5",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 2
@@ -186,10 +215,14 @@ def test_cli_missing_bo_returns_2(tmp_path: Path) -> None:
     out = tmp_path / "results.json"
     rc = cli.main(
         [
-            "--sobol-results", str(sobol_p),
-            "--bo-results", str(tmp_path / "missing.jsonl"),
-            "--budgets", "5",
-            "--out", str(out),
+            "--sobol-results",
+            str(sobol_p),
+            "--bo-results",
+            str(tmp_path / "missing.jsonl"),
+            "--budgets",
+            "5",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 2
@@ -203,10 +236,14 @@ def test_cli_empty_sobol_returns_2(tmp_path: Path) -> None:
     out = tmp_path / "results.json"
     rc = cli.main(
         [
-            "--sobol-results", str(sobol_p),
-            "--bo-results", str(bo_p),
-            "--budgets", "5",
-            "--out", str(out),
+            "--sobol-results",
+            str(sobol_p),
+            "--bo-results",
+            str(bo_p),
+            "--budgets",
+            "5",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 2
@@ -220,10 +257,14 @@ def test_cli_invalid_budget_returns_2(tmp_path: Path) -> None:
     out = tmp_path / "results.json"
     rc = cli.main(
         [
-            "--sobol-results", str(sobol_p),
-            "--bo-results", str(bo_p),
-            "--budgets", "0,not_a_number",
-            "--out", str(out),
+            "--sobol-results",
+            str(sobol_p),
+            "--bo-results",
+            str(bo_p),
+            "--budgets",
+            "0,not_a_number",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 2
@@ -239,9 +280,13 @@ def test_cli_malformed_jsonl_raises(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         cli.main(
             [
-                "--sobol-results", str(sobol_p),
-                "--bo-results", str(bo_p),
-                "--budgets", "5",
-                "--out", str(out),
+                "--sobol-results",
+                str(sobol_p),
+                "--bo-results",
+                str(bo_p),
+                "--budgets",
+                "5",
+                "--out",
+                str(out),
             ]
         )

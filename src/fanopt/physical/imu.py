@@ -22,6 +22,7 @@ Reference:
 - Protocol: `docs/spike_0_3_protocol.md`
 - I_wrist source: Spike 0.2 (`src/fanopt/physical/inertia.py`)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -160,8 +161,7 @@ def load_imu_csv(path: Path | str) -> IMUTrace:
 
     if t.size < 8:
         raise ValueError(
-            f"{path}: only {t.size} samples — IMU trace must cover ≥1 cycle at "
-            f">= 100 Hz."
+            f"{path}: only {t.size} samples — IMU trace must cover ≥1 cycle at " f">= 100 Hz."
         )
     if not np.all(np.diff(t) > 0):
         raise ValueError(f"{path}: t_s is not monotonically increasing")

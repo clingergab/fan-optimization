@@ -8,6 +8,7 @@ test fails immediately.
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.4; protocol in
 docs/spike_0_4_protocol.md.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,6 @@ from fanopt.physical.click_rig import (
     force_balance_passes,
     inertial_force_at_click,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────
 # Constants pinning the H8 / H6 locks
@@ -83,17 +83,17 @@ def test_inertial_force_at_click_uses_h8_lever_arm() -> None:
     0.25 m (the wrist-to-tip distance, H8 lock), this test fires.
     """
     F = inertial_force_at_click(I_wrist_kgm2=1.0e-3, alpha_max=110.0)
-    assert F == pytest.approx(0.001 * 110.0 / 0.25, rel=1e-12)
-    assert F == pytest.approx(0.44, rel=1e-12)
+    assert pytest.approx(0.001 * 110.0 / 0.25, rel=1e-12) == F
+    assert pytest.approx(0.44, rel=1e-12) == F
 
 
 def test_inertial_force_at_click_custom_args() -> None:
     """Explicit alpha_max / lever_arm_m round-trip through F = τ / L."""
-    I = 5.0e-4
+    I = 5.0e-4  # noqa: E741 -- moment of inertia (scientific convention)
     a = 200.0
     L = 0.30
     F = inertial_force_at_click(I_wrist_kgm2=I, alpha_max=a, lever_arm_m=L)
-    assert F == pytest.approx(I * a / L, rel=1e-12)
+    assert pytest.approx(I * a / L, rel=1e-12) == F
 
 
 def test_inertial_force_at_click_rejects_nonpositive() -> None:
@@ -118,9 +118,7 @@ def test_force_balance_passes_at_exactly_2x() -> None:
 
 def test_force_balance_fails_just_below_2x() -> None:
     F_in = 0.44
-    assert not force_balance_passes(
-        F_friction_cumulative_N=0.88 - 1e-9, F_inertial_at_click_N=F_in
-    )
+    assert not force_balance_passes(F_friction_cumulative_N=0.88 - 1e-9, F_inertial_at_click_N=F_in)
 
 
 def test_force_balance_arms_v1_fallback_when_failing() -> None:
@@ -176,9 +174,7 @@ def test_clearance_requires_at_least_one_row() -> None:
 
 
 def test_clearance_labels_propagate() -> None:
-    res = analyze_clearance(
-        [0.16, 0.18], labels=["blade1_blade2", "blade2_blade3"]
-    )
+    res = analyze_clearance([0.16, 0.18], labels=["blade1_blade2", "blade2_blade3"])
     assert [r.mating_surface for r in res.rows] == ["blade1_blade2", "blade2_blade3"]
 
 

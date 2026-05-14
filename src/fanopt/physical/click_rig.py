@@ -41,11 +41,12 @@ References:
 - Inertia input: `src/fanopt/physical/inertia.py` (Spike 0.2)
 - Protocol: `docs/spike_0_4_protocol.md`
 """
+
 from __future__ import annotations
 
 import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 __all__ = [
     "ALPHA_MAX_RAD_PER_S2",
@@ -167,13 +168,9 @@ def force_balance_passes(
     canonical safety factor of 2.0.
     """
     if F_friction_cumulative_N < 0:
-        raise ValueError(
-            f"F_friction_cumulative_N must be ≥ 0, got {F_friction_cumulative_N}"
-        )
+        raise ValueError(f"F_friction_cumulative_N must be ≥ 0, got {F_friction_cumulative_N}")
     if F_inertial_at_click_N <= 0:
-        raise ValueError(
-            f"F_inertial_at_click_N must be > 0, got {F_inertial_at_click_N}"
-        )
+        raise ValueError(f"F_inertial_at_click_N must be > 0, got {F_inertial_at_click_N}")
     if safety_factor <= 0:
         raise ValueError(f"safety_factor must be > 0, got {safety_factor}")
     return F_friction_cumulative_N >= safety_factor * F_inertial_at_click_N
@@ -238,9 +235,7 @@ def analyze_force_balance(
     ForceBalanceResult with pass/fail and the fallback-arming flag.
     """
     # `inertial_force_at_click` validates I_wrist / alpha_max / lever_arm.
-    F_inertial = inertial_force_at_click(
-        I_wrist_kgm2, alpha_max=alpha_max, lever_arm_m=lever_arm_m
-    )
+    F_inertial = inertial_force_at_click(I_wrist_kgm2, alpha_max=alpha_max, lever_arm_m=lever_arm_m)
     tau = I_wrist_kgm2 * alpha_max
     passed = force_balance_passes(
         F_friction_cumulative_N=F_friction_cumulative_N,
@@ -525,10 +520,7 @@ def analyze_cycle_life(
     else:
         low_amp_passed = total >= CYCLE_TARGET
 
-    if high_amp_failure_cycle is not None:
-        high_amp_passed = False
-    else:
-        high_amp_passed = bool(high_amp_completed)
+    high_amp_passed = False if high_amp_failure_cycle is not None else bool(high_amp_completed)
 
     alignment_passed = alignment_gap_variation_mm < ALIGNMENT_GAP_MAX_MM
 
