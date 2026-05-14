@@ -296,6 +296,67 @@ retired_phrases:
       - 'pre-HIGH-12'
       - 'no longer'
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Spike 0.6c.2 internal-consistency-gate revision (2026-05-13)
+  # The (Re=40k, k=0.55, ±10°, mean α=0°) operating point has no published
+  # reference within defensible scatter; the ±15% literature-comparison
+  # gate was retired in favour of two internal-consistency gates (cycle
+  # convergence + C_L symmetry). The five identifiers below were removed
+  # from src/fanopt/cfd/spike_0_6c.py; this batch catches reintroduction.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - pattern: '\bNACA0012_REFERENCE\b'
+    retired_by: 'Spike 0.6c.2 internal-consistency gates (2026-05-13) — no defensible literature reference at (Re=40k, k=0.55, ±10°)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+      - 'pre-internal-consistency'
+
+  - pattern: '\bBENCHMARK_TOLERANCE_PCT\b'
+    retired_by: 'Spike 0.6c.2 internal-consistency gates (2026-05-13) — replaced by CONVERGENCE_TOLERANCE_PCT (2%) + SYMMETRY_TOLERANCE_PCT (5%)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+      - 'pre-internal-consistency'
+
+  - pattern: '\bBenchmarkComparison\b'
+    retired_by: 'Spike 0.6c.2 internal-consistency gates (2026-05-13) — replaced by ConvergenceCheck + SymmetryCheck dataclasses'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
+  - pattern: '\bcompare_cycle_to_reference\b'
+    retired_by: 'Spike 0.6c.2 internal-consistency gates (2026-05-13) — replaced by check_convergence + check_symmetry'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
+  - pattern: '\ball_metrics_within_15pct\b'
+    retired_by: 'Spike 0.6c.2 internal-consistency gates (2026-05-13) — BenchmarkResult fields are now convergence_passed + symmetry_passed'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
 # ─────────────────────────────────────────────────────────────────────
 # Maintenance policy (Round 9 lock):
 # When a new review round retires an architectural pattern:
