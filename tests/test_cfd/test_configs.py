@@ -6,27 +6,29 @@ is checked for key invariants — MACH value, FREESTREAM_OPTION, C11 omega
 sign — rather than full string equality (which would brittle-break on
 formatting tweaks).
 """
+
 from __future__ import annotations
 
 import re
 
 import pytest
 
-from fanopt import cfd as fanopt_cfd  # for monkeypatch.setattr(cfg, ...)
 from fanopt.cfd import configs as cfg
 from fanopt.cfd.configs import (
     CFD_TEMPLATES_DIR,
     CROSS_TIER,
+    FREESTREAM_DIRECTION_2D_PRODUCTIVE,
+    FREESTREAM_DIRECTION_2D_RETURN,
     MACH_STEADY,
     MACH_UNSTEADY,
     REYNOLDS_NUMBER_GLOBAL,
     TIER_SPECIFIC,
     TemplateRenderError,
     render_benchmark_cfg,
+    render_slice_steady_cfg,
     render_steady_cfg,
     render_unsteady_cfg,
 )
-
 
 # ---- cross-tier / tier-specific separation (HIGH-12 lock) -----------------
 
@@ -177,9 +179,7 @@ def test_unsteady_renders_reynolds_global() -> None:
 def test_unsteady_rejects_positive_y_omega() -> None:
     """C11 sign lock — operator override that flips the sign must fail."""
     with pytest.raises(TemplateRenderError, match="C11"):
-        render_unsteady_cfg(
-            mesh_filename="x.su2", pitching_omega_y=+12.5664
-        )
+        render_unsteady_cfg(mesh_filename="x.su2", pitching_omega_y=+12.5664)
 
 
 def test_unsteady_allows_zero_omega_for_benchmark() -> None:
@@ -191,8 +191,10 @@ def test_unsteady_allows_zero_omega_for_benchmark() -> None:
 def test_unsteady_n_cycles_propagates() -> None:
     out = render_unsteady_cfg(mesh_filename="x.su2", n_cycles=8)
     m = re.search(r"^TIME_ITER=\s*(\d+)", out, re.MULTILINE)
+    assert m is not None
     assert int(m.group(1)) == 1600
     mt = re.search(r"^MAX_TIME=\s*([\d.eE+-]+)", out, re.MULTILINE)
+    assert mt is not None
     assert float(mt.group(1)) == pytest.approx(4.0, rel=1e-6)
 
 
@@ -305,6 +307,91 @@ def test_benchmark_marker_airfoil_propagates() -> None:
     assert "MARKER_FAR= ( MY_FARFIELD )" in out
 
 
+# ---- render_slice_steady (Tier -1, 2D mid-radius slice) -------------------
+
+
+def test_slice_steady_renders_mach_0_0064() -> None:
+    """Tier -1 uses the same MACH lock as Tier 0 (steady tiers, V_tip-based)."""
+    out = render_slice_steady_cfg(mesh_filename="slice.su2")
+    assert "MACH_NUMBER= 0.0064" in out
+
+
+def test_slice_steady_default_freestream_is_productive_2d() -> None:
+    """Default freestream is 2D PRODUCTIVE = (-1, 0) per C2 sign convention."""
+    out = render_slice_steady_cfg(mesh_filename="slice.su2")
+    assert "FREESTREAM_DIRECTION= -1.0 0.0" in out
+
+
+def test_slice_steady_return_stroke() -> None:
+    """RETURN-stroke half of the two-eval delta: 2D = (+1, 0)."""
+    out = render_slice_steady_cfg(
+        mesh_filename="slice.su2",
+        freestream_direction=FREESTREAM_DIRECTION_2D_RETURN,
+    )
+    assert "FREESTREAM_DIRECTION= 1.0 0.0" in out
+
+
+def test_slice_steady_time_domain_no() -> None:
+    """Tier -1 is steady — no time integration."""
+    out = render_slice_steady_cfg(mesh_filename="slice.su2")
+    assert "TIME_DOMAIN= NO" in out
+
+
+def test_slice_steady_uses_2d_freestream_vector() -> None:
+    """2D slice cfg uses a 2-component FREESTREAM_DIRECTION (no z)."""
+    out = render_slice_steady_cfg(mesh_filename="slice.su2")
+    match = re.search(r"^FREESTREAM_DIRECTION=\s*(.+)$", out, re.MULTILINE)
+    assert match is not None, "FREESTREAM_DIRECTION directive not found"
+    components = match.group(1).strip().split()
+    assert (
+        len(components) == 2
+    ), f"Tier -1 slice cfg must emit a 2-vector freestream, got {components}"
+
+
+def test_slice_steady_rejects_3d_freestream() -> None:
+    """A 3-vector freestream is a category error for the 2D slice cfg."""
+    with pytest.raises(TemplateRenderError, match="2-vector"):
+        render_slice_steady_cfg(
+            mesh_filename="slice.su2",
+            freestream_direction=(1.0, 0.0, 0.0),  # type: ignore[arg-type]
+        )
+
+
+def test_slice_steady_marker_propagation() -> None:
+    out = render_slice_steady_cfg(
+        mesh_filename="slice.su2",
+        marker_fan="BLADE_2D",
+        marker_farfield="FAR_2D",
+    )
+    assert "MARKER_HEATFLUX= ( BLADE_2D, 0.0 )" in out
+    assert "MARKER_FAR= ( FAR_2D )" in out
+
+
+def test_slice_steady_reynolds_default_matches_global() -> None:
+    """Default Reynolds is the §3.2.3 global Re."""
+    out = render_slice_steady_cfg(mesh_filename="slice.su2")
+    assert f"REYNOLDS_NUMBER= {REYNOLDS_NUMBER_GLOBAL}" in out
+
+
+def test_slice_steady_2d_freestream_constants_are_unit_vectors() -> None:
+    """Sanity-check the locked 2D direction constants."""
+    pr = FREESTREAM_DIRECTION_2D_PRODUCTIVE
+    rt = FREESTREAM_DIRECTION_2D_RETURN
+    assert len(pr) == 2 and len(rt) == 2
+    assert pr[0] ** 2 + pr[1] ** 2 == 1.0
+    assert rt[0] ** 2 + rt[1] ** 2 == 1.0
+    # PRODUCTIVE and RETURN are opposite-direction.
+    assert pr[0] == -rt[0]
+    assert pr[1] == -rt[1]
+
+
+def test_slice_steady_template_not_found(monkeypatch, tmp_path) -> None:
+    """Missing template raises TemplateRenderError."""
+    monkeypatch.setattr(cfg, "CFD_TEMPLATES_DIR", tmp_path)
+    with pytest.raises(TemplateRenderError, match="template not found"):
+        render_slice_steady_cfg(mesh_filename="slice.su2")
+
+
 # ---- templates exist ------------------------------------------------------
 
 
@@ -314,3 +401,7 @@ def test_unsteady_template_file_exists() -> None:
 
 def test_benchmark_template_file_exists() -> None:
     assert (CFD_TEMPLATES_DIR / "oscillating_airfoil_benchmark.cfg.j2").exists()
+
+
+def test_slice_steady_template_file_exists() -> None:
+    assert (CFD_TEMPLATES_DIR / "slice_steady.cfg.j2").exists()

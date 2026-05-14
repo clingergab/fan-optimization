@@ -1,11 +1,82 @@
-% SU2 config template — Tier -1 (2D steady at mid-radius slice)
-% Renderer: src/fanopt/cfd/configs.py
-% Source-of-truth: docs/plan_R11.md §9.4.1 CROSS_TIER + TIER_SPECIFIC[-1]
+% SU2 config template — Tier -1 (2D steady at mid-radius slice).
+% Renderer: src/fanopt/cfd/configs.py — render_slice_steady_cfg().
+% Source-of-truth: docs/plan_R11.md §9.4.1 CROSS_TIER + TIER_SPECIFIC[-1].
 %
-% Phase 0 scaffold. Real .cfg.j2 content (key/value pairs + Jinja2 substitutions
-% for the locked constants in §9.4.1 CROSS_TIER / TIER_SPECIFIC dicts) lands
-% when Phase 0 step 0.0 + Spike 0.6c (.1 / .2) complete.
+% Tier -1 is the cheapest CFD tier — a 2D cross-section at r = r_mid (mid-
+% radius slice) used by the Phase 4 architecture bandit for cheap promotion
+% screening. Same locked numerics class as Tier 0 (MACH = 0.0064 per the
+% Round-9 HIGH-12 lock putting MACH in TIER_SPECIFIC, NOT CROSS_TIER).
 %
-% Locks the rendered .cfg must satisfy (tested by tests/test_cfd/):
-%   - test_unsteady_freestream_consistency.py (HIGH-12 Round-9)
-%   - test_su2_config_generation.py (§9.4.1 §12 CI gate)
+% Local slice frame: (x, y) where x = chord-aligned (local tangential
+% direction at r_mid) and y = panel-thickness-normal. The 3D C2 sign
+% convention (FREESTREAM_PRODUCTIVE = (0, 0, -1) in the blade frame)
+% projects to:
+%   - PRODUCTIVE: 2D freestream_direction = (-1, 0) (chord-wise wind)
+%   - RETURN:     2D freestream_direction = (+1, 0)
+% (Operator can override per study.)
+%
+% Operator-supplied template variables (rendered via fanopt.cfd.configs):
+%   {{ mesh_filename }}            - .su2 mesh path (2D slice)
+%   {{ marker_fan }}               - physical-group name(s) on blade surfaces
+%   {{ marker_farfield }}          - physical-group name on outer boundary
+%   {{ reynolds_number }}          - Re_local at r_mid per §3.2.3
+%   {{ reynolds_length }}          - local chord at r_mid (m)
+%   {{ mach_number }}              - 0.0064 (V_tip-based, steady-tier lock)
+%   freestream_direction_{x,y}     - (-1, 0) PRODUCTIVE / (+1, 0) RETURN
+%   {{ cfl_number }}               - 5.0 default
+%
+% --------------------------------------------------------------------------
+
+SOLVER= NAVIER_STOKES
+KIND_TURB_MODEL= NONE
+MATH_PROBLEM= DIRECT
+RESTART_SOL= NO
+
+% --- steady freestream (V_tip-based at r_mid) ---
+MACH_NUMBER= {{ mach_number }}
+FREESTREAM_OPTION= REYNOLDS
+FREESTREAM_TEMPERATURE= 300.0
+FREESTREAM_PRESSURE= 101325.0
+REYNOLDS_NUMBER= {{ reynolds_number }}
+REYNOLDS_LENGTH= {{ reynolds_length }}
+
+% --- C2 sign-locked freestream direction (2D slice frame) ---
+% PRODUCTIVE stroke: (-1, 0) — air flows -x past the stationary slice that's
+% actually being swept in +x toward the user (locally tangential at r_mid).
+% RETURN stroke: (+1, 0).
+FREESTREAM_DIRECTION= {{ freestream_direction_x }} {{ freestream_direction_y }}
+
+% --- steady — no time integration ---
+TIME_DOMAIN= NO
+
+% --- boundary conditions ---
+MARKER_HEATFLUX= ( {{ marker_fan }}, 0.0 )
+MARKER_FAR= ( {{ marker_farfield }} )
+MARKER_MONITORING= ( {{ marker_fan }} )
+MARKER_PLOTTING= ( {{ marker_fan }} )
+
+% --- output ---
+MESH_FILENAME= {{ mesh_filename }}
+MESH_FORMAT= SU2
+TABULAR_FORMAT= CSV
+CONV_FILENAME= history
+SURFACE_FILENAME= surface_flow
+VOLUME_FILENAME= flow
+OUTPUT_FILES= ( RESTART, PARAVIEW, SURFACE_CSV )
+HISTORY_OUTPUT= ( ITER, RMS_RES, AERO_COEFF, FLOW_COEFF )
+
+% --- numerics ---
+NUM_METHOD_GRAD= WEIGHTED_LEAST_SQUARES
+CFL_NUMBER= {{ cfl_number | default(5.0) }}
+CONV_NUM_METHOD_FLOW= ROE
+MUSCL_FLOW= YES
+SLOPE_LIMITER_FLOW= VENKATAKRISHNAN
+LINEAR_SOLVER= FGMRES
+LINEAR_SOLVER_PREC= LU_SGS
+LINEAR_SOLVER_ERROR= 1E-6
+LINEAR_SOLVER_ITER= 25
+
+% --- convergence ---
+ITER= 500
+CONV_RESIDUAL_MINVAL= -7
+CONV_STARTITER= 10

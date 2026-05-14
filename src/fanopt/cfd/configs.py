@@ -7,31 +7,29 @@ unsteady tier per the Round-9 HIGH-12 lock), so the cross-tier dict does
 NOT carry MACH.
 
 Public API:
-    render_unsteady_cfg(params)  -> str  # Tier 1 (3D unsteady)
-    render_steady_cfg(params)    -> str  # Tier 0 (3D steady)
-    render_slice_steady_cfg(params) -> str  # Tier -1 (2D slice)
-    render_benchmark_cfg(params) -> str  # Spike 0.6c.2 NACA 0012
+    render_unsteady_cfg(params)     -> str  # Tier 1 (3D unsteady, MACH=1e-9)
+    render_steady_cfg(params)       -> str  # Tier 0 (3D steady, MACH=0.0064)
+    render_slice_steady_cfg(params) -> str  # Tier -1 (2D mid-radius slice)
+    render_benchmark_cfg(params)    -> str  # Spike 0.6c.2 NACA 0012
 
-    CROSS_TIER (dict)   - keys shared across all tiers
+    CROSS_TIER (dict)    - keys shared across all tiers
     TIER_SPECIFIC (dict) - {tier: {key: locked_value}} — MACH belongs here
 
 Spec reference: docs/plan_R11.md §9.4.1.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import jinja2
 
 from fanopt.geometry.schema import (
     F_WAVE_HZ,
     L_WRIST_TO_TIP_M,
-    OMEGA_SHM_RAD_PER_S,
     PITCHING_AMPL_VEC,
     PITCHING_OMEGA_VEC,
-    THETA_MAX_RAD,
 )
 
 __all__ = [
@@ -41,8 +39,11 @@ __all__ = [
     "MACH_STEADY",
     "REYNOLDS_NUMBER_GLOBAL",
     "CFD_TEMPLATES_DIR",
+    "FREESTREAM_DIRECTION_2D_PRODUCTIVE",
+    "FREESTREAM_DIRECTION_2D_RETURN",
     "render_unsteady_cfg",
     "render_steady_cfg",
+    "render_slice_steady_cfg",
     "render_benchmark_cfg",
     "TemplateRenderError",
 ]
@@ -97,9 +98,15 @@ TIER_SPECIFIC: dict[int, dict[str, Any]] = {
 """Tier-specific locks. MACH lives here, NOT in CROSS_TIER."""
 
 
-CFD_TEMPLATES_DIR: Path = (
-    Path(__file__).resolve().parents[3] / "configs" / "su2"
-)
+CFD_TEMPLATES_DIR: Path = Path(__file__).resolve().parents[3] / "configs" / "su2"
+
+
+# 2D slice-frame C2 sign-locked freestream directions. The 3D
+# FREESTREAM_PRODUCTIVE = (0, 0, -1) lock (blade frame) projects to the
+# slice's chord-aligned 2D frame as (-1, 0): air flows -x past the
+# stationary slice that is, in reality, being swept +x toward the user.
+FREESTREAM_DIRECTION_2D_PRODUCTIVE: tuple[float, float] = (-1.0, 0.0)
+FREESTREAM_DIRECTION_2D_RETURN: tuple[float, float] = (+1.0, 0.0)
 
 
 class TemplateRenderError(Exception):
@@ -234,6 +241,56 @@ def render_steady_cfg(
             freestream_direction_x=freestream_direction[0],
             freestream_direction_y=freestream_direction[1],
             freestream_direction_z=freestream_direction[2],
+            cfl_number=cfl_number,
+            mach_number=MACH_STEADY,
+        )
+    except jinja2.UndefinedError as e:
+        raise TemplateRenderError(f"missing template variable: {e}") from e
+
+
+def render_slice_steady_cfg(
+    *,
+    mesh_filename: str,
+    marker_fan: str = "FAN",
+    marker_farfield: str = "FARFIELD",
+    reynolds_number: float = REYNOLDS_NUMBER_GLOBAL,
+    reynolds_length: float = L_WRIST_TO_TIP_M,
+    freestream_direction: tuple[float, float] = FREESTREAM_DIRECTION_2D_PRODUCTIVE,
+    cfl_number: float = 5.0,
+) -> str:
+    """Render `slice_steady.cfg.j2` (Tier -1 — 2D mid-radius slice).
+
+    Tier -1 is the Phase 4 architecture-bandit screening tier. The 2D
+    cross-section at r = r_mid uses the same MACH = 0.0064 lock as
+    Tier 0 (steady tiers, per the Round-9 HIGH-12 tier-specific MACH
+    placement — MACH lives in TIER_SPECIFIC[-1] and TIER_SPECIFIC[0],
+    NOT in CROSS_TIER).
+
+    `freestream_direction` is a 2D vector in the slice's chord-aligned
+    frame. Defaults to ``FREESTREAM_DIRECTION_2D_PRODUCTIVE = (-1, 0)``
+    (C2 productive-stroke convention). Pass
+    ``FREESTREAM_DIRECTION_2D_RETURN = (+1, 0)`` for the return-stroke
+    half of the two-eval delta.
+    """
+    if len(freestream_direction) != 2:
+        raise TemplateRenderError(
+            f"freestream_direction must be a 2-vector for the 2D slice cfg; "
+            f"got {len(freestream_direction)}-vector {freestream_direction}"
+        )
+    env = _env()
+    try:
+        tpl = env.get_template("slice_steady.cfg.j2")
+    except jinja2.TemplateNotFound as e:
+        raise TemplateRenderError(f"template not found: {e}") from e
+    try:
+        return tpl.render(
+            mesh_filename=mesh_filename,
+            marker_fan=marker_fan,
+            marker_farfield=marker_farfield,
+            reynolds_number=reynolds_number,
+            reynolds_length=reynolds_length,
+            freestream_direction_x=freestream_direction[0],
+            freestream_direction_y=freestream_direction[1],
             cfl_number=cfl_number,
             mach_number=MACH_STEADY,
         )
