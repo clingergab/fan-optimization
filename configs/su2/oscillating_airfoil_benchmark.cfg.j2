@@ -31,12 +31,15 @@
 % Tier-1 lock invariants this template MUST satisfy (same gate as the
 % production Tier-1 cfg, enforced by tests/test_cfd/test_unsteady_freestream_consistency.py):
 %   1. MACH_NUMBER = 1e-9                          (Round-9 HIGH-12 / C12)
-%   2. FREESTREAM_OPTION = FREESTREAM_VELOCITY     (primary path)
-%      OR REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE (fallback path)
-%   3. |FREESTREAM_VELOCITY| < 0.01 · V_tip_equivalent (near-zero ambient)
-%   4. LOW_MACH_PREC = YES                         (compressible low-Mach prec)
-%   5. TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER (5-cycle dual-time-stepping)
-%   6. GRID_MOVEMENT = RIGID_MOTION                (body via pitching about quarter-chord)
+%   2. REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE  (SU2 v8.0.1 fallback path)
+%   3. LOW_MACH_PREC = YES                         (compressible low-Mach prec)
+%   4. TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER (5-cycle dual-time-stepping)
+%   5. GRID_MOVEMENT = RIGID_MOTION                (body via pitching about quarter-chord)
+%
+% Note: SU2 v8.0.1 rejects `FREESTREAM_OPTION = FREESTREAM_VELOCITY` at
+% parse time. This template uses the equivalent fallback path
+% (compressible-zero-flow via REF_DIMENSIONALIZATION + reference state)
+% — same numerics as the Tier-1 production cfg fan3d_unsteady.cfg.j2.
 %
 % --------------------------------------------------------------------------
 
@@ -45,10 +48,9 @@ KIND_TURB_MODEL= NONE
 MATH_PROBLEM= DIRECT
 RESTART_SOL= NO
 
-% --- HIGH-12 / C12 unsteady freestream lock (mirrors the Tier-1 production cfg) ---
+% --- Round-9 HIGH-12 / C12 unsteady freestream lock (SU2 v8.0.1 fallback) ---
 MACH_NUMBER= 1e-9
-FREESTREAM_OPTION= FREESTREAM_VELOCITY
-FREESTREAM_VELOCITY= {{ freestream_velocity_x | default(0.0) }} 0.0 {{ freestream_velocity_z | default(0.001) }}
+REF_DIMENSIONALIZATION= FREESTREAM_PRESS_EQ_ONE
 FREESTREAM_TEMPERATURE= 300.0
 FREESTREAM_PRESSURE= 101325.0
 

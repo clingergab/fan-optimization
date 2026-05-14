@@ -44,6 +44,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+from fanopt.cfd.configs import render_unsteady_cfg
 from fanopt.cfd.spike_0_6c import (
     MACH_UNSTEADY_LOCK,
     Tier1CfgSanityResult,
@@ -62,13 +63,13 @@ DEFAULT_RESULT_JSON = DEFAULT_OUTPUT_DIR / "sub_1_result.json"
 def _render_tier1_cfg(template_path: Path) -> str:
     """Render the Tier-1 cfg via the production renderer.
 
-    Production path: ``from fanopt.cfd.configs import render_unsteady_cfg``.
-    This is now the canonical path — the renderer is wired up and ships
-    with the same HIGH-12 / C11 locks the gate enforces. Use a probe-mesh
-    placeholder for the mesh filename since 0.6c.1 is a parse-only check.
+    Use a probe-mesh placeholder for the mesh filename since 0.6c.1 is a
+    parse-only check. `template_path` is currently informational — the
+    renderer reads the canonical template under configs/su2/; the
+    parameter is kept so the CLI can route to alternate templates in
+    future runs.
     """
-    from fanopt.cfd.configs import render_unsteady_cfg
-
+    del template_path  # informational only; renderer reads canonical template
     return render_unsteady_cfg(
         mesh_filename="probe.su2",
         marker_fan="FAN",

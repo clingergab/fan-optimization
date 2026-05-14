@@ -22,6 +22,7 @@ import pytest
 import run_spike_0_6c as agg
 import run_spike_0_6c_1 as sub1
 import run_spike_0_6c_2 as sub2
+from fanopt.cfd.spike_0_6c import NACA0012_REFERENCE
 
 
 # ---- fixtures -------------------------------------------------------------
@@ -34,8 +35,7 @@ def _measured_csv(path: Path, *, scale: float = 1.0) -> Path:
     scaled by ``scale`` from the shipped NACA0012_REFERENCE — `scale=1.0`
     PASSes; `scale=1.20` FAILs the c_l_max metric by +20%.
     """
-    from fanopt.cfd.spike_0_6c import NACA0012_REFERENCE as R
-
+    R = NACA0012_REFERENCE
     rows = [
         "cycle_index,c_l_max,c_l_min,c_d_mean,c_l_hysteresis_area",
         f"0,99.0,-99.0,9.9,99.0",
@@ -49,8 +49,7 @@ def _measured_csv(path: Path, *, scale: float = 1.0) -> Path:
 
 
 def _reference_json(path: Path) -> Path:
-    from fanopt.cfd.spike_0_6c import NACA0012_REFERENCE as R
-
+    R = NACA0012_REFERENCE
     path.write_text(json.dumps(dict(R), indent=2))
     return path
 
@@ -61,11 +60,13 @@ def _reference_json(path: Path) -> Path:
 def test_sub_1_cfg_only_fallback_writes_fail_marker(tmp_path: Path) -> None:
     """Without SU2 on PATH the runner takes the cfg-only fallback path.
 
-    The cfg parser sees MACH = 1e-9 + FREESTREAM_OPTION = FREESTREAM_VELOCITY
-    in the spec's canonical block, but with no SU2 log the outer-step gate
-    cannot clear — so ``passed`` is False and the runner exits 1 with a
-    `sub_1.FAIL` marker. The result JSON still records all the cfg-level
-    fields (lock parts that DID pass).
+    The cfg parser sees MACH = 1e-9 + REF_DIMENSIONALIZATION =
+    FREESTREAM_PRESS_EQ_ONE (the Round-9 HIGH-12 fallback path the
+    template ships, since SU2 v8.0.1 rejects the primary
+    FREESTREAM_OPTION = FREESTREAM_VELOCITY directive). With no SU2 log
+    the outer-step gate cannot clear — so ``passed`` is False and the
+    runner exits 1 with a `sub_1.FAIL` marker. The result JSON still
+    records all the cfg-level fields (lock parts that DID pass).
     """
     result_json = tmp_path / "sub_1_result.json"
     marker_dir = tmp_path
@@ -89,7 +90,10 @@ def test_sub_1_cfg_only_fallback_writes_fail_marker(tmp_path: Path) -> None:
     # The cfg's lock invariants should parse OK regardless of SU2 install.
     assert r["parsed_ok"] is True
     assert r["mach_value"] == 1e-9
-    assert r["freestream_option"] == "FREESTREAM_VELOCITY"
+    # Round-9 HIGH-12 fallback path: REF_DIMENSIONALIZATION pins the
+    # freestream state; FREESTREAM_OPTION is intentionally absent.
+    assert r["freestream_option"] == ""
+    assert r["ref_dimensionalization"] == "FREESTREAM_PRESS_EQ_ONE"
     # And the marker file matches the exit code.
     expected_marker = "sub_1.PASS" if rc == 0 else "sub_1.FAIL"
     assert (marker_dir / expected_marker).exists()
@@ -255,8 +259,7 @@ def _write_sub_1_json(path: Path, *, passed: bool) -> Path:
 
 
 def _write_sub_2_json(path: Path, *, passed: bool) -> Path:
-    from fanopt.cfd.spike_0_6c import NACA0012_REFERENCE as R
-
+    R = NACA0012_REFERENCE
     measured_scale = 1.0 if passed else 1.20
     cycles = [
         {

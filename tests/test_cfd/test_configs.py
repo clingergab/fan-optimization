@@ -94,9 +94,22 @@ def test_unsteady_renders_mach_1e_minus_9(unsteady_render: str) -> None:
     assert float(m.group(1)) == 1e-9
 
 
-def test_unsteady_renders_freestream_velocity_option(unsteady_render: str) -> None:
-    """HIGH-12 primary path — FREESTREAM_OPTION = FREESTREAM_VELOCITY."""
-    assert "FREESTREAM_OPTION= FREESTREAM_VELOCITY" in unsteady_render
+def test_unsteady_renders_ref_dimensionalization_fallback(unsteady_render: str) -> None:
+    """Round-9 HIGH-12 fallback path — REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE.
+
+    The primary `FREESTREAM_OPTION = FREESTREAM_VELOCITY` path is unusable
+    on SU2 v8.0.1 (parser rejects the directive), so the template ships
+    the fallback path. The plan accepts either; this test pins the
+    template to the working one.
+    """
+    assert "REF_DIMENSIONALIZATION= FREESTREAM_PRESS_EQ_ONE" in unsteady_render
+    # The primary directive line must NOT appear as an SU2 directive
+    # (would cause SU2 v8.0.1 parse error). Mentions in % comments are
+    # fine — strip them before checking.
+    directives_only = "\n".join(
+        line for line in unsteady_render.splitlines() if not line.lstrip().startswith("%")
+    )
+    assert re.search(r"^\s*FREESTREAM_OPTION\s*=", directives_only, re.MULTILINE) is None
 
 
 def test_unsteady_renders_low_mach_prec_yes(unsteady_render: str) -> None:
@@ -269,7 +282,7 @@ def test_benchmark_renders_naca_0012_style() -> None:
         time_iter=5000,
     )
     assert "MACH_NUMBER= 1e-9" in out
-    assert "FREESTREAM_OPTION= FREESTREAM_VELOCITY" in out
+    assert "REF_DIMENSIONALIZATION= FREESTREAM_PRESS_EQ_ONE" in out
     assert "DUAL_TIME_STEPPING-2ND_ORDER" in out
     assert "RIGID_MOTION" in out
 

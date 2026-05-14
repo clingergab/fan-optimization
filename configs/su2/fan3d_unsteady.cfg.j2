@@ -21,16 +21,25 @@
 %   {{ max_time }}             - 5 * T = 2.5 s (5 full cycles)
 %   {{ time_iter }}            - 5 * 200 = 1000 outer time steps
 %
-% Tier-1 lock invariants (HIGH-12 Round-9 / C12 — enforced by
+% Tier-1 lock invariants (Round-9 HIGH-12 / C12 — enforced by
 % tests/test_cfd/test_unsteady_freestream_consistency.py):
 %   1. MACH_NUMBER = 1e-9                          (NOT 0.0064 — that's steady)
-%   2. FREESTREAM_OPTION = FREESTREAM_VELOCITY     (primary path)
-%      OR REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE (fallback path)
-%   3. |FREESTREAM_VELOCITY| < 0.01 · V_tip (near-zero ambient)
-%   4. LOW_MACH_PREC = YES                         (compressible low-Mach prec)
-%   5. TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER
-%   6. GRID_MOVEMENT = RIGID_MOTION                (fan rotates about wrist axis)
-%   7. PITCHING_OMEGA y-component < 0              (C11 right-hand-rule lock)
+%   2. FREESTREAM_OPTION = FREESTREAM_VELOCITY     (primary path, deprecated)
+%      OR REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE (fallback — used)
+%   3. LOW_MACH_PREC = YES                         (compressible low-Mach prec)
+%   4. TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER
+%   5. GRID_MOVEMENT = RIGID_MOTION                (fan rotates about wrist axis)
+%   6. PITCHING_OMEGA y-component < 0              (C11 right-hand-rule lock)
+%
+% Note on the primary-vs-fallback choice: SU2 v8.0.1 rejects the
+% `FREESTREAM_OPTION = FREESTREAM_VELOCITY` directive at parse time
+% ("invalid option value FREESTREAM_VELOCITY. Did you mean DENSITY_FS,
+% TEMPERATURE_FS?"), verified empirically by Spike 0.6c.1 on Colab Pro
+% CPU. The template therefore ships the fallback path
+% (`REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE` + reference state
+% via `FREESTREAM_TEMPERATURE` / `FREESTREAM_PRESSURE`) which is
+% equivalent for compressible-zero-flow numerics. If a future SU2 build
+% restores the primary syntax, flip back via the renderer.
 %
 % --------------------------------------------------------------------------
 
@@ -39,10 +48,9 @@ KIND_TURB_MODEL= NONE
 MATH_PROBLEM= DIRECT
 RESTART_SOL= NO
 
-% --- HIGH-12 / C12 unsteady freestream lock ---
+% --- Round-9 HIGH-12 / C12 unsteady freestream lock (SU2 v8.0.1 fallback) ---
 MACH_NUMBER= 1e-9
-FREESTREAM_OPTION= FREESTREAM_VELOCITY
-FREESTREAM_VELOCITY= {{ freestream_velocity_x | default(0.0) }} {{ freestream_velocity_y | default(0.0) }} {{ freestream_velocity_z | default(0.001) }}
+REF_DIMENSIONALIZATION= FREESTREAM_PRESS_EQ_ONE
 FREESTREAM_TEMPERATURE= 300.0
 FREESTREAM_PRESSURE= 101325.0
 

@@ -32,7 +32,6 @@ from fanopt.geometry.schema import (
     PITCHING_AMPL_VEC,
     PITCHING_OMEGA_VEC,
     THETA_MAX_RAD,
-    V_TIP_M_PER_S,
 )
 
 __all__ = [
@@ -148,7 +147,6 @@ def render_unsteady_cfg(
     motion_origin_z: float = 0.0,
     n_cycles: int = 5,
     inner_iter: int = 100,
-    freestream_velocity_z: float | None = None,
     cfl_number: float = 1.0,
 ) -> str:
     """Render `fan3d_unsteady.cfg.j2` with the locked Tier-1 numerics.
@@ -157,15 +155,16 @@ def render_unsteady_cfg(
     lock (negative-y omega, positive-y amplitude). Overriding is allowed
     only for benchmarks; production runs MUST use the default.
 
-    Default `freestream_velocity_z` is `V_TIP_M_PER_S * 1e-4` (well below
-    the 1% V_tip ambient-noise threshold the Round-9 HIGH-12 lock allows).
+    The template ships the Round-9 HIGH-12 fallback path
+    (`REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`) because SU2 v8.0.1
+    rejects the primary path (`FREESTREAM_OPTION = FREESTREAM_VELOCITY`)
+    at parse time. The two paths are numerically equivalent for
+    compressible-zero-flow runs.
     """
     if pitching_omega_y is None:
         pitching_omega_y = PITCHING_OMEGA_VEC[1]
     if pitching_ampl_y is None:
         pitching_ampl_y = PITCHING_AMPL_VEC[1]
-    if freestream_velocity_z is None:
-        freestream_velocity_z = V_TIP_M_PER_S * 1e-4
 
     # Defensive: enforce Round-9 HIGH-12 sign on production omega.
     # Operators benchmarking other reference cases can override but a
@@ -198,9 +197,6 @@ def render_unsteady_cfg(
             motion_origin_x=motion_origin_x,
             motion_origin_y=motion_origin_y,
             motion_origin_z=motion_origin_z,
-            freestream_velocity_x=0.0,
-            freestream_velocity_y=0.0,
-            freestream_velocity_z=freestream_velocity_z,
             cfl_number=cfl_number,
             **timestep_defaults,
         )
@@ -259,10 +255,14 @@ def render_benchmark_cfg(
     max_time: float,
     time_iter: int,
     inner_iter: int = 100,
-    freestream_velocity_z: float = 0.001,
     cfl_number: float = 1.0,
 ) -> str:
-    """Render the Spike 0.6c.2 NACA 0012 benchmark template."""
+    """Render the Spike 0.6c.2 NACA 0012 benchmark template.
+
+    Uses the same Round-9 HIGH-12 fallback freestream syntax as the
+    Tier-1 production cfg (REF_DIMENSIONALIZATION + reference state),
+    since SU2 v8.0.1 rejects the primary FREESTREAM_VELOCITY directive.
+    """
     env = _env()
     try:
         tpl = env.get_template("oscillating_airfoil_benchmark.cfg.j2")
@@ -282,8 +282,6 @@ def render_benchmark_cfg(
             max_time=max_time,
             time_iter=time_iter,
             inner_iter=inner_iter,
-            freestream_velocity_x=0.0,
-            freestream_velocity_z=freestream_velocity_z,
             cfl_number=cfl_number,
         )
     except jinja2.UndefinedError as e:
