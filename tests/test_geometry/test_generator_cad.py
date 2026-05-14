@@ -12,7 +12,7 @@ if importlib.util.find_spec("cadquery") is None:
 import cadquery as cq
 
 from fanopt.geometry.envelope import Layer1Params
-from fanopt.geometry.fields import Layer2Params
+from fanopt.geometry.fields import Layer2Params, LouverField
 from fanopt.geometry.generator import (
     BladeDesignParams,
     GenerationStatus,
@@ -107,3 +107,58 @@ def test_shape_honours_print_orientation_edge() -> None:
     _result, shape = generate_blade_cad(d_edge)
     bb = shape.val().BoundingBox()
     assert bb.zmin < 0.0
+
+
+def test_shape_unaffected_by_layer2_activation() -> None:
+    """**Documented limitation:** generate_blade_cad currently returns only
+    the Layer 1 envelope. Activating Layer 2 fields (which would carve
+    cutouts in the panel) does NOT change the returned shape — the
+    Layer 2 / 3 / 4 application is metadata-only at this scaffold tier.
+
+    This test pins the limitation so a future commit that adds real
+    Layer 2 application MUST update this test (the equality will break
+    when louver cuts actually remove material).
+    """
+    d_inactive = _canonical_design()
+    d_with_louver = BladeDesignParams(
+        layer1=d_inactive.layer1,
+        layer2=Layer2Params(
+            louver=LouverField(active=True, count=6, width_m=0.001),
+            texture=d_inactive.layer2.texture,
+            edge=d_inactive.layer2.edge,
+            noise=d_inactive.layer2.noise,
+            tpms=d_inactive.layer2.tpms,
+        ),
+        layer3=d_inactive.layer3,
+        layer4=d_inactive.layer4,
+    )
+    _r_inactive, shape_inactive = generate_blade_cad(d_inactive)
+    _r_active, shape_active = generate_blade_cad(d_with_louver)
+    # Layer 2 louver activation does NOT yet alter the geometry.
+    assert shape_inactive.val().Volume() == pytest.approx(shape_active.val().Volume(), rel=1e-12)
+
+
+def test_shape_unaffected_by_layer3_primitive() -> None:
+    """**Documented limitation:** same as above, for Layer 3."""
+    env = (0.050, 0.050, 0.005)
+    d_inactive = _canonical_design()
+    d_with_prim = BladeDesignParams(
+        layer1=d_inactive.layer1,
+        layer2=d_inactive.layer2,
+        layer3=Layer3Primitive(
+            present=True,
+            shape_type="ellipsoid",
+            polarity="subtract",
+            position_x_m=0.025,
+            position_y_m=0.025,
+            position_z_m=0.0025,
+            size_x_m=0.005,
+            size_y_m=0.005,
+            size_z_m=0.001,
+            local_envelope_xyz_m=env,
+        ),
+        layer4=d_inactive.layer4,
+    )
+    _r_inactive, shape_inactive = generate_blade_cad(d_inactive)
+    _r_present, shape_present = generate_blade_cad(d_with_prim)
+    assert shape_inactive.val().Volume() == pytest.approx(shape_present.val().Volume(), rel=1e-12)

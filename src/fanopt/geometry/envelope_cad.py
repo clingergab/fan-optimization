@@ -15,9 +15,21 @@ Construction (full Layer 1 — plan §6.2.1):
 - **Spanwise twist**: 2-3 spline knots at ``twist_knots_rad``, rotated about
   the x-axis per radial station.
 - **Fourier LE/TE modulation**: k=1,2,3 amplitudes perturb the LE
-  (``y < 0``) and TE (``y > 0``) edges by ``y_max(x) · (1 + Σ amp_k · sin(kπx/L))``.
-  Amplitudes are bounded to ±15 % by ``Layer1Params`` so the envelope stays
-  within ±15 % of mean.
+  (``y < 0``) and TE (``y > 0``) edges by
+  ``y_max(x) · (1 + Σ amp_k · sin(k π x / L + φ_k))``
+  with the plan-locked phase offsets ``φ = (0, π/3, 2π/3)`` for
+  ``k = (1, 2, 3)`` (plan §6.2.1 Layer 1 table: "phases fixed at 0, π/3,
+  2π/3"). Only the k=1 harmonic zeroes at the endpoints; k=2 and k=3
+  contribute non-zero modulation at the root and tip per the plan's
+  phase choice (this avoids constructive amplification of all three
+  harmonics at the same x). Amplitudes are bounded to ±15 % by
+  ``Layer1Params`` so the envelope stays within ±15 % of mean.
+
+- **LE / TE label convention**: ``LE`` (leading edge) is the ``y < 0``
+  panel edge; ``TE`` (trailing edge) is ``y > 0``. For a sweeping fan
+  blade the aerodynamic LE depends on stroke direction; this parameter
+  label is a fixed geometric convention so the BO can search the two
+  edges independently.
 - **Print-orientation switch**: ``flat`` (rib-flat default) uses a planar
   bottom face at ``z = 0`` with camber + thickness on the top face only
   (plano-convex per §0 row 47); ``edge`` / ``custom-angle`` uses a
@@ -31,7 +43,14 @@ Construction (full Layer 1 — plan §6.2.1):
 
 The cross-section at ``x = 0`` is degenerate (zero panel width) and is
 skipped; the loft starts at ``x = LOFT_START_EPS_M`` (1 mm in from the
-pivot) so the lofted solid has a well-defined volume.
+pivot) so the lofted solid has a well-defined volume. **Trade-off:** a
+1 mm initial offset keeps the boss region intact (boss centered at
+``PIVOT_CENTER_X_M = 8 mm``, radius ``PANEL_PIVOT_REGION_RADIUS_M =
+7 mm``, so the boss spans ``x ∈ [1 mm, 15 mm]`` — the loft start at
+1 mm is exactly at the inboard boss edge). A larger offset (e.g.,
+5 mm) would clip into the boss; a smaller offset would create a
+near-degenerate initial cross-section that strains CadQuery's loft
+tolerance.
 
 The returned shape is the **full envelope** (panel + rib region as one
 solid). The orchestrator subtracts the Phase 2 rib mask later
@@ -54,8 +73,15 @@ __all__ = [
     "N_RADIAL_STATIONS",
     "N_CHORD_SAMPLES",
     "LOFT_START_EPS_M",
+    "FOURIER_PHASES_RAD",
     "make_outer_envelope",
 ]
+
+
+FOURIER_PHASES_RAD: tuple[float, float, float] = (0.0, math.pi / 3.0, 2.0 * math.pi / 3.0)
+"""Plan §6.2.1 Layer 1 table: "phases fixed at 0, π/3, 2π/3" for k=1,2,3
+Fourier harmonics. Locked constant; exported so tests + downstream callers
+can pin the phase convention without re-deriving it."""
 
 
 N_RADIAL_STATIONS: int = 20
@@ -108,20 +134,24 @@ def _linear_spline(knots: tuple[float, ...], t: float) -> float:
 def _fourier_modulation(x: float, amplitudes: tuple[float, float, float]) -> float:
     """Edge-position modulation factor at radial position ``x``.
 
-    Returns ``1 + Σ_{k=1}^{3} amp_k · sin(k π x / L_BLADE_M)``. The sine
-    basis zeroes the modulation at ``x = 0`` and ``x = L_BLADE_M`` so the
-    envelope retains its full-pitch boundary at root + tip; only the
-    interior radial stations are perturbed.
+    Returns ``1 + Σ_{k=1}^{3} amp_k · sin(k π x / L_BLADE_M + φ_k)`` with
+    the plan-locked phase offsets ``φ = (0, π/3, 2π/3)`` per plan §6.2.1
+    Layer 1 table.
+
+    The k=1 harmonic (φ_1 = 0) zeroes at ``x = 0`` and ``x = L_BLADE_M``,
+    so the fundamental modulation is internal-only. The k=2 and k=3
+    harmonics have non-zero values at the endpoints by design — the
+    plan's phase choice ensures the three harmonics don't all peak at
+    the same ``x``, avoiding constructive amplification.
 
     Per ``FOURIER_AMPLITUDE_RELATIVE_MAX = 0.15`` each ``amp_k`` is
-    bounded to ±0.15, so the worst-case factor is in
-    ``[1 − 3·0.15, 1 + 3·0.15] = [0.55, 1.45]``. The schema's per-harmonic
-    cap keeps any one harmonic's contribution to ±15 % of mean; the sum
-    is bounded by the (rarely-realised) constructive-interference case.
+    bounded to ±0.15. The schema's per-harmonic cap keeps any one
+    harmonic's contribution to ±15 % of mean.
     """
     factor = 1.0
     for k, amp in enumerate(amplitudes, start=1):
-        factor += amp * math.sin(k * math.pi * x / L_BLADE_M)
+        phase = FOURIER_PHASES_RAD[k - 1]
+        factor += amp * math.sin(k * math.pi * x / L_BLADE_M + phase)
     return factor
 
 
