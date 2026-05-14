@@ -86,8 +86,18 @@ def build_naca0012_mesh(
         airfoil_tags = []
         for x, y in pts:
             airfoil_tags.append(gmsh.model.geo.addPoint(x, y, 0.0))
-        airfoil_curve = gmsh.model.geo.addSpline(airfoil_tags + [airfoil_tags[0]])
-        airfoil_loop = gmsh.model.geo.addCurveLoop([airfoil_curve])
+        # Connect with line segments rather than a single spline. A spline
+        # through cosine-spaced points self-intersects at the trailing edge
+        # (where upper and lower surfaces meet at a ~6° angle) and gmsh
+        # enters an infinite "split-and-retry" loop. Line segments can't
+        # self-intersect and the apparent curvature comes from the cosine
+        # point density, not from curve-type smoothness.
+        airfoil_lines = []
+        n_tags = len(airfoil_tags)
+        for i in range(n_tags):
+            j = (i + 1) % n_tags
+            airfoil_lines.append(gmsh.model.geo.addLine(airfoil_tags[i], airfoil_tags[j]))
+        airfoil_loop = gmsh.model.geo.addCurveLoop(airfoil_lines)
 
         cx, cy = 0.25 * chord, 0.0
         ff_center = gmsh.model.geo.addPoint(cx, cy, 0.0)
@@ -111,7 +121,7 @@ def build_naca0012_mesh(
 
         _stage("configuring distance-threshold size field for wall clustering...")
         dist_field = gmsh.model.mesh.field.add("Distance")
-        gmsh.model.mesh.field.setNumbers(dist_field, "CurvesList", [airfoil_curve])
+        gmsh.model.mesh.field.setNumbers(dist_field, "CurvesList", airfoil_lines)
         gmsh.model.mesh.field.setNumber(dist_field, "Sampling", 200)
 
         thresh_field = gmsh.model.mesh.field.add("Threshold")
@@ -122,7 +132,7 @@ def build_naca0012_mesh(
         gmsh.model.mesh.field.setNumber(thresh_field, "DistMax", ff_radius * 0.2)
         gmsh.model.mesh.field.setAsBackgroundMesh(thresh_field)
 
-        gmsh.model.addPhysicalGroup(1, [airfoil_curve], name="AIRFOIL")
+        gmsh.model.addPhysicalGroup(1, airfoil_lines, name="AIRFOIL")
         gmsh.model.addPhysicalGroup(1, ff_arcs, name="FARFIELD")
         gmsh.model.addPhysicalGroup(2, [surface], name="FLOW")
 
