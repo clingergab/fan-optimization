@@ -5,12 +5,14 @@ area calculation, and the end-to-end CLI on synthetic SU2 history files.
 """
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
 import pytest
 
 import parse_su2_history_to_cycles as cli
+import run_spike_0_6c_2 as sub2
 
 
 # ---- column detection ----------------------------------------------------
@@ -343,3 +345,102 @@ def test_omega_sign_does_not_matter(tmp_path: Path) -> None:
         ]
     )
     assert rc == 0
+
+
+# ---- SU2 v8-realistic format coverage -------------------------------------
+
+
+def test_read_history_handles_quoted_su2_v8_headers(tmp_path: Path) -> None:
+    """SU2 v8.0.1 emits CSV with double-quoted column names + value cells.
+
+    The parser strips outer quotes before column detection. Without this,
+    Cell 8's output (which IS this format) would fail with "no recognized
+    lift/drag columns".
+    """
+    p = tmp_path / "history.csv"
+    # Mirror SU2 v8's quoted-header + quoted-value emission style.
+    p.write_text(
+        '"Time_Iter","Inner_Iter","Cur_Time","CL","CD"\n'
+        '"0","0","0.0","0.0","0.05"\n'
+        '"1","0","0.001","0.5","0.05"\n'
+        '"2","0","0.002","1.0","0.05"\n'
+    )
+    rows, colmap = cli._read_history(p)
+    assert len(rows) == 3
+    assert colmap["cl"] == "CL"
+    assert colmap["cd"] == "CD"
+    assert colmap["time"] == "Cur_Time"
+    assert rows[2]["cl"] == pytest.approx(1.0)
+
+
+# ---- end-to-end pipeline: parse -> analyzer -> PASS ------------------------
+
+
+def test_pipeline_parse_then_analyzer_yields_pass(tmp_path: Path) -> None:
+    """End-to-end de-risk for the post-Cell-8 path.
+
+    Synthesise a SU2-realistic 5-cycle pitching history (cycle 0 = wild
+    initial transient, cycles 1-4 = symmetric well-converged sinusoidal
+    CL about zero), pipe it through ``parse_su2_history_to_cycles`` →
+    measured.csv → ``run_spike_0_6c_2 --measured`` → expect PASS marker.
+
+    A silent format mismatch between parser output and analyzer input
+    would be caught here without burning 6+ hours of Colab.
+    """
+    # Build a 1000-row history: 5 cycles × 200 outer-iters per cycle.
+    # Cycle 0: high-amplitude initial transient (will be discarded).
+    # Cycles 1-4: identical well-converged ±1.0 sinusoids.
+    rows = []
+    n_per_cycle = 200
+    for cyc in range(5):
+        for step in range(n_per_cycle):
+            i = cyc * n_per_cycle + step
+            phase = 2.0 * math.pi * step / n_per_cycle
+            if cyc == 0:
+                cl_val = 3.0 * math.sin(phase)       # transient — out of range
+                cd_val = 0.20
+            else:
+                cl_val = 0.700 * math.sin(phase)     # steady-state
+                cd_val = 0.060
+            rows.append([i, i * 1e-3, cl_val, cd_val])
+    history = _write_history(
+        tmp_path / "history.csv",
+        ["Time_Iter", "Cur_Time", "CL", "CD"],
+        rows,
+    )
+
+    # Parse -> measured.csv.
+    measured = tmp_path / "measured.csv"
+    rc = cli.main(
+        [
+            "--history", str(history),
+            "--n-cycles", "5",
+            "--omega-shm-rad-per-s", str(2.0 * math.pi / (n_per_cycle * 1e-3)),
+            "--out", str(measured),
+        ]
+    )
+    assert rc == 0, "parser stage failed"
+    assert measured.exists()
+
+    # Run the analyzer on the parser output.
+    result_json = tmp_path / "sub_2_result.json"
+    rc2 = sub2.main(
+        [
+            "--measured", str(measured),
+            "--k-reduced", "0.55",
+            "--reynolds", "40000",
+            "--result-json", str(result_json),
+            "--marker-dir", str(tmp_path),
+        ]
+    )
+    assert rc2 == 0, "analyzer stage failed"
+    assert (tmp_path / "sub_2.PASS").exists()
+    assert not (tmp_path / "sub_2.FAIL").exists()
+
+    # Confirm the cycle-0 transient was actually discarded (kept-cycle
+    # c_l_max should be ~0.7, not ~3.0).
+    r = json.loads(result_json.read_text())["result"]
+    by_name = {c["metric_name"]: c for c in r["convergence"]}
+    assert by_name["c_l_max"]["mean"] == pytest.approx(0.700, abs=0.05)
+    assert r["symmetry"]["c_l_max_mean"] == pytest.approx(0.700, abs=0.05)
+    assert r["symmetry"]["c_l_min_mean"] == pytest.approx(-0.700, abs=0.05)
