@@ -1,11 +1,73 @@
-% SU2 config template — Tier 0 (3D steady, full fan)
-% Renderer: src/fanopt/cfd/configs.py
-% Source-of-truth: docs/plan_R11.md §9.4.1 CROSS_TIER + TIER_SPECIFIC[0]
+% SU2 config template — Tier 0 (3D steady, full deployed fan).
+% Renderer: src/fanopt/cfd/configs.py — render_steady_cfg().
+% Source-of-truth: docs/plan_R11.md §9.4.1 CROSS_TIER + TIER_SPECIFIC[0].
 %
-% Phase 0 scaffold. Real .cfg.j2 content (key/value pairs + Jinja2 substitutions
-% for the locked constants in §9.4.1 CROSS_TIER / TIER_SPECIFIC dicts) lands
-% when Phase 0 step 0.0 + Spike 0.6c (.1 / .2) complete.
+% Steady tiers use V_tip as freestream (MACH = 0.0064). Used for:
+%   - Tier 0 architecture-bandit promotion (3D steady, ranking-only)
+%   - Two-eval delta proxy: PRODUCTIVE (-z) and RETURN (+z) per C2 lock
 %
-% Locks the rendered .cfg must satisfy (tested by tests/test_cfd/):
-%   - test_unsteady_freestream_consistency.py (HIGH-12 Round-9)
-%   - test_su2_config_generation.py (§9.4.1 §12 CI gate)
+% Operator-supplied template variables (rendered via fanopt.cfd.configs):
+%   {{ mesh_filename }}            - .su2 mesh path (3D deployed fan)
+%   {{ marker_fan }}               - physical-group name(s) on blade surfaces
+%   {{ marker_farfield }}          - physical-group name on outer boundary
+%   {{ reynolds_number }}          - Re_global = 37000 per §3.2.3
+%   {{ reynolds_length }}          - L_wrist_to_tip = 0.25 m
+%   {{ mach_number }}              - 0.0064 (V_tip = 2.20 m/s / 340 m/s)
+%   freestream_direction_{x,y,z}   - (0, 0, -1) PRODUCTIVE or (0, 0, +1) RETURN
+%   {{ cfl_number }}               - 5.0 default
+%
+% --------------------------------------------------------------------------
+
+SOLVER= NAVIER_STOKES
+KIND_TURB_MODEL= NONE
+MATH_PROBLEM= DIRECT
+RESTART_SOL= NO
+
+% --- steady freestream (V_tip-based) ---
+MACH_NUMBER= {{ mach_number }}
+FREESTREAM_OPTION= REYNOLDS
+FREESTREAM_TEMPERATURE= 300.0
+FREESTREAM_PRESSURE= 101325.0
+REYNOLDS_NUMBER= {{ reynolds_number }}
+REYNOLDS_LENGTH= {{ reynolds_length }}
+
+% --- C2 sign-locked freestream direction ---
+% PRODUCTIVE stroke: (0, 0, -1) — air flows -z past a stationary fan that's
+% actually being swept in +z toward the user.
+% RETURN stroke: (0, 0, +1).
+FREESTREAM_DIRECTION= {{ freestream_direction_x }} {{ freestream_direction_y }} {{ freestream_direction_z }}
+
+% --- steady — no time integration ---
+TIME_DOMAIN= NO
+
+% --- boundary conditions ---
+MARKER_HEATFLUX= ( {{ marker_fan }}, 0.0 )
+MARKER_FAR= ( {{ marker_farfield }} )
+MARKER_MONITORING= ( {{ marker_fan }} )
+MARKER_PLOTTING= ( {{ marker_fan }} )
+
+% --- output ---
+MESH_FILENAME= {{ mesh_filename }}
+MESH_FORMAT= SU2
+TABULAR_FORMAT= CSV
+CONV_FILENAME= history
+SURFACE_FILENAME= surface_flow
+VOLUME_FILENAME= flow
+OUTPUT_FILES= ( RESTART, PARAVIEW, SURFACE_CSV )
+HISTORY_OUTPUT= ( ITER, RMS_RES, AERO_COEFF, FLOW_COEFF )
+
+% --- numerics ---
+NUM_METHOD_GRAD= WEIGHTED_LEAST_SQUARES
+CFL_NUMBER= {{ cfl_number | default(5.0) }}
+CONV_NUM_METHOD_FLOW= ROE
+MUSCL_FLOW= YES
+SLOPE_LIMITER_FLOW= VENKATAKRISHNAN
+LINEAR_SOLVER= FGMRES
+LINEAR_SOLVER_PREC= LU_SGS
+LINEAR_SOLVER_ERROR= 1E-6
+LINEAR_SOLVER_ITER= 25
+
+% --- convergence ---
+ITER= 1000
+CONV_RESIDUAL_MINVAL= -8
+CONV_STARTITER= 10

@@ -2,6 +2,65 @@
 
 Canonical, expanded V2 plan. The in-spec summary lives at `../report-final.md` §13; this file is the authoritative location for V2 work descriptions, triggers, and acceptance criteria.
 
+---
+
+## Deferred Phase-0 spikes (V1 scope pivot, 2026-05-13)
+
+These spikes were originally Phase 0 deliverables. They are deferred to V2 to keep V1 free of specialized measurement hardware purchases. The V1 substitute approach lives next to each one. Decision rationale: `docs/phase_logs/phase_0_signoff.md`. Per-spike sentinels: `data/spike_0_{2,3,5,7c}/deferral.json`.
+
+### Spike 0.2 — Torsional-pendulum I_wrist measurement
+
+**Why deferred:** torsion-wire rig + reference rod + sub-mm caliper measurements are research-grade rigor for a personal project. The plan's `J_fan / W_cycle` ratio is the binding artifact, and V1 substitutes a simpler unit (see Spike 0.3 below).
+
+**V1 substitute:** analytic `I_wrist_kgm2` from the §6.4 generator (`i_wrist_assembly`). The Spike 0.4 force balance consumes the analytic value via the new `--i-wrist-analytic <float>` + `--f-friction-cumulative-n <float>` flags on `scripts/run_spike_0_4.py`, with the safety factor bumped 2× → 3× to absorb the unverified-inertia uncertainty.
+
+**Revisit trigger:** V1 ships a fan that subjectively feels meaningfully better than the printed baseline AND the operator wants to quantify the improvement.
+
+**V2 acceptance:** repeatability < 3% across 5 trials; cross-check vs the analytic `i_wrist_assembly` value within ±10% (per the original Spike 0.2 protocol). If the cross-check fails, the analytic value used during V1's Spike-0.4 force balance was wrong and the rib-tab fallback might have been required but wasn't armed — Phase 6 needs a retest.
+
+### Spike 0.3 — Anemometer + IMU baseline measurement
+
+**Why deferred:** anemometer + 9-point grid + dedicated IMU is hardware the operator does not own and will not purchase for V1.
+
+**V1 substitute:** two co-baselines, both sim-side. **(a)** Phase 2a baseline CFD on the flat-panel 10-blade design — emits the simulated `J_fan` that every optimized design's simulated `J_fan` is compared against (sim-vs-sim relative gain). **(b)** Phase 6 qualitative blinded A/B feel-test of printed top-3 designs vs. the printed baseline. A blinded protocol (operator hands fans without naming them; stopwatch-paced 20 strokes; 1-5 score on each of airflow / weight / sound / aesthetics) is the recommended V1 reporting form.
+
+**Revisit trigger:** V1 ships a fan that subjectively feels better and the operator wants quantitative confirmation. Three V2 upgrade paths in order of cheapness:
+1. **Kitchen scale + cardboard target** (~$0, ~15 min protocol) — see `docs/spike_0_3_protocol.md` Appendix A.
+2. **Phyphox phone IMU** (free; phone already owned) — `src/fanopt/physical/imu.py` already reads CSVs in the right format.
+3. The original anemometer + IMU rig per `docs/spike_0_3_protocol.md` body.
+
+**V2 acceptance:** any V2 path must produce a `J_fan` baseline that V1's printed top-3 can be compared against. The ≥15% gain target only applies once a measured baseline exists; until then, V1 reports sim-vs-sim deltas.
+
+### Spike 0.5 — Single-blade fabrication-noise CV
+
+**Why deferred:** 3-copy CV requires printing 3 nominally-identical blades, instrumenting each, then measuring J_fan across three otherwise-identical assemblies. This is the same hardware-instrumentation cost as Spike 0.3 plus three extra print runs.
+
+**V1 substitute:** print one V1 top candidate **twice** (same design, same printer, same settings) as a same-design sanity check at Phase 6. Compare by feel. If the two prints feel meaningfully different, the print-noise floor is wider than the V1 design-gain target and the V1 design comparison is contaminated — flag and discuss with the operator before declaring V1 ship-ready. No formal CV computation in V1.
+
+**Revisit trigger:** V1 quantitative metrics matter (kitchen scale or anemometer). The 3-copy CV gates whether sub-15% deltas are real.
+
+**V2 acceptance:** as originally specified — CV < 5% across the three measured fans.
+
+### Spike 0.7c — Sobol-vs-BO iso-compute baseline
+
+**Why deferred:** the 430 h Phase-0 budget is sized for an honest BO-vs-baseline head-to-head. For V1, the operator commits to BO without the formal validation.
+
+**V1 substitute:** BO-stall fallback. If Phase 4 Tier-0 best-J_fan does not improve over 20 consecutive acquisitions within an architecture, the orchestrator switches to hand-picked diverse candidates rather than burning more compute. Diverse-candidate rule: one near-baseline, one louver-heavy, one TPMS-heavy, one high-camber, one asymmetric — span Layer 2 archetypes rather than 5 variations of one shape.
+
+**Revisit trigger:** V1 BO observably stalls AND the operator wants to know whether BO is fundamentally outperforming Sobol on this objective. Without the trigger, V2 may simply skip this entirely.
+
+**V2 acceptance:** as originally specified — BO best-J_fan ≥ Sobol best-J_fan by ≥ 5% on at least 2 of 3 budgets {30, 100, 300} h.
+
+### V1 → V2 cheap mitigations adopted at decision time
+
+Documented here so they don't get lost between rounds:
+
+- **Diverse Phase 5 print candidates.** The top-3 printed designs must span Layer 2 archetypes (not 3 variations of one shape). Mitigates BO-exploits-sim-artifact failure mode.
+- **Print one top candidate twice.** Same-design sanity check at Phase 6 substitutes for Spike 0.5 fab-noise CV.
+- **Blinded A/B in Phase 6.** Operator hands fans without naming them; stopwatch-paced 20 strokes; 1-5 score on airflow / weight / sound / aesthetics. Repeat on a different day. Free; ~20 min per comparison.
+
+---
+
 ## Triggered items (V1 failure → V2 in-scope)
 
 Each item has a triggering condition that fires at Phase 6 wrap-up (or earlier if the trigger is a Phase 4 diagnostic). If the trigger fires, the V2 effort begins with the corresponding entry as its first deliverable.

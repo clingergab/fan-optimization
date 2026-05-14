@@ -1,0 +1,108 @@
+% SU2 config template — Spike 0.6c.2 NACA 0012 oscillating-airfoil benchmark.
+% Source-of-truth: docs/plan_R11.md §Phase 0 Spike 0.6c (lines 1839-1844)
+% Protocol:       docs/spike_0_6c_protocol.md
+%
+% This template mirrors the locked Tier-1 unsteady numerics (Round-9 HIGH-12 /
+% C12) on a published reference case so we can validate the numerics before
+% Phase 4 launches. Phase 4 launch (`scripts/launch_phase4.py`) refuses to
+% create the `phase4-launch` tag if `phase0/spike_0_6c/PASS` is absent.
+%
+% Reference case (default — operator may substitute another low-Re pitching
+% case as long as both reference data are cited):
+%   NACA 0012, pitching about quarter-chord
+%   k_reduced ≈ 0.55  (band: 0.5 - 0.6)
+%   Re        ≈ 40000 (band: 30000 - 50000)
+%   amplitude ≈ ±10°
+%   5 cycles total; discard cycle 1; integrate cycles 2-5
+%
+% Operator-supplied template variables (rendered via fanopt.cfd.configs):
+%   {{ mesh_filename }}        - .su2 mesh path (NACA 0012 O-grid or C-grid)
+%   {{ marker_airfoil }}       - physical-group name on the airfoil surface
+%   {{ marker_farfield }}      - physical-group name on the outer boundary
+%   {{ reynolds_number }}      - target Re (within [30000, 50000])
+%   {{ reynolds_length }}      - reference chord length (m)
+%   {{ pitching_omega_y }}     - angular frequency (rad/s) for the target k_reduced
+%   {{ pitching_ampl_y }}      - pitch amplitude (rad); default ~0.1745 (= 10°)
+%   {{ motion_origin_x }}      - pitching axis x-location (quarter-chord = 0.25 * c)
+%   {{ time_step }}            - dt = T/200 by spec
+%   {{ max_time }}             - 5 * T (5 full cycles)
+%   {{ time_iter }}            - 5 * 200 = 1000 outer time steps
+%
+% Tier-1 lock invariants this template MUST satisfy (same gate as the
+% production Tier-1 cfg, enforced by tests/test_cfd/test_unsteady_freestream_consistency.py):
+%   1. MACH_NUMBER = 1e-9                          (Round-9 HIGH-12 / C12)
+%   2. FREESTREAM_OPTION = FREESTREAM_VELOCITY     (primary path)
+%      OR REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE (fallback path)
+%   3. |FREESTREAM_VELOCITY| < 0.01 · V_tip_equivalent (near-zero ambient)
+%   4. LOW_MACH_PREC = YES                         (compressible low-Mach prec)
+%   5. TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER (5-cycle dual-time-stepping)
+%   6. GRID_MOVEMENT = RIGID_MOTION                (body via pitching about quarter-chord)
+%
+% --------------------------------------------------------------------------
+
+SOLVER= NAVIER_STOKES
+KIND_TURB_MODEL= NONE
+MATH_PROBLEM= DIRECT
+RESTART_SOL= NO
+
+% --- HIGH-12 / C12 unsteady freestream lock (mirrors the Tier-1 production cfg) ---
+MACH_NUMBER= 1e-9
+FREESTREAM_OPTION= FREESTREAM_VELOCITY
+FREESTREAM_VELOCITY= {{ freestream_velocity_x | default(0.0) }} 0.0 {{ freestream_velocity_z | default(0.001) }}
+FREESTREAM_TEMPERATURE= 300.0
+FREESTREAM_PRESSURE= 101325.0
+
+REYNOLDS_NUMBER= {{ reynolds_number }}
+REYNOLDS_LENGTH= {{ reynolds_length }}
+
+% --- low-Mach preconditioning (Tier-1 lock) ---
+LOW_MACH_PREC= YES
+MIN_ROE_TURKEL_PREC= 0.01
+MAX_ROE_TURKEL_PREC= 0.2
+
+% --- dual-time-stepping for the 5-cycle pitching run ---
+TIME_DOMAIN= YES
+TIME_MARCHING= DUAL_TIME_STEPPING-2ND_ORDER
+TIME_STEP= {{ time_step }}
+MAX_TIME= {{ max_time }}
+TIME_ITER= {{ time_iter }}
+INNER_ITER= {{ inner_iter | default(100) }}
+
+% --- pitching about the quarter-chord ---
+GRID_MOVEMENT= RIGID_MOTION
+MOTION_ORIGIN= {{ motion_origin_x }} 0.0 0.0
+PITCHING_OMEGA= 0.0 {{ pitching_omega_y }} 0.0
+PITCHING_AMPL=  0.0 {{ pitching_ampl_y }} 0.0
+
+% --- boundary conditions ---
+MARKER_HEATFLUX= ( {{ marker_airfoil }}, 0.0 )
+MARKER_FAR= ( {{ marker_farfield }} )
+MARKER_MONITORING= ( {{ marker_airfoil }} )
+MARKER_PLOTTING= ( {{ marker_airfoil }} )
+
+% --- output ---
+MESH_FILENAME= {{ mesh_filename }}
+MESH_FORMAT= SU2
+TABULAR_FORMAT= CSV
+CONV_FILENAME= history
+SURFACE_FILENAME= surface_flow
+VOLUME_FILENAME= flow
+OUTPUT_FILES= ( RESTART, PARAVIEW, SURFACE_CSV )
+HISTORY_OUTPUT= ( ITER, RMS_RES, AERO_COEFF, FLOW_COEFF )
+
+% --- numerics ---
+NUM_METHOD_GRAD= WEIGHTED_LEAST_SQUARES
+CFL_NUMBER= {{ cfl_number | default(1.0) }}
+CONV_NUM_METHOD_FLOW= ROE
+MUSCL_FLOW= YES
+SLOPE_LIMITER_FLOW= VENKATAKRISHNAN
+TIME_DISCRE_FLOW= EULER_IMPLICIT
+LINEAR_SOLVER= FGMRES
+LINEAR_SOLVER_PREC= LU_SGS
+LINEAR_SOLVER_ERROR= 1E-6
+LINEAR_SOLVER_ITER= 25
+
+% --- convergence ---
+CONV_RESIDUAL_MINVAL= -8
+CONV_STARTITER= 10
+SCREEN_WRT_FREQ_INNER= 10

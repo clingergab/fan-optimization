@@ -38,9 +38,11 @@ dependencies:
   - pre-commit>=3.7
   - jupyterlab>=4.1
   - ipykernel>=6.29
-  # SU2 is NOT in conda-forge — install separately:
-  #   conda activate fanopt
-  #   pip install --upgrade su2  # or build from source per https://su2code.github.io
+  # SU2 is NOT in conda-forge and the PyPI `su2` package is unmaintained /
+  # not the CFD suite. Install separately via one of:
+  #   (a) macOS Homebrew:        `brew install su2`
+  #   (b) Linux conda-forge tap: `conda install -c conda-forge su2`
+  #       (sometimes available, depending on platform — check first)
+  #   (c) Source build per https://su2code.github.io/docs_v7/Build-SU2-Linux-MacOS/
+  # Do NOT `pip install su2` — that package is unrelated to the CFD suite.
   - pip
-  - pip:
-      - su2

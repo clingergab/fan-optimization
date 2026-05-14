@@ -40,29 +40,17 @@ VEL_FRACTION_OF_V_TIP_MAX = 0.01  # FREESTREAM_VELOCITY magnitude must be < 1% o
 def _render_unsteady_cfg() -> str:
     """Render the Tier-1 unsteady cfg via the production template.
 
-    In production: `from fanopt.cfd.configs import render_unsteady_cfg`.
-    For this audit gate, scan the §9.4.1 unsteady cfg block in the spec as a
-    proxy — the spec block IS the production template's content.
+    The renderer is now wired up (see fanopt.cfd.configs.render_unsteady_cfg)
+    and required by this gate. The probe-mesh placeholder is fine for the
+    parse-only invariants this test checks.
     """
-    try:
-        from fanopt.cfd.configs import render_unsteady_cfg  # type: ignore[import-untyped]
+    from fanopt.cfd.configs import render_unsteady_cfg
 
-        return render_unsteady_cfg()
-    except ImportError:
-        pass
-
-    if not SPEC_PATH.exists():
-        pytest.skip(f"spec not found at {SPEC_PATH}")
-    spec = SPEC_PATH.read_text(encoding="utf-8")
-    # Find the unsteady cfg block: starts with SOLVER= NAVIER_STOKES + has TIME_DOMAIN= YES
-    pattern = re.compile(
-        r"```ini\n(SOLVER=\s*NAVIER_STOKES.*?TIME_DOMAIN=\s*YES.*?)\n```",
-        re.DOTALL,
+    return render_unsteady_cfg(
+        mesh_filename="probe.su2",
+        marker_fan="FAN",
+        marker_farfield="FARFIELD",
     )
-    m = pattern.search(spec)
-    if not m:
-        pytest.skip("unsteady cfg block not found in spec")
-    return m.group(1)
 
 
 def _parse_directive(cfg: str, key: str) -> str | None:
