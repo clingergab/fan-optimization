@@ -38,8 +38,8 @@ import argparse
 import csv
 import math
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -109,9 +109,7 @@ def _read_history(path: Path) -> tuple[list[dict[str, float]], dict[str, str]]:
                     row["alpha"] = float(raw[idx[alpha_col]])
                 rows.append(row)
             except (ValueError, IndexError) as e:
-                raise ValueError(
-                    f"{path}:{line_idx}: malformed row: {e}; raw={raw}"
-                ) from e
+                raise ValueError(f"{path}:{line_idx}: malformed row: {e}; raw={raw}") from e
 
     column_map = {
         "time_iter": time_iter_col,
@@ -144,9 +142,7 @@ def _split_cycles(rows: list[dict[str, float]], n_cycles: int) -> list[list[dict
         raise ValueError(f"n_cycles must be > 0, got {n_cycles}")
     n = len(rows)
     if n < n_cycles:
-        raise ValueError(
-            f"only {n} outer iters in history; need ≥ {n_cycles} (one per cycle)"
-        )
+        raise ValueError(f"only {n} outer iters in history; need ≥ {n_cycles} (one per cycle)")
     per_cycle = n // n_cycles
     if per_cycle * n_cycles != n:
         # Not strictly an error — but warn since the spec locks TIME_ITER
@@ -158,10 +154,7 @@ def _split_cycles(rows: list[dict[str, float]], n_cycles: int) -> list[list[dict
             f"truncating last cycle.",
             file=sys.stderr,
         )
-    return [
-        rows[i * per_cycle : (i + 1) * per_cycle]
-        for i in range(n_cycles)
-    ]
+    return [rows[i * per_cycle : (i + 1) * per_cycle] for i in range(n_cycles)]
 
 
 def _hysteresis_area_shoelace(alphas: list[float], cls: list[float]) -> float:
@@ -229,9 +222,7 @@ def write_measured_csv(cycles: list[dict[str, float]], out_path: Path) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(
-            ["cycle_index", "c_l_max", "c_l_min", "c_d_mean", "c_l_hysteresis_area"]
-        )
+        writer.writerow(["cycle_index", "c_l_max", "c_l_min", "c_d_mean", "c_l_hysteresis_area"])
         for c in cycles:
             writer.writerow(
                 [

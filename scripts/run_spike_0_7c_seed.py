@@ -39,9 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # `gdrive/fan-optimization/phase0/sobol_seed/results.jsonl`. We mirror that
 # path under the repo's `data/` tree so the script works hermetically; on
 # production runs the operator overrides `--out` to the actual Drive path.
-DEFAULT_OUT = (
-    REPO_ROOT / "data" / "phase0" / "sobol_seed" / "results.jsonl"
-)
+DEFAULT_OUT = REPO_ROOT / "data" / "phase0" / "sobol_seed" / "results.jsonl"
 """Default sandbox-local path matching the structure of the production Drive
 path. Override `--out` to write directly to the Drive location during the
 canonical Phase 0 seed run."""

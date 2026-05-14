@@ -6,6 +6,7 @@ Spec reference: ``docs/plan_R11.md §Phase 0 Spike 0.7b``; protocol in
 Runs the spike at a tiny dimension and sample count so the test stays
 fast, then asserts the results.json schema + the overall pass flag.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,11 +27,16 @@ def test_runner_writes_results_json_and_passes(tmp_path: Path) -> None:
     out = tmp_path / "results.json"
     rc = cli.main(
         [
-            "--n-lhs", "3",
-            "--d", "8",
-            "--seed", "42",
-            "--n-iters", "3",
-            "--out", str(out),
+            "--n-lhs",
+            "3",
+            "--d",
+            "8",
+            "--seed",
+            "42",
+            "--n-iters",
+            "3",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -82,12 +88,18 @@ def test_runner_rejects_n_iters_below_3(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         cli.main(
             [
-                "--n-lhs", "5",
-                "--d", "8",
-                "--seed", "0",
-                "--n-iters", "2",
-                "--out", str(out),
-                "--gp-backend", "numpy",
+                "--n-lhs",
+                "5",
+                "--d",
+                "8",
+                "--seed",
+                "0",
+                "--n-iters",
+                "2",
+                "--out",
+                str(out),
+                "--gp-backend",
+                "numpy",
             ]
         )
 
@@ -102,12 +114,18 @@ def test_runner_failing_k_promoted_returns_1(tmp_path: Path) -> None:
     # writing results.json + returning 0 on the standard pass-config.
     rc = cli.main(
         [
-            "--n-lhs", "5",
-            "--d", "8",
-            "--seed", "0",
-            "--n-iters", "3",
-            "--out", str(out),
-            "--k-promoted", "4",
+            "--n-lhs",
+            "5",
+            "--d",
+            "8",
+            "--seed",
+            "0",
+            "--n-iters",
+            "3",
+            "--out",
+            str(out),
+            "--k-promoted",
+            "4",
         ]
     )
     assert rc == 0

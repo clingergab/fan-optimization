@@ -11,6 +11,7 @@ Covers:
   budgets", and fallback recommendation routing.
 * ``IsoComputePoint`` -- serialisable via ``dataclasses.asdict``.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,7 +29,6 @@ from fanopt.bo.spike_0_7c import (
     analyze_spike_07c,
     compute_iso_compute_point,
 )
-
 
 # ---- locks --------------------------------------------------------------
 
@@ -111,9 +111,7 @@ def test_compute_iso_compute_point_custom_keys() -> None:
     """The j_fan / wall_time keys are configurable."""
     sobol = [{"loss": 5.0, "cost_hr": 1.0}]
     bo = [{"loss": 2.0, "cost_hr": 1.0}]
-    pt = compute_iso_compute_point(
-        10, sobol, bo, j_fan_key="loss", wall_time_key="cost_hr"
-    )
+    pt = compute_iso_compute_point(10, sobol, bo, j_fan_key="loss", wall_time_key="cost_hr")
     assert pt.sobol_best_j_fan == 5.0
     assert pt.bo_best_j_fan == 2.0
 
@@ -239,9 +237,7 @@ def test_fallback_recommends_saasbo_when_dimensionality_label_used() -> None:
         _pt(100, bo_beats=False),
         _pt(300, bo_beats=False),
     ]
-    res = analyze_spike_07c(
-        pts, gp_fit_time_above_60s_on=("dimensionality_blowup",)
-    )
+    res = analyze_spike_07c(pts, gp_fit_time_above_60s_on=("dimensionality_blowup",))
     assert res.passed is False
     assert res.fallback_recommendation == "saasbo"
 
@@ -253,9 +249,7 @@ def test_fallback_recommends_architecture_set_reduction_when_wide_set_blocking()
         _pt(100, bo_beats=True),
         _pt(300, bo_beats=False),
     ]
-    res = analyze_spike_07c(
-        pts, gp_fit_time_above_60s_on=("wide_architecture_set",)
-    )
+    res = analyze_spike_07c(pts, gp_fit_time_above_60s_on=("wide_architecture_set",))
     assert res.passed is False
     assert res.fallback_recommendation == "fix_architecture_set"
 
@@ -266,9 +260,7 @@ def test_fallback_recommends_architecture_set_when_layer_2_label_used() -> None:
         _pt(100, bo_beats=False),
         _pt(300, bo_beats=False),
     ]
-    res = analyze_spike_07c(
-        pts, gp_fit_time_above_60s_on=("layer_2_categorical_blowup",)
-    )
+    res = analyze_spike_07c(pts, gp_fit_time_above_60s_on=("layer_2_categorical_blowup",))
     assert res.passed is False
     assert res.fallback_recommendation == "fix_architecture_set"
 

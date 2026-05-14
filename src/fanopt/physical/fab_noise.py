@@ -39,11 +39,12 @@ References:
 - Baseline J_fan proxy: Spike 0.3 (`scripts/run_spike_0_3_baseline.py`)
 - Protocol: `docs/spike_0_5_protocol.md`
 """
+
 from __future__ import annotations
 
 import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 __all__ = [
     "CV_GATE_PCT",
@@ -96,14 +97,10 @@ def coefficient_of_variation_pct(values: Iterable[float]) -> float:
     """
     data = [float(v) for v in values]
     if len(data) < 2:
-        raise ValueError(
-            f"coefficient_of_variation_pct: need ≥ 2 values, got {len(data)}"
-        )
+        raise ValueError(f"coefficient_of_variation_pct: need ≥ 2 values, got {len(data)}")
     mean = sum(data) / len(data)
     if mean <= 0:
-        raise ValueError(
-            f"coefficient_of_variation_pct: mean must be > 0, got {mean}"
-        )
+        raise ValueError(f"coefficient_of_variation_pct: mean must be > 0, got {mean}")
     std = statistics.stdev(data)
     return 100.0 * std / mean
 
@@ -299,9 +296,7 @@ def analyze_fab_noise(blades: Iterable[BladeMeasurements]) -> FabNoiseResult:
         per_point_cvs.append(coefficient_of_variation_pct(col))
     aggregated_dim_cv = sum(per_point_cvs) / len(per_point_cvs)
 
-    per_blade_mean_dim = [
-        sum(b.dimension_mm_10pt) / len(b.dimension_mm_10pt) for b in blade_list
-    ]
+    per_blade_mean_dim = [sum(b.dimension_mm_10pt) / len(b.dimension_mm_10pt) for b in blade_list]
     dim_mean = sum(per_blade_mean_dim) / len(per_blade_mean_dim)
     dim_std = statistics.stdev(per_blade_mean_dim)
     dimension_cv = PerMeasurementCV(
@@ -312,12 +307,7 @@ def analyze_fab_noise(blades: Iterable[BladeMeasurements]) -> FabNoiseResult:
         passed=aggregated_dim_cv < CV_GATE_PCT,
     )
 
-    overall_passed = (
-        j_fan_cv.passed
-        and mass_cv.passed
-        and dimension_cv.passed
-        and bend_cv.passed
-    )
+    overall_passed = j_fan_cv.passed and mass_cv.passed and dimension_cv.passed and bend_cv.passed
 
     return FabNoiseResult(
         per_blade=blade_list,

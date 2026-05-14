@@ -18,11 +18,12 @@ References:
   `i_wrist_assembly` (§6.4)
 - Protocol: `docs/spike_0_2_protocol.md`
 """
+
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 import numpy as np
 
@@ -148,9 +149,7 @@ def analyze_trials(
     """
     trials = tuple(T_osc_trials_s)
     if len(trials) < 2:
-        raise ValueError(
-            f"need ≥ 2 trials to estimate repeatability; got {len(trials)}"
-        )
+        raise ValueError(f"need ≥ 2 trials to estimate repeatability; got {len(trials)}")
     if mount_I_wrist_kgm2 < 0:
         raise ValueError(f"mount_I_wrist must be ≥ 0, got {mount_I_wrist_kgm2}")
 

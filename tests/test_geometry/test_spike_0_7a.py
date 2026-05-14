@@ -7,6 +7,7 @@ These tests exercise the library half (parameter sampling, record dataclass,
 analyze gate) without touching the CadQuery pipeline. The four pipeline
 callables are mocked with deterministic fakes.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -28,7 +29,6 @@ from fanopt.geometry.spike_0_7a import (
     hash_params,
     random_param_set_within_bounds,
 )
-
 
 # ── Fake pipeline callables ─────────────────────────────────────────────
 
@@ -117,9 +117,9 @@ def test_adversarial_param_sets_include_louver_tpms_primitive() -> None:
     ids = {p["_adversarial_id"] for p in ADVERSARIAL_PARAM_SETS}
     assert any("louver" in i for i in ids), f"missing louver adversarial in {ids}"
     assert any("tpms" in i for i in ids), f"missing tpms adversarial in {ids}"
-    assert any("primitive" in i or "prim" in i for i in ids), (
-        f"missing primitive adversarial in {ids}"
-    )
+    assert any(
+        "primitive" in i or "prim" in i for i in ids
+    ), f"missing primitive adversarial in {ids}"
 
 
 def test_adversarial_louver_set_is_clustered_at_tip() -> None:
@@ -140,9 +140,7 @@ def test_adversarial_tpms_set_uses_minimum_cell_and_rib_crossing_rotation() -> N
 
 
 def test_adversarial_primitive_set_is_at_bounds_edge() -> None:
-    c = next(
-        p for p in ADVERSARIAL_PARAM_SETS if p["_adversarial_id"].startswith("c_primitive")
-    )
+    c = next(p for p in ADVERSARIAL_PARAM_SETS if p["_adversarial_id"].startswith("c_primitive"))
     assert c["prim_active"] is True
     # The primitive sits at the boundary of the 5 mm click-clearance lock.
     boundary_x = L_BLADE_M - RIB_TIP_TAPER_M - 0.005
@@ -238,9 +236,7 @@ def test_evaluate_param_set_catches_downstream_exception() -> None:
 # ── analyze_07a ─────────────────────────────────────────────────────────
 
 
-def _mk_record(
-    is_adv: bool, passed: bool, reason: str | None = None
-) -> GeomSanityRecord:
+def _mk_record(is_adv: bool, passed: bool, reason: str | None = None) -> GeomSanityRecord:
     return GeomSanityRecord(
         params_hash=hash_params({"_marker": np.random.random()}),
         is_adversarial=is_adv,

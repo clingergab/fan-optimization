@@ -18,13 +18,13 @@ Phase 0 producers (Spike 0.2-0.7) only need the simpler
 `write_done_marker(out_dir, design_hash)` form — composite-key markers
 are wired up by Phase 4.
 """
+
 from __future__ import annotations
 
 import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 __all__ = [
     "CLAIM_REAP_AGE_S",
@@ -149,7 +149,7 @@ def try_claim(
     design_hash: str,
     *,
     session_id: str,
-) -> Optional[Path]:
+) -> Path | None:
     """Attempt atomic O_CREAT|O_EXCL claim on `{out_dir}/{design_hash}.claim`.
 
     Returns the claim path on success, None if another session holds it.
@@ -170,7 +170,7 @@ def try_claim(
         return None
     try:
         stamp = datetime.now(timezone.utc).isoformat()
-        os.write(fd, f"{session_id}_{stamp}".encode("utf-8"))
+        os.write(fd, f"{session_id}_{stamp}".encode())
     finally:
         os.close(fd)
     return path

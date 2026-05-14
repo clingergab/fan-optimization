@@ -67,11 +67,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def _i_rect_m4(b: float, h: float) -> float:
-    return b * (h ** 3) / 12.0
+    return b * (h**3) / 12.0
 
 
-def _analytic_tip_deflection_m(P: float, L: float, E: float, I: float) -> float:
-    return P * (L ** 3) / (3.0 * E * I)
+def _analytic_tip_deflection_m(P: float, L: float, E: float, I_m4: float) -> float:
+    return P * (L**3) / (3.0 * E * I_m4)
 
 
 def _solve_cantilever_1d_eb() -> float:
@@ -145,14 +145,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         # Plumbing exercise only — write the analytic value as the
         # placeholder "measured" so the aggregator's parser is testable.
-        I = _i_rect_m4(B_M, H_M)
-        measured = _analytic_tip_deflection_m(P_N, L_M, E_PETG_PA, I)
+        I_m4 = _i_rect_m4(B_M, H_M)
+        measured = _analytic_tip_deflection_m(P_N, L_M, E_PETG_PA, I_m4)
         wall_time_s = 0.0
         _write_row(args.out, wall_time_s, measured)
         analytic = measured
         pct = 0.0
         print(f"[spike_0_6b] wrote      {args.out}")
-        print(f"[spike_0_6b] DRY-RUN — analytic placeholder, no FEniCSx invoked.")
+        print("[spike_0_6b] DRY-RUN — analytic placeholder, no FEniCSx invoked.")
         print(f"[spike_0_6b] measured   {measured:.6e} m  (analytic {analytic:.6e} m, {pct:.2f}%)")
         return 0
 

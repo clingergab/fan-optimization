@@ -130,9 +130,7 @@ def _read_budget(path: Path) -> list[ComputeBudgetEntry]:
         platform = (row.get("platform") or "").strip()
         workload = (row.get("workload") or "").strip()
         if not platform or not workload:
-            raise ValueError(
-                f"{path} row {i}: platform / workload must be non-empty"
-            )
+            raise ValueError(f"{path} row {i}: platform / workload must be non-empty")
         wall = _required_float(row, "wall_time_s", f"{path} row {i}")
         cu = _opt_float(row, "cu_consumed")
         cells = _opt_int(row, "cells")
@@ -243,9 +241,7 @@ def main(argv: list[str] | None = None) -> int:
         budget = _read_budget(args.budget_csv) if args.budget_csv is not None else []
         if args.sub_06a_csv is not None:
             wall_a, j_fan, stages = _read_06a(args.sub_06a_csv)
-            sub_06a = analyze_06a(
-                wall_time_s=wall_a, J_fan_steady_proxy=j_fan, stages=stages
-            )
+            sub_06a = analyze_06a(wall_time_s=wall_a, J_fan_steady_proxy=j_fan, stages=stages)
         else:
             sub_06a = None
         if args.sub_06b_csv is not None:
@@ -293,15 +289,13 @@ def main(argv: list[str] | None = None) -> int:
     # Aggregator exit code: 0 iff every supplied sub-spike passed. If a sub-
     # spike CSV was not supplied, treat it as "not yet run" — that's
     # informational and exits 0, matching the calibration framing.
-    failures = [
-        s for s in (result.sub_06a, result.sub_06b) if s is not None and not s.passed
-    ]
+    failures = [s for s in (result.sub_06a, result.sub_06b) if s is not None and not s.passed]
     return 1 if failures else 0
 
 
 def _print_table(payload: dict, out_path: Path) -> None:
     print(f"\n[spike_0_6] spec ref   = {payload['spec_reference']}")
-    print(f"[spike_0_6] status     = calibration (overall_passed always True)")
+    print("[spike_0_6] status     = calibration (overall_passed always True)")
 
     budget = payload["result"]["budget_entries"]
     print(f"[spike_0_6] budget rows = {len(budget)}")

@@ -4,12 +4,12 @@ If someone re-adds `docs/report-final.md` to `_scan_paths()`, this test fails
 loudly. The plan is author-managed; drift checks against it live outside the
 default pytest gate (see test_no_stale_architecture_refs.py module docstring).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from .test_no_stale_architecture_refs import REPO_ROOT, _scan_paths
-
 
 PLAN_PATHS = (
     REPO_ROOT / "docs" / "report-final.md",
@@ -32,9 +32,9 @@ def test_scan_paths_includes_production_code() -> None:
     scanned = _scan_paths()
     assert scanned, "_scan_paths() returned empty — production code is unscanned."
     src_dir = (REPO_ROOT / "src" / "fanopt").resolve()
-    assert any(Path(p).resolve().is_relative_to(src_dir) for p in scanned), (
-        f"No paths under {src_dir} in _scan_paths() — the gate would never fire."
-    )
+    assert any(
+        Path(p).resolve().is_relative_to(src_dir) for p in scanned
+    ), f"No paths under {src_dir} in _scan_paths() — the gate would never fire."
 
 
 def test_scan_paths_only_python_files() -> None:

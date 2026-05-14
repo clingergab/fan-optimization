@@ -12,14 +12,16 @@ dataclass declares them with `Optional[...] = None` defaults so Phase 0
 spike runners can write minimal rows now, and Phase 4 fills in the rest
 without bumping schema_version.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any
 
 import numpy as np
 
@@ -96,11 +98,11 @@ def _round_leaves(obj: Any, precision: int) -> Any:
     Lists and tuples both serialize as JSON arrays, so we coerce tuple→list
     to keep the canonical form stable.
     """
-    if isinstance(obj, (float, np.floating)):
+    if isinstance(obj, float | np.floating):
         return round(float(obj), precision)
     if isinstance(obj, dict):
         return {k: _round_leaves(v, precision) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, list | tuple):
         return [_round_leaves(x, precision) for x in obj]
     if isinstance(obj, np.integer):
         return int(obj)
@@ -149,31 +151,31 @@ class LedgerRow:
     timestamp_iso: str
 
     # Composite-key fields (H16 Round-9 lock) — Phase 4 producers fill in
-    physics_hash: Optional[str] = None
-    config_hash: Optional[str] = None
-    material_hash: Optional[str] = None
-    geometry_hash: Optional[str] = None
-    run_direction: Optional[str] = None  # 'productive' / 'return' for steady probes
+    physics_hash: str | None = None
+    config_hash: str | None = None
+    material_hash: str | None = None
+    geometry_hash: str | None = None
+    run_direction: str | None = None  # 'productive' / 'return' for steady probes
 
     # Outcome
-    failure_code: Optional[FailureCode] = None
-    retriable: Optional[bool] = None
+    failure_code: FailureCode | None = None
+    retriable: bool | None = None
     retry_count: int = 0
     retry_history: list[str] = field(default_factory=list)
 
     # CFD intermediates
-    cfl_max: Optional[float] = None
-    J_fan: Optional[float] = None
-    J_fan_delta: Optional[float] = None
-    J_fan_cycle_variance: Optional[float] = None
+    cfl_max: float | None = None
+    J_fan: float | None = None
+    J_fan_delta: float | None = None
+    J_fan_cycle_variance: float | None = None
 
     # Geometry / mass
-    m_total_kg: Optional[float] = None
-    r_CoM_wrist_m: Optional[float] = None
-    I_wrist_kgm2: Optional[float] = None
+    m_total_kg: float | None = None
+    r_CoM_wrist_m: float | None = None
+    I_wrist_kgm2: float | None = None
 
     # Stress-test fields
-    stress_test_fail: Optional[bool] = None
+    stress_test_fail: bool | None = None
 
     # Free-form params snapshot (small dict; large blobs live on Drive)
     params: dict = field(default_factory=dict)
@@ -190,9 +192,7 @@ class LedgerRow:
         if not self.design_hash:
             raise ValueError("design_hash is required and must be non-empty")
         if not self.timestamp_iso:
-            raise ValueError(
-                "timestamp_iso is required (use datetime.utcnow().isoformat())"
-            )
+            raise ValueError("timestamp_iso is required (use datetime.utcnow().isoformat())")
         if self.wall_time_s < 0:
             raise ValueError(f"wall_time_s must be ≥ 0, got {self.wall_time_s}")
         if self.retry_count < 0:
@@ -209,9 +209,7 @@ class LedgerRow:
             "material_hash": self.material_hash,
             "geometry_hash": self.geometry_hash,
             "run_direction": self.run_direction,
-            "failure_code": (
-                self.failure_code.value if self.failure_code is not None else None
-            ),
+            "failure_code": (self.failure_code.value if self.failure_code is not None else None),
             "retriable": self.retriable,
             "retry_count": self.retry_count,
             "retry_history": list(self.retry_history),

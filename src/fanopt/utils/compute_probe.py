@@ -33,6 +33,7 @@ References:
 - Protocol: `docs/spike_0_6_protocol.md`
 - Phase log: `docs/phase_logs/spike_0_6.md`
 """
+
 from __future__ import annotations
 
 import math
@@ -71,9 +72,7 @@ analytic Euler-Bernoulli `P L^3 / (3 E I)` within 5%."""
 # ----- analytic reference ----------------------------------------------------
 
 
-def analytic_cantilever_tip_deflection(
-    P_N: float, L_m: float, E_Pa: float, I_m4: float
-) -> float:
+def analytic_cantilever_tip_deflection(P_N: float, L_m: float, E_Pa: float, I_m4: float) -> float:
     """Euler-Bernoulli tip deflection of a cantilever under a tip point load.
 
     `delta = P * L^3 / (3 * E * I)`. Used by sub-spike 0.6b to cross-check
@@ -101,7 +100,7 @@ def analytic_cantilever_tip_deflection(
         raise ValueError(f"E_Pa must be > 0, got {E_Pa}")
     if I_m4 <= 0:
         raise ValueError(f"I_m4 must be > 0, got {I_m4}")
-    return P_N * (L_m ** 3) / (3.0 * E_Pa * I_m4)
+    return P_N * (L_m**3) / (3.0 * E_Pa * I_m4)
 
 
 # ----- compute-budget rows (calibration only — not a gate) -------------------
@@ -193,9 +192,7 @@ def analyze_06a(
 
     return SubSpike06AResult(
         m3_wall_time_s=float(wall_time_s),
-        J_fan_steady_proxy=(
-            float(J_fan_steady_proxy) if J_fan_steady_proxy is not None else None
-        ),
+        J_fan_steady_proxy=(float(J_fan_steady_proxy) if J_fan_steady_proxy is not None else None),
         pipeline_stages=stages_clean,
         wall_time_passed=wall_time_passed,
         j_fan_finite=j_fan_finite,
@@ -249,9 +246,7 @@ def analyze_06b(
     if wall_time_s < 0:
         raise ValueError(f"wall_time_s must be >= 0, got {wall_time_s}")
     if not math.isfinite(measured_deflection_m):
-        raise ValueError(
-            f"measured_deflection_m must be finite, got {measured_deflection_m}"
-        )
+        raise ValueError(f"measured_deflection_m must be finite, got {measured_deflection_m}")
 
     analytic = analytic_cantilever_tip_deflection(P_N=P_N, L_m=L_m, E_Pa=E_Pa, I_m4=I_m4)
     pct = 100.0 * abs(measured_deflection_m - analytic) / analytic

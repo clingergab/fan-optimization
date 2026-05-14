@@ -8,15 +8,13 @@ Exercises:
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.4; protocol in
 docs/spike_0_4_protocol.md.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import pytest
-
 import run_spike_0_4 as cli
-
 
 # ─────────────────────────────────────────────────────────────────────
 # Canonical-input fixtures
@@ -91,13 +89,19 @@ def test_cli_pass(tmp_path: Path) -> None:
 
     rc = cli.main(
         [
-            "--force-balance", str(fb),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(fb),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(out),
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -131,13 +135,19 @@ def test_cli_pass_without_high_amp_rows(tmp_path: Path) -> None:
 
     rc = cli.main(
         [
-            "--force-balance", str(fb),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(fb),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(out),
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -161,13 +171,19 @@ def test_cli_fails_force_balance_arms_v1_fallback(tmp_path: Path) -> None:
 
     rc = cli.main(
         [
-            "--force-balance", str(fb),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(fb),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(out),
+            "--out",
+            str(out),
         ]
     )
     assert rc == 1
@@ -180,22 +196,26 @@ def test_cli_fails_force_balance_arms_v1_fallback(tmp_path: Path) -> None:
 
 def test_cli_fails_clearance_out_of_band(tmp_path: Path) -> None:
     fb = _write_force_balance(tmp_path / "force_balance.csv")
-    cl = _write_clearance(
-        tmp_path / "clearance.csv", values=[0.14, 0.17, 0.18, 0.21]
-    )
+    cl = _write_clearance(tmp_path / "clearance.csv", values=[0.14, 0.17, 0.18, 0.21])
     ef = _write_engagement_force(tmp_path / "engagement_force.csv")
     ci = _write_cycle_inspections(tmp_path / "cycle_inspections.csv")
     out = tmp_path / "results.json"
 
     rc = cli.main(
         [
-            "--force-balance", str(fb),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(fb),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(out),
+            "--out",
+            str(out),
         ]
     )
     assert rc == 1
@@ -208,20 +228,24 @@ def test_cli_fails_cycle_life_when_fractured(tmp_path: Path) -> None:
     fb = _write_force_balance(tmp_path / "force_balance.csv")
     cl = _write_clearance(tmp_path / "clearance.csv")
     ef = _write_engagement_force(tmp_path / "engagement_force.csv")
-    ci = _write_cycle_inspections(
-        tmp_path / "cycle_inspections.csv", fracture_at=600
-    )
+    ci = _write_cycle_inspections(tmp_path / "cycle_inspections.csv", fracture_at=600)
     out = tmp_path / "results.json"
 
     rc = cli.main(
         [
-            "--force-balance", str(fb),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(fb),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(out),
+            "--out",
+            str(out),
         ]
     )
     assert rc == 1
@@ -246,13 +270,19 @@ def test_cli_missing_column_exits_2(tmp_path: Path) -> None:
 
     rc = cli.main(
         [
-            "--force-balance", str(fb),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(fb),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(out),
+            "--out",
+            str(out),
         ]
     )
     assert rc == 2
@@ -264,13 +294,19 @@ def test_cli_missing_file_exits_2(tmp_path: Path) -> None:
     ci = _write_cycle_inspections(tmp_path / "cycle_inspections.csv")
     rc = cli.main(
         [
-            "--force-balance", str(tmp_path / "does_not_exist.csv"),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(tmp_path / "does_not_exist.csv"),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(tmp_path / "results.json"),
+            "--out",
+            str(tmp_path / "results.json"),
         ]
     )
     assert rc == 2
@@ -286,13 +322,19 @@ def test_cli_empty_clearance_exits_2(tmp_path: Path) -> None:
 
     rc = cli.main(
         [
-            "--force-balance", str(fb),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(fb),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(tmp_path / "results.json"),
+            "--out",
+            str(tmp_path / "results.json"),
         ]
     )
     assert rc == 2
@@ -307,13 +349,19 @@ def test_cli_bad_regime_exits_2(tmp_path: Path) -> None:
     ci = _write_cycle_inspections(tmp_path / "cycle_inspections.csv")
     rc = cli.main(
         [
-            "--force-balance", str(fb),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(fb),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(tmp_path / "results.json"),
+            "--out",
+            str(tmp_path / "results.json"),
         ]
     )
     assert rc == 2
@@ -327,13 +375,19 @@ def test_cli_nonfloat_clearance_exits_2(tmp_path: Path) -> None:
     ci = _write_cycle_inspections(tmp_path / "cycle_inspections.csv")
     rc = cli.main(
         [
-            "--force-balance", str(fb),
-            "--clearance", str(cl),
-            "--engagement-force", str(ef),
-            "--cycle-inspections", str(ci),
-            "--alignment-gap-variation-mm", "0.30",
+            "--force-balance",
+            str(fb),
+            "--clearance",
+            str(cl),
+            "--engagement-force",
+            str(ef),
+            "--cycle-inspections",
+            str(ci),
+            "--alignment-gap-variation-mm",
+            "0.30",
             "--high-amp-completed",
-            "--out", str(tmp_path / "results.json"),
+            "--out",
+            str(tmp_path / "results.json"),
         ]
     )
     assert rc == 2
@@ -348,12 +402,17 @@ def _common_args_without_force_balance(tmp_path: Path) -> list[str]:
     ef = _write_engagement_force(tmp_path / "engagement_force.csv")
     ci = _write_cycle_inspections(tmp_path / "cycle_inspections.csv")
     return [
-        "--clearance", str(cl),
-        "--engagement-force", str(ef),
-        "--cycle-inspections", str(ci),
-        "--alignment-gap-variation-mm", "0.30",
+        "--clearance",
+        str(cl),
+        "--engagement-force",
+        str(ef),
+        "--cycle-inspections",
+        str(ci),
+        "--alignment-gap-variation-mm",
+        "0.30",
         "--high-amp-completed",
-        "--out", str(tmp_path / "results.json"),
+        "--out",
+        str(tmp_path / "results.json"),
     ]
 
 
@@ -362,9 +421,12 @@ def test_cli_analytic_iwrist_pass_uses_3x_safety_factor(tmp_path: Path) -> None:
     F_inertial = 1e-3 · 110 / 0.25 = 0.44 → 1.50 / 0.44 ≈ 3.4 > 3.0 → pass."""
     out = tmp_path / "results.json"
     rc = cli.main(
-        _common_args_without_force_balance(tmp_path) + [
-            "--i-wrist-analytic", "1.0e-3",
-            "--f-friction-cumulative-n", "1.50",
+        [
+            *_common_args_without_force_balance(tmp_path),
+            "--i-wrist-analytic",
+            "1.0e-3",
+            "--f-friction-cumulative-n",
+            "1.50",
         ]
     )
     assert rc == 0
@@ -379,9 +441,12 @@ def test_cli_analytic_iwrist_fails_under_3x_when_2x_would_have_passed(tmp_path: 
     (canonical) but fails 3x (analytic). Demonstrates the bumped factor."""
     out = tmp_path / "results.json"
     rc = cli.main(
-        _common_args_without_force_balance(tmp_path) + [
-            "--i-wrist-analytic", "1.0e-3",
-            "--f-friction-cumulative-n", "1.00",
+        [
+            *_common_args_without_force_balance(tmp_path),
+            "--i-wrist-analytic",
+            "1.0e-3",
+            "--f-friction-cumulative-n",
+            "1.00",
         ]
     )
     # Fails the analytic 3x gate even though it would have passed canonical 2x.
@@ -394,20 +459,14 @@ def test_cli_analytic_iwrist_fails_under_3x_when_2x_would_have_passed(tmp_path: 
 
 def test_cli_analytic_iwrist_requires_paired_friction(tmp_path: Path) -> None:
     """--i-wrist-analytic without --f-friction-cumulative-n must exit 2."""
-    rc = cli.main(
-        _common_args_without_force_balance(tmp_path) + [
-            "--i-wrist-analytic", "1.0e-3",
-        ]
-    )
+    rc = cli.main([*_common_args_without_force_balance(tmp_path), "--i-wrist-analytic", "1.0e-3"])
     assert rc == 2
 
 
 def test_cli_friction_arg_requires_paired_analytic_iwrist(tmp_path: Path) -> None:
     """--f-friction-cumulative-n without --i-wrist-analytic must exit 2."""
     rc = cli.main(
-        _common_args_without_force_balance(tmp_path) + [
-            "--f-friction-cumulative-n", "1.50",
-        ]
+        [*_common_args_without_force_balance(tmp_path), "--f-friction-cumulative-n", "1.50"]
     )
     assert rc == 2
 
@@ -415,9 +474,12 @@ def test_cli_friction_arg_requires_paired_analytic_iwrist(tmp_path: Path) -> Non
 def test_cli_analytic_iwrist_rejects_nonpositive(tmp_path: Path) -> None:
     """Negative or zero I_wrist must exit 2."""
     rc = cli.main(
-        _common_args_without_force_balance(tmp_path) + [
-            "--i-wrist-analytic", "-0.001",
-            "--f-friction-cumulative-n", "1.50",
+        [
+            *_common_args_without_force_balance(tmp_path),
+            "--i-wrist-analytic",
+            "-0.001",
+            "--f-friction-cumulative-n",
+            "1.50",
         ]
     )
     assert rc == 2
@@ -430,10 +492,14 @@ def test_cli_analytic_iwrist_skips_force_balance_csv(tmp_path: Path) -> None:
     """
     out = tmp_path / "results.json"
     rc = cli.main(
-        _common_args_without_force_balance(tmp_path) + [
-            "--i-wrist-analytic", "1.0e-3",
-            "--f-friction-cumulative-n", "1.50",
-            "--force-balance", str(tmp_path / "does_not_exist.csv"),
+        [
+            *_common_args_without_force_balance(tmp_path),
+            "--i-wrist-analytic",
+            "1.0e-3",
+            "--f-friction-cumulative-n",
+            "1.50",
+            "--force-balance",
+            str(tmp_path / "does_not_exist.csv"),
         ]
     )
     assert rc == 0
@@ -446,11 +512,7 @@ def test_cli_measured_path_unchanged_by_new_flag_default(tmp_path: Path) -> None
     """Default (no --i-wrist-analytic) still reads the CSV and uses 2x factor."""
     fb = _write_force_balance(tmp_path / "force_balance.csv")
     out = tmp_path / "results.json"
-    rc = cli.main(
-        _common_args_without_force_balance(tmp_path) + [
-            "--force-balance", str(fb),
-        ]
-    )
+    rc = cli.main([*_common_args_without_force_balance(tmp_path), "--force-balance", str(fb)])
     assert rc == 0
     payload = json.loads(out.read_text())
     assert payload["gates"]["force_balance_safety_factor"] == 2.0

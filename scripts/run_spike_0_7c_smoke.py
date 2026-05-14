@@ -45,15 +45,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from fanopt.bo.spike_0_7b import lhs_sample, synthetic_objective  # noqa: E402
+import run_spike_0_7c as cli  # noqa: E402
+from fanopt.bo.spike_0_7b import synthetic_objective  # noqa: E402
 from fanopt.bo.spike_0_7c import (  # noqa: E402
     BO_ITERATIONS_DEFAULT,
     BUDGETS_HOURS,
     SOBOL_SEED_COUNT,
     record_to_jsonl,
 )
-
-import run_spike_0_7c as cli  # noqa: E402
 
 
 def _synth_sobol_records(
@@ -263,10 +262,14 @@ def main(argv: list[str] | None = None) -> int:
     results_path = out_dir / "results.json"
     rc = cli.main(
         [
-            "--sobol-results", str(sobol_path),
-            "--bo-results", str(bo_path),
-            "--budgets", args.budgets,
-            "--out", str(results_path),
+            "--sobol-results",
+            str(sobol_path),
+            "--bo-results",
+            str(bo_path),
+            "--budgets",
+            args.budgets,
+            "--out",
+            str(results_path),
         ]
     )
 

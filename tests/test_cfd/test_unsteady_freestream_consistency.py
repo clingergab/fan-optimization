@@ -12,12 +12,11 @@ These four together guarantee that the Tier-1 unsteady simulation runs as
 "moving body in V_tip-magnitude tailwind", which is what SU2's default
 FREESTREAM_OPTION = TEMPERATURE_FS would produce silently.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
-
-import pytest
 
 from fanopt.cfd.configs import render_unsteady_cfg
 
@@ -71,9 +70,7 @@ def test_unsteady_freestream_option_set_or_fallback() -> None:
     """
     cfg = _render_unsteady_cfg()
     primary = _parse_directive(cfg, "FREESTREAM_OPTION") == "FREESTREAM_VELOCITY"
-    fallback = (
-        _parse_directive(cfg, "REF_DIMENSIONALIZATION") == "FREESTREAM_PRESS_EQ_ONE"
-    )
+    fallback = _parse_directive(cfg, "REF_DIMENSIONALIZATION") == "FREESTREAM_PRESS_EQ_ONE"
     assert primary or fallback, (
         "HIGH-12 Round-9 violation: unsteady cfg must use FREESTREAM_OPTION = "
         "FREESTREAM_VELOCITY (primary) OR REF_DIMENSIONALIZATION = "
@@ -142,10 +139,10 @@ def test_unsteady_freestream_direction_not_set_or_consistent() -> None:
         return
     dir_components = [float(x) for x in direction_str.split()]
     vel_components = [float(x) for x in vel_str.split()]
-    assert len(dir_components) == len(vel_components) == 3, (
-        "HIGH-12: FREESTREAM_DIRECTION and FREESTREAM_VELOCITY must each be 3-vectors"
-    )
-    for axis, (d, v) in enumerate(zip(dir_components, vel_components)):
+    assert (
+        len(dir_components) == len(vel_components) == 3
+    ), "HIGH-12: FREESTREAM_DIRECTION and FREESTREAM_VELOCITY must each be 3-vectors"
+    for axis, (d, v) in enumerate(zip(dir_components, vel_components, strict=True)):
         if abs(v) > 1e-9:
             assert (d > 0) == (v > 0), (
                 f"HIGH-12 Round-9 violation: FREESTREAM_DIRECTION sign on axis {axis} "

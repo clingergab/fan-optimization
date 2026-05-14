@@ -37,7 +37,6 @@ shape utilities (no gmsh dep) live in ``src/fanopt/cfd/airfoil_shapes.py``.
 from __future__ import annotations
 
 import argparse
-import sys
 import time
 from pathlib import Path
 
@@ -68,10 +67,14 @@ def build_naca0012_mesh(
     this function prints stage markers for high-level progress tracking
     (useful for slow Colab CPU runs).
     """
+
     def _stage(msg: str) -> None:
         if verbose:
             print(f"[gen_meshes:naca0012] {msg}", flush=True)
-    _stage(f"start: n_airfoil_points={n_airfoil_points} chord={chord} ff={farfield_radius_chord}x cells_circ={cells_circ}")
+
+    _stage(
+        f"start: n_airfoil_points={n_airfoil_points} chord={chord} ff={farfield_radius_chord}x cells_circ={cells_circ}"
+    )
     t0 = time.perf_counter()
     gmsh.initialize()
     try:
@@ -143,7 +146,7 @@ def build_naca0012_mesh(
 
         n_nodes = len(gmsh.model.mesh.getNodes()[0])
         n_elems = sum(
-            len(tags) for _dim, _et, tags in zip(*gmsh.model.mesh.getElements(2))
+            len(tags) for _dim, _et, tags in zip(*gmsh.model.mesh.getElements(2), strict=True)
         )
         _stage(f"mesh stats: {n_nodes} nodes, {n_elems} 2D elements")
 

@@ -14,10 +14,10 @@ gmsh isn't installed the whole test module is skipped collection-time.
 That's correct: the script literally cannot run without gmsh, so its
 integration tests don't need to either.
 """
+
 from __future__ import annotations
 
 import importlib.util
-import sys
 from pathlib import Path
 
 import pytest
@@ -33,7 +33,6 @@ if not _HAS_GMSH:
 
 
 import gen_benchmark_meshes as cli  # noqa: E402 — module-level skip above
-
 
 # ---- CLI arg parsing ------------------------------------------------------
 
@@ -82,10 +81,14 @@ def test_naca0012_mesh_generates_small(tmp_path: Path) -> None:
     out = tmp_path / "naca.su2"
     rc = cli.main(
         [
-            "--kind", "naca0012",
-            "--out", str(out),
-            "--n-airfoil-points", "64",  # smaller for test speed
-            "--farfield-radius-chord", "20.0",  # smaller domain
+            "--kind",
+            "naca0012",
+            "--out",
+            str(out),
+            "--n-airfoil-points",
+            "64",  # smaller for test speed
+            "--farfield-radius-chord",
+            "20.0",  # smaller domain
         ]
     )
     assert rc == 0

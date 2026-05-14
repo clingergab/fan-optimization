@@ -40,10 +40,11 @@ References:
   inducing points, or freeze categoricals to shrink D. See
   ``docs/spike_0_7b_protocol.md``.
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Sequence
 
 import numpy as np
 from scipy.stats.qmc import LatinHypercube
@@ -137,9 +138,7 @@ def calibrate_epistemic_noise_floor(
     """
     values = np.asarray(list(replicate_J_fans), dtype=float)
     if values.size < 2:
-        raise ValueError(
-            f"need ≥ 2 replicates to estimate variance; got {values.size}"
-        )
+        raise ValueError(f"need ≥ 2 replicates to estimate variance; got {values.size}")
     # Sample variance (ddof=1) — same convention as inertia.analyze_trials.
     measured = float(values.var(ddof=1))
     return max(measured, floor_min)
@@ -199,7 +198,7 @@ def synthetic_objective(
         (4, 8),
     )
     interaction = 0.0
-    for (i, j) in interaction_pairs:
+    for i, j in interaction_pairs:
         ii = i % d
         jj = j % d
         interaction += 0.25 * centred[ii] * centred[jj]

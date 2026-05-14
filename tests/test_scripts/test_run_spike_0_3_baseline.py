@@ -11,6 +11,7 @@ Exercises:
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.3; protocol in
 docs/spike_0_3_protocol.md.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,6 @@ import pytest
 
 import run_spike_0_3_baseline as cli
 from fanopt.physical.anemometer import GRID_POINTS_M, PLANE_AREA_M2, RHO_AIR_KG_PER_M3
-
 
 # ---- fixtures --------------------------------------------------------------
 
@@ -40,7 +40,7 @@ def _write_imu(path: Path, *, duration_s: float = 5.0, seed: int = 0) -> Path:
     theta = THETA_MAX * np.sin(OMEGA_SHM * t) + 0.001 * rng.standard_normal(t.size)
     omega = THETA_MAX * OMEGA_SHM * np.cos(OMEGA_SHM * t) + 0.005 * rng.standard_normal(t.size)
     lines = ["t_s,theta_rad,omega_rad_per_s"]
-    for ti, th, om in zip(t, theta, omega):
+    for ti, th, om in zip(t, theta, omega, strict=True):
         lines.append(f"{ti:.5f},{th:.6f},{om:.6f}")
     path.write_text("\n".join(lines) + "\n")
     return path
@@ -77,10 +77,14 @@ def tmp_spike03(tmp_path: Path) -> dict[str, Path]:
 
 def _invoke(args: dict[str, Path], **overrides) -> int:
     argv = [
-        "--imu", *[str(p) for p in args["imu"]],
-        "--anemometer", str(args["grid"]),
-        "--inertia", str(args["inertia"]),
-        "--out", str(args["out"]),
+        "--imu",
+        *[str(p) for p in args["imu"]],
+        "--anemometer",
+        str(args["grid"]),
+        "--inertia",
+        str(args["inertia"]),
+        "--out",
+        str(args["out"]),
     ]
     for k, v in overrides.items():
         argv.extend([f"--{k.replace('_', '-')}", str(v)])
@@ -96,9 +100,7 @@ def test_runner_end_to_end(tmp_spike03: dict[str, Path]) -> None:
     payload = json.loads(tmp_spike03["out"].read_text())
     b = payload["baseline"]
     # Mean velocity = 0.3 m/s uniform → J_fan_proxy = ρ · 0.3 · 0.36.
-    assert b["J_fan_proxy_N"] == pytest.approx(
-        RHO_AIR_KG_PER_M3 * 0.3 * PLANE_AREA_M2, rel=1e-9
-    )
+    assert b["J_fan_proxy_N"] == pytest.approx(RHO_AIR_KG_PER_M3 * 0.3 * PLANE_AREA_M2, rel=1e-9)
     assert b["J_fan_proxy_peak_N"] == pytest.approx(
         RHO_AIR_KG_PER_M3 * 0.7 * PLANE_AREA_M2, rel=1e-9
     )
@@ -131,8 +133,16 @@ def test_baseline_json_schema(tmp_spike03: dict[str, Path]) -> None:
     per = payload["imu"]["per_trial"]
     assert len(per) == 5
     for entry in per:
-        assert {"W_cycle_J", "f_wave_Hz", "omega_max_rad_per_s", "theta_max_rad",
-                "f_wave_ok", "omega_max_ok", "theta_max_ok", "sanity_ok"} <= set(entry)
+        assert {
+            "W_cycle_J",
+            "f_wave_Hz",
+            "omega_max_rad_per_s",
+            "theta_max_rad",
+            "f_wave_ok",
+            "omega_max_ok",
+            "theta_max_ok",
+            "sanity_ok",
+        } <= set(entry)
 
 
 def test_runner_warns_but_does_not_fail_on_kinematic_drift(
@@ -146,7 +156,7 @@ def test_runner_warns_but_does_not_fail_on_kinematic_drift(
     theta = 0.30 * np.sin(OMEGA_SHM * t) + 0.001 * rng.standard_normal(t.size)
     omega = 0.30 * OMEGA_SHM * np.cos(OMEGA_SHM * t) + 0.005 * rng.standard_normal(t.size)
     lines = ["t_s,theta_rad,omega_rad_per_s"]
-    for ti, th, om in zip(t, theta, omega):
+    for ti, th, om in zip(t, theta, omega, strict=True):
         lines.append(f"{ti:.5f},{th:.6f},{om:.6f}")
     weak.write_text("\n".join(lines) + "\n")
     tmp_spike03["imu"][0] = weak
@@ -213,18 +223,14 @@ def test_runner_propagates_spike_0_2_passed_flag(
 # ---- IMU / anemometer error paths ------------------------------------------
 
 
-def test_runner_errors_on_bad_imu_csv(
-    tmp_path: Path, tmp_spike03: dict[str, Path]
-) -> None:
+def test_runner_errors_on_bad_imu_csv(tmp_path: Path, tmp_spike03: dict[str, Path]) -> None:
     bad = tmp_path / "bad_imu.csv"
     bad.write_text("oops,no,header\n1,2,3\n")
     tmp_spike03["imu"][0] = bad
     assert _invoke(tmp_spike03) == 2
 
 
-def test_runner_errors_on_missing_imu_file(
-    tmp_path: Path, tmp_spike03: dict[str, Path]
-) -> None:
+def test_runner_errors_on_missing_imu_file(tmp_path: Path, tmp_spike03: dict[str, Path]) -> None:
     tmp_spike03["imu"][0] = tmp_path / "nope.csv"
     assert _invoke(tmp_spike03) == 2
 
@@ -245,9 +251,7 @@ def test_runner_errors_on_grid_with_wrong_positions(
     assert _invoke(tmp_spike03) == 2
 
 
-def test_runner_errors_on_short_grid(
-    tmp_path: Path, tmp_spike03: dict[str, Path]
-) -> None:
+def test_runner_errors_on_short_grid(tmp_path: Path, tmp_spike03: dict[str, Path]) -> None:
     """Only 8 grid points → exit 2."""
     bad = tmp_path / "short_grid.csv"
     lines = ["point,x_m,y_m,z_m,v_mean_m_per_s,v_peak_m_per_s,notes"]
@@ -261,9 +265,7 @@ def test_runner_errors_on_short_grid(
 # ---- single-trial trial_consistency edge ----------------------------------
 
 
-def test_runner_with_single_imu_trial(
-    tmp_path: Path, tmp_spike03: dict[str, Path]
-) -> None:
+def test_runner_with_single_imu_trial(tmp_path: Path, tmp_spike03: dict[str, Path]) -> None:
     """With 1 IMU trial, trial-to-trial std is 0 → trial_consistency_ok still True
     (the gate is `std/mean < 20%` and 0/anything < 20%)."""
     tmp_spike03["imu"] = [tmp_spike03["imu"][0]]

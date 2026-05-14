@@ -4,6 +4,7 @@ benchmark validation library that gates Phase 4 launch.
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.6c (lines 1839-1844).
 Lock reference: Round-9 HIGH-12 (= C12) for the unsteady MACH lock.
 """
+
 from __future__ import annotations
 
 import math
@@ -23,7 +24,6 @@ from fanopt.cfd.spike_0_6c import (
     check_symmetry,
     check_tier1_cfg_sanity,
 )
-
 
 # ---- helpers --------------------------------------------------------------
 
@@ -65,7 +65,9 @@ def _su2_log_with_outer_step(n: int = 1) -> str:
     return "".join(lines)
 
 
-def _cycle(idx: int, c_l_max: float, c_l_min: float, c_d_mean: float, area: float) -> BenchmarkCycleData:
+def _cycle(
+    idx: int, c_l_max: float, c_l_min: float, c_d_mean: float, area: float
+) -> BenchmarkCycleData:
     return BenchmarkCycleData(
         cycle_index=idx,
         c_l_max=c_l_max,

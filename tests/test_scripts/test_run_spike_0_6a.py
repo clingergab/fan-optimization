@@ -8,6 +8,7 @@ Validates the M3-SU2-viability gate behavior:
 The "fail loud" behavior is a deliberate fix to the silent-pass stub the
 runner shipped with in earlier rounds.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

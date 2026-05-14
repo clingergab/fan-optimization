@@ -3,13 +3,12 @@
 Validates .done / .heartbeat / .claim markers, atomic claim semantics,
 heartbeat staleness detection, and composite-key marker naming.
 """
+
 from __future__ import annotations
 
 import os
 import time
 from pathlib import Path
-
-import pytest
 
 from fanopt.utils.drive_io import (
     CLAIM_REAP_AGE_S,
@@ -23,7 +22,6 @@ from fanopt.utils.drive_io import (
     write_done_marker,
     write_heartbeat,
 )
-
 
 # ---- done markers ---------------------------------------------------------
 

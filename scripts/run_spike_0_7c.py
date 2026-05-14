@@ -41,7 +41,6 @@ from fanopt.bo.spike_0_7c import (
     compute_iso_compute_point,
 )
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = REPO_ROOT / "data" / "spike_0_7c" / "results.json"
 
@@ -60,13 +59,9 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
             try:
                 rec = json.loads(stripped)
             except json.JSONDecodeError as exc:
-                raise SystemExit(
-                    f"[spike_0_7c] {path}:{lineno}: invalid JSON: {exc.msg}"
-                ) from exc
+                raise SystemExit(f"[spike_0_7c] {path}:{lineno}: invalid JSON: {exc.msg}") from exc
             if not isinstance(rec, dict):
-                raise SystemExit(
-                    f"[spike_0_7c] {path}:{lineno}: top-level value must be an object"
-                )
+                raise SystemExit(f"[spike_0_7c] {path}:{lineno}: top-level value must be an object")
             out.append(rec)
     return out
 
@@ -262,9 +257,7 @@ def _print_summary(payload: dict[str, Any], out_path: Path) -> None:
     overall = "PASS" if payload["passed"] else "FAIL"
     print(f"[spike_0_7c] OVERALL: {overall}  -> {out_path}")
     if payload["fallback_recommendation"]:
-        print(
-            f"[spike_0_7c] Fallback recommendation: {payload['fallback_recommendation']}"
-        )
+        print(f"[spike_0_7c] Fallback recommendation: {payload['fallback_recommendation']}")
 
 
 if __name__ == "__main__":

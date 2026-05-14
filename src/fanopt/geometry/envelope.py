@@ -16,6 +16,7 @@ Locked constants imported from :mod:`fanopt.geometry.schema`:
   (chamfer-clearance floor + folded-collision ceiling).
 - ``PANEL_THICKNESS_KNOT_COUNT`` — 3 spline knots.
 """
+
 from __future__ import annotations
 
 import math
@@ -93,37 +94,27 @@ class Layer1Params:
 
     def _validate_blade_count(self) -> None:
         if self.blade_count not in BLADE_COUNTS:
-            raise ValueError(
-                f"blade_count must be one of {BLADE_COUNTS}, got {self.blade_count}"
-            )
+            raise ValueError(f"blade_count must be one of {BLADE_COUNTS}, got {self.blade_count}")
 
     def _validate_camber(self) -> None:
         lo, hi = CAMBER_KNOT_COUNT_RANGE
         n = len(self.camber_knots_m)
         if not (lo <= n <= hi):
-            raise ValueError(
-                f"camber_knots_m must have {lo}-{hi} elements, got {n}"
-            )
+            raise ValueError(f"camber_knots_m must have {lo}-{hi} elements, got {n}")
         c_lo, c_hi = CAMBER_RANGE_M
         for i, v in enumerate(self.camber_knots_m):
             if not (c_lo <= v <= c_hi):
-                raise ValueError(
-                    f"camber_knots_m[{i}] = {v} outside range [{c_lo}, {c_hi}]"
-                )
+                raise ValueError(f"camber_knots_m[{i}] = {v} outside range [{c_lo}, {c_hi}]")
 
     def _validate_twist(self) -> None:
         lo, hi = TWIST_KNOT_COUNT_RANGE
         n = len(self.twist_knots_rad)
         if not (lo <= n <= hi):
-            raise ValueError(
-                f"twist_knots_rad must have {lo}-{hi} elements, got {n}"
-            )
+            raise ValueError(f"twist_knots_rad must have {lo}-{hi} elements, got {n}")
         t_lo, t_hi = TWIST_RANGE_RAD
         for i, v in enumerate(self.twist_knots_rad):
             if not (t_lo <= v <= t_hi):
-                raise ValueError(
-                    f"twist_knots_rad[{i}] = {v} outside range [{t_lo}, {t_hi}]"
-                )
+                raise ValueError(f"twist_knots_rad[{i}] = {v} outside range [{t_lo}, {t_hi}]")
 
     def _validate_thickness(self) -> None:
         n = len(self.thickness_knots_m)
@@ -142,13 +133,10 @@ class Layer1Params:
     def _validate_edge_profile(self) -> None:
         if self.edge_profile not in EDGE_PROFILES:
             raise ValueError(
-                f"edge_profile must be one of {EDGE_PROFILES}, got "
-                f"{self.edge_profile!r}"
+                f"edge_profile must be one of {EDGE_PROFILES}, got " f"{self.edge_profile!r}"
             )
 
-    def _validate_fourier(
-        self, amps: tuple[float, float, float], name: str
-    ) -> None:
+    def _validate_fourier(self, amps: tuple[float, float, float], name: str) -> None:
         if len(amps) != FOURIER_HARMONIC_COUNT:
             raise ValueError(
                 f"{name} must have exactly {FOURIER_HARMONIC_COUNT} "
@@ -174,7 +162,7 @@ class Layer1Params:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Layer1Params":
+    def from_dict(cls, d: dict[str, Any]) -> Layer1Params:
         """Inverse of :meth:`to_dict`. Validates on construction."""
         return cls(
             blade_count=int(d["blade_count"]),

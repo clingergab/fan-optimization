@@ -2,6 +2,7 @@
 
 Pure-Python NACA helpers — no gmsh dependency, runs in CI everywhere.
 """
+
 from __future__ import annotations
 
 import math
@@ -14,7 +15,6 @@ from fanopt.cfd.airfoil_shapes import (
     airfoil_polyline,
     naca0012_y,
 )
-
 
 # ---- NACA 0012 shape function ---------------------------------------------
 
@@ -112,7 +112,7 @@ def test_polyline_custom_chord_scales_all_x() -> None:
     """Doubling chord doubles every x coordinate."""
     pts_unit = airfoil_polyline(32, chord=1.0)
     pts_double = airfoil_polyline(32, chord=2.0)
-    for (x1, _), (x2, _) in zip(pts_unit, pts_double):
+    for (x1, _), (x2, _) in zip(pts_unit, pts_double, strict=True):
         assert x2 == pytest.approx(2.0 * x1, rel=1e-12)
 
 

@@ -39,20 +39,19 @@ from typing import Any
 import numpy as np
 
 from fanopt.bo.spike_0_7b import (
-    ArchitectureBanditRecord,
     D_DEFAULT,
     D_MAX,
     D_MIN,
     GP_FIT_TIME_GATE_S,
-    GpFitTiming,
     K_PROMOTED_SANITY,
     N_LHS_DEFAULT,
+    ArchitectureBanditRecord,
+    GpFitTiming,
     TurboTRRecord,
     analyze_07b,
     lhs_sample,
     synthetic_objective,
 )
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = REPO_ROOT / "data" / "spike_0_7b" / "results.json"
@@ -102,8 +101,10 @@ def _fit_gp_numpy(x_train: np.ndarray, y_train: np.ndarray) -> dict[str, Any]:
         except np.linalg.LinAlgError:
             continue
         alpha = np.linalg.solve(L.T, np.linalg.solve(L, y))
-        logml = -0.5 * float(y @ alpha) - float(np.log(np.diag(L)).sum()) - 0.5 * n * np.log(
-            2.0 * np.pi
+        logml = (
+            -0.5 * float(y @ alpha)
+            - float(np.log(np.diag(L)).sum())
+            - 0.5 * n * np.log(2.0 * np.pi)
         )
         if logml > best_logml:
             best_logml = logml
@@ -353,9 +354,7 @@ def main(argv: list[str] | None = None) -> int:
         fit_metadata.append(meta)
 
     # 3) Architecture bandit (synthetic).
-    bandit_records = _run_architecture_bandit(
-        X, y, k_promoted=args.k_promoted, rng=rng
-    )
+    bandit_records = _run_architecture_bandit(X, y, k_promoted=args.k_promoted, rng=rng)
 
     # 4) TuRBO trust-region state machine.
     turbo_trs = _run_turbo_tr_state_machine(
@@ -428,10 +427,7 @@ def _print_summary(payload: dict, out_path: Path) -> None:
         f"[spike_0_7b] TuRBO trust-region updates: "
         f"{'PASS' if gates['turbo_trs_update_correctly'] else 'FAIL'}"
     )
-    print(
-        f"[spike_0_7b] OVERALL: {'PASS' if payload['passed'] else 'FAIL'}  "
-        f"→ {out_path}"
-    )
+    print(f"[spike_0_7b] OVERALL: {'PASS' if payload['passed'] else 'FAIL'}  " f"→ {out_path}")
 
 
 if __name__ == "__main__":

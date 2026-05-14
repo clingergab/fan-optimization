@@ -39,7 +39,6 @@ from fanopt.physical.inertia import (
     analyze_trials,
 )
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CALIBRATION = REPO_ROOT / "data" / "spike_0_2" / "calibration.csv"
 DEFAULT_MEASUREMENTS = REPO_ROOT / "data" / "spike_0_2" / "measurements.csv"
@@ -55,8 +54,7 @@ def _read_single_kappa(path: Path) -> tuple[float, dict[str, str]]:
         raise ValueError(f"{path}: no calibration rows found")
     if "kappa_Nm_per_rad" not in row:
         raise ValueError(
-            f"{path}: missing 'kappa_Nm_per_rad' column "
-            f"(found: {list(row.keys())})"
+            f"{path}: missing 'kappa_Nm_per_rad' column " f"(found: {list(row.keys())})"
         )
     try:
         kappa = float(row["kappa_Nm_per_rad"])
@@ -78,15 +76,12 @@ def _read_trials(path: Path) -> list[tuple[int, float, dict[str, str]]]:
     for i, row in enumerate(rows, start=1):
         if "T_osc_s" not in row:
             raise ValueError(
-                f"{path} row {i}: missing 'T_osc_s' column "
-                f"(found: {list(row.keys())})"
+                f"{path} row {i}: missing 'T_osc_s' column " f"(found: {list(row.keys())})"
             )
         try:
             T = float(row["T_osc_s"])
         except ValueError as e:
-            raise ValueError(
-                f"{path} row {i}: T_osc_s is not a float: {row['T_osc_s']!r}"
-            ) from e
+            raise ValueError(f"{path} row {i}: T_osc_s is not a float: {row['T_osc_s']!r}") from e
         trial_idx = int(row.get("trial", i) or i)
         out.append((trial_idx, T, row))
     return out
@@ -193,17 +188,23 @@ def _print_table(payload: dict, out_path: Path) -> None:
     r = payload["result"]
     print(f"\n[spike_0_2] κ          = {payload['inputs']['kappa_Nm_per_rad']:.6e} N·m/rad")
     print(f"[spike_0_2] n_trials   = {r['n_trials']}")
-    print(f"[spike_0_2] I_wrist    = {r['I_wrist_kgm2']:.6e} kg·m²  "
-          f"(std {r['I_wrist_std_kgm2']:.3e})")
+    print(
+        f"[spike_0_2] I_wrist    = {r['I_wrist_kgm2']:.6e} kg·m²  "
+        f"(std {r['I_wrist_std_kgm2']:.3e})"
+    )
     rep_mark = "✓" if r["repeatability_passed"] else "✗"
-    print(f"[spike_0_2] repeat     = {r['repeatability_pct']:.2f}%  "
-          f"(gate < {REPEATABILITY_GATE_PCT}%)  {rep_mark}")
+    print(
+        f"[spike_0_2] repeat     = {r['repeatability_pct']:.2f}%  "
+        f"(gate < {REPEATABILITY_GATE_PCT}%)  {rep_mark}"
+    )
     if r["cross_check_pct"] is None:
         print("[spike_0_2] cross-check= (skipped — no --generator-i-wrist)")
     else:
         x_mark = "✓" if r["cross_check_passed"] else "✗"
-        print(f"[spike_0_2] cross-chk  = {r['cross_check_pct']:.2f}%  "
-              f"(gate < {CROSS_CHECK_GATE_PCT}%)  {x_mark}")
+        print(
+            f"[spike_0_2] cross-chk  = {r['cross_check_pct']:.2f}%  "
+            f"(gate < {CROSS_CHECK_GATE_PCT}%)  {x_mark}"
+        )
     overall = "PASS" if r["passed"] else "FAIL"
     print(f"[spike_0_2] {overall}")
     print(f"[spike_0_2] wrote      {out_path}")

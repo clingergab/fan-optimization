@@ -113,8 +113,11 @@ def _create_tag(repo_root: Path, tag: str) -> tuple[bool, str]:
         check=False,
     )
     if result.returncode != 0:
-        return False, (result.stderr.strip() or result.stdout.strip()
-                       or f"git tag {tag} failed (rc={result.returncode})")
+        return False, (
+            result.stderr.strip()
+            or result.stdout.strip()
+            or f"git tag {tag} failed (rc={result.returncode})"
+        )
     return True, f"Created git tag `{tag}` at HEAD."
 
 

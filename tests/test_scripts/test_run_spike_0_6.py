@@ -10,6 +10,7 @@ Exercises:
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.6; protocol in
 docs/spike_0_6_protocol.md.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,6 @@ from pathlib import Path
 import pytest
 
 import run_spike_0_6 as cli
-
 
 # ---- fixtures --------------------------------------------------------------
 
@@ -106,9 +106,7 @@ def test_cli_06a_pass_06b_pass(tmp_path: Path, budget_csv: Path) -> None:
 def test_cli_no_sub_spikes_still_zero(tmp_path: Path, budget_csv: Path) -> None:
     """Budget rows only — no sub-spikes — calibration exit 0."""
     out = tmp_path / "results.json"
-    rc = cli.main(
-        ["--budget-csv", str(budget_csv), "--out", str(out)]
-    )
+    rc = cli.main(["--budget-csv", str(budget_csv), "--out", str(out)])
     assert rc == 0
     r = json.loads(out.read_text())["result"]
     assert r["sub_06a"] is None
@@ -176,8 +174,7 @@ def test_cli_missing_06b_column_returns_2(tmp_path: Path, budget_csv: Path) -> N
     """0.6b CSV missing required `P_N` column -> exit 2."""
     bad_b = tmp_path / "bad_06b.csv"
     bad_b.write_text(
-        "wall_time_s,measured_tip_deflection_m,L_m,E_Pa,I_m4\n"
-        "30.0,1.03e-3,1.0,1.0,1000.0\n"
+        "wall_time_s,measured_tip_deflection_m,L_m,E_Pa,I_m4\n" "30.0,1.03e-3,1.0,1.0,1000.0\n"
     )
     rc = cli.main(
         [
@@ -208,8 +205,7 @@ def test_cli_missing_budget_file_returns_2(tmp_path: Path) -> None:
 def test_cli_budget_missing_platform_returns_2(tmp_path: Path) -> None:
     bad = tmp_path / "bad_budget.csv"
     bad.write_text(
-        "workload,wall_time_s,cu_consumed,cells,notes\n"
-        "3d_unsteady,3600,4.5,500000,smoke\n"
+        "workload,wall_time_s,cu_consumed,cells,notes\n" "3d_unsteady,3600,4.5,500000,smoke\n"
     )
     rc = cli.main(
         [

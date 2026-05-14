@@ -12,6 +12,7 @@ Subpackages mirror docs/plan_R11.md §12.1:
     physical  Post-processing of physical measurements (IMU, acoustic, anemometer)
     utils     Ledger / Drive IO / Colab session helpers / structured logging
 """
+
 from __future__ import annotations
 
 __version__ = "0.1.0a0"

@@ -49,13 +49,14 @@ Pass criterion (``Spike07aResult.passed``):
     * (≥ 7 of 10 random sets pass) OR (≥ 3 fail with non-empty
       ``rejection_reasons``).
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -184,9 +185,7 @@ def _draw_one(rng: np.random.Generator, spec: tuple[Any, ...]) -> Any:
     raise ValueError(f"unknown schema bound kind: {kind!r}")
 
 
-def random_param_set_within_bounds(
-    rng: np.random.Generator, n: int
-) -> list[dict[str, Any]]:
+def random_param_set_within_bounds(rng: np.random.Generator, n: int) -> list[dict[str, Any]]:
     """Draw ``n`` random parameter dicts from ``SCHEMA_BOUNDS``.
 
     Each dict is independent (no joint constraints applied — the
@@ -507,7 +506,7 @@ def evaluate_param_set(
         generated = blade is not None
         if not generated:
             reasons.append("generator returned None")
-    except Exception as exc:  # noqa: BLE001 — boundary, capture verbatim
+    except Exception as exc:  # — boundary, capture verbatim
         reasons.append(f"generator raised {type(exc).__name__}: {exc}")
         generated = False
 
@@ -527,7 +526,7 @@ def evaluate_param_set(
     # Stage 2 — manufacturability filter
     try:
         manuf_ok, manuf_reasons = manuf_fn(params, blade)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         manuf_ok, manuf_reasons = False, (f"manuf raised {type(exc).__name__}: {exc}",)
     if not manuf_ok:
         reasons.extend(f"manuf: {r}" for r in manuf_reasons)
@@ -535,7 +534,7 @@ def evaluate_param_set(
     # Stage 3 — click footprint
     try:
         click_ok, click_reasons = click_check_fn(params, blade)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         click_ok, click_reasons = False, (f"click raised {type(exc).__name__}: {exc}",)
     if not click_ok:
         reasons.extend(f"click: {r}" for r in click_reasons)
@@ -543,7 +542,7 @@ def evaluate_param_set(
     # Stage 4 — rib material preservation
     try:
         rib_ok, rib_reasons = rib_check_fn(params, blade)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         rib_ok, rib_reasons = False, (f"rib raised {type(exc).__name__}: {exc}",)
     if not rib_ok:
         reasons.extend(f"rib: {r}" for r in rib_reasons)

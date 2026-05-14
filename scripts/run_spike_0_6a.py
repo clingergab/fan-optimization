@@ -59,9 +59,7 @@ def _write_row(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(
-            ["wall_time_s", "J_fan_steady_proxy", "stage_name", "stage_wall_time_s"]
-        )
+        writer.writerow(["wall_time_s", "J_fan_steady_proxy", "stage_name", "stage_wall_time_s"])
         # First row carries totals; stage_name / stage_wall_time_s blank.
         writer.writerow(
             [
