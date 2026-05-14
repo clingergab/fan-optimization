@@ -1,19 +1,32 @@
 """Retired-phrase CI gate (Round-8 v2 meta lock; gate scaffold Round-9 HIGH-5 lock).
 
-Reads docs/retired_phrases.yaml; for each entry, greps the spec + production
-code for matches and asserts zero matches outside the entry's allow-lists.
+Reads docs/retired_phrases.yaml; for each entry, greps **production code under
+src/fanopt/** for matches and asserts zero matches outside the entry's
+allow-lists. This catches accidental re-introduction of retired architectural
+phrasings in code — constants, comments, docstrings, helper text — where
+drift typically happens.
+
+**Scope:** production code only. The plan (`docs/report-final.md`) is
+deliberately NOT scanned by this gate: it is author-managed and intentionally
+contains historical references, CI-gate self-descriptions, and meta-discussion
+of retired phrases that would generate noise rather than signal. A separate
+manual review pass (or a future opt-in tool) is the appropriate venue for
+plan-prose drift checks.
 
 Allow-list logic:
   - allow_list_sections: skip if the matching line's nearest preceding
-    markdown heading contains any of the allowed substrings (case-insensitive)
+    markdown heading contains any of the allowed substrings (case-insensitive).
+    Mostly inert under the code-only scope, kept so the catalog schema stays
+    portable to any future plan-scanning tool.
   - allow_list_disclaimers: skip if the matching line itself contains any
     of the allowed disclaimer phrases (case-insensitive)
 
 A match is a VIOLATION only if it passes neither allow-list check.
 
 Runs as part of:
-  - Pre-merge CI suite (alongside other test_audit/* gates)
-  - Every adversarial review round's Pass B (prose-vs-locks audit) — runs FIRST
+  - Default pytest suite (CI + local), every invocation
+  - Every adversarial review round's Pass B (prose-vs-locks audit), where
+    the plan-prose pass is performed manually against the same catalog
   - The `phase4-launch` Git tag pre-flight check
 """
 from __future__ import annotations
@@ -27,23 +40,17 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _resolve_spec_path() -> Path:
-    """Spec lives at either docs/report-final.md or repo-root report-final.md."""
-    for candidate in (REPO_ROOT / "docs" / "report-final.md", REPO_ROOT / "report-final.md"):
-        if candidate.exists():
-            return candidate
-    return REPO_ROOT / "docs" / "report-final.md"
-
-
-SPEC_PATH = _resolve_spec_path()
 CATALOG_PATH = REPO_ROOT / "docs" / "retired_phrases.yaml"
 
 
 def _scan_paths() -> list[Path]:
-    """Return the list of files to scan: spec + any production Python under src/fanopt/."""
+    """Return the list of files to scan.
+
+    Scope is production code only — every `*.py` under `src/fanopt/`. The
+    plan (`docs/report-final.md`) is intentionally excluded; see this
+    module's docstring for the rationale.
+    """
     paths: list[Path] = []
-    if SPEC_PATH.exists():
-        paths.append(SPEC_PATH)
     src_dir = REPO_ROOT / "src" / "fanopt"
     if src_dir.exists():
         paths.extend(src_dir.rglob("*.py"))

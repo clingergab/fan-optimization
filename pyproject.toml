@@ -73,6 +73,16 @@ markers = [
     "audit: prose-vs-locks gates run as part of Round-N reviews",
 ]
 
+[tool.coverage.report]
+# Lines we don't expect tests to hit: __main__ guards (run-as-script only)
+# and typing-only re-exports. Pair with `# pragma: no cover` for narrow
+# in-module exclusions (defensive branches behind earlier validation).
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
