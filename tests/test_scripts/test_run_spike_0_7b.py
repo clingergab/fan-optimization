@@ -31,7 +31,6 @@ def test_runner_writes_results_json_and_passes(tmp_path: Path) -> None:
             "--seed", "42",
             "--n-iters", "3",
             "--out", str(out),
-            "--gp-backend", "numpy",
         ]
     )
     assert rc == 0
@@ -108,7 +107,6 @@ def test_runner_failing_k_promoted_returns_1(tmp_path: Path) -> None:
             "--seed", "0",
             "--n-iters", "3",
             "--out", str(out),
-            "--gp-backend", "numpy",
             "--k-promoted", "4",
         ]
     )

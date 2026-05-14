@@ -8,12 +8,10 @@ What this script does (in order):
 
 1.  Draw ``n_lhs`` Latin-hypercube samples in [0, 1]^d.
 2.  Evaluate ``synthetic_objective`` at each sample.
-3.  For each iteration, fit a Gaussian process to the current training
-    set and time the fit. ``--gp-backend botorch`` uses ``botorch``'s
-    ``SingleTaskGP`` if installed; ``--gp-backend numpy`` (the default
-    when BoTorch is unavailable) uses a numpy-only RBF GP solved by
-    Cholesky factorisation. Either way the per-iteration wall-clock is
-    measured against the 60 s gate.
+3.  For each iteration, fit a numpy-only RBF Gaussian process to the
+    current training set (Cholesky-solved exact GP, same complexity
+    class as BoTorch's ``SingleTaskGP`` on CPU) and time the fit
+    against the 60 s gate.
 4.  Run a synthetic architecture-bandit screen producing
     ``K_PROMOTED_SANITY = 4`` promotions out of a small candidate pool.
 5.  Drive a TuRBO-style trust-region state machine through controlled
@@ -23,11 +21,10 @@ What this script does (in order):
     ``results.json``; print a pass/fail table; return 0 iff all three
     gates pass.
 
-**BoTorch fallback note (sandbox / CI without ``[bo]`` extras).** The
-production runs use ``botorch``; the numpy fallback exists so the spike
-can still produce timing data on machines without the optional bundle.
-Production verification must use the real BoTorch stack — see
-``pyproject.toml [bo]`` extras and ``environment.yml``.
+The spike validates the BO **infrastructure** (timing, bandit logic,
+TR state machine), not the production GP backend. Production runs use
+``botorch`` via the ``fanopt.bo.*`` modules under the ``[bo]`` extras;
+those live outside this spike's scope.
 """
 from __future__ import annotations
 
@@ -60,19 +57,21 @@ from fanopt.bo.spike_0_7b import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = REPO_ROOT / "data" / "spike_0_7b" / "results.json"
 
+GP_BACKEND_NAME = "numpy_rbf"
 
-# ---- GP backends -----------------------------------------------------------
+
+# ---- GP backend ------------------------------------------------------------
 
 
 def _fit_gp_numpy(x_train: np.ndarray, y_train: np.ndarray) -> dict[str, Any]:
     """Numpy-only RBF GP — Cholesky-solve the kernel matrix.
 
-    This is a faithful exact-GP fit (no inducing points), same complexity
-    class as BoTorch's ``SingleTaskGP`` on CPU: O(N³) factorisation +
-    O(N²) per length-scale gradient step. We do a small grid of
-    length-scales and pick the one that maximises the (un-normalised)
-    marginal likelihood — enough to be representative of the per-fit
-    wall-clock you'd see from a few L-BFGS steps on BoTorch's GP.
+    Faithful exact-GP fit (no inducing points), same complexity class as
+    BoTorch's ``SingleTaskGP`` on CPU: O(N³) factorisation + O(N²) per
+    length-scale gradient step. Small grid of length-scales; pick the
+    one that maximises the (un-normalised) marginal likelihood — enough
+    to be representative of the per-fit wall-clock you'd see from a few
+    L-BFGS steps on BoTorch's GP.
     """
     n, d = x_train.shape
     # Standardise y for numerical stability.
@@ -118,53 +117,6 @@ def _fit_gp_numpy(x_train: np.ndarray, y_train: np.ndarray) -> dict[str, Any]:
         "y_mean": y_mean,
         "y_std": y_std,
     }
-
-
-def _fit_gp_botorch(x_train: np.ndarray, y_train: np.ndarray) -> dict[str, Any]:
-    """BoTorch ``SingleTaskGP`` fit — production backend.
-
-    Mirrors the entry points the eventual orchestration loop will hit.
-    Only runs when ``import botorch`` succeeds.
-    """
-    import torch  # type: ignore[import-not-found]
-    from botorch.fit import fit_gpytorch_mll  # type: ignore[import-not-found]
-    from botorch.models import SingleTaskGP  # type: ignore[import-not-found]
-    from gpytorch.mlls import ExactMarginalLogLikelihood  # type: ignore[import-not-found]
-
-    X = torch.as_tensor(x_train, dtype=torch.double)
-    Y = torch.as_tensor(y_train.reshape(-1, 1), dtype=torch.double)
-    gp = SingleTaskGP(X, Y)
-    mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
-    fit_gpytorch_mll(mll)
-    return {
-        "backend": "botorch_singletask",
-        "n_train": int(X.shape[0]),
-        "d": int(X.shape[1]),
-    }
-
-
-def _select_gp_backend(preferred: str) -> tuple[str, Any]:
-    """Return (backend_name, fit_fn) honouring the CLI flag with graceful fallback."""
-    if preferred == "numpy":
-        return "numpy_rbf", _fit_gp_numpy
-    if preferred == "botorch":
-        try:
-            import botorch  # type: ignore[import-not-found]  # noqa: F401
-        except ImportError:
-            print(
-                "[spike_0_7b] BoTorch not installed; falling back to numpy_rbf "
-                "GP. Production verification requires the [bo] extras.",
-                file=sys.stderr,
-            )
-            return "numpy_rbf", _fit_gp_numpy
-        return "botorch_singletask", _fit_gp_botorch
-    # auto
-    try:
-        import botorch  # type: ignore[import-not-found]  # noqa: F401
-
-        return "botorch_singletask", _fit_gp_botorch
-    except ImportError:
-        return "numpy_rbf", _fit_gp_numpy
 
 
 # ---- synthetic bandit + TuRBO --------------------------------------------
@@ -330,15 +282,6 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Where to write results.json. Default: %(default)s.",
     )
     p.add_argument(
-        "--gp-backend",
-        choices=("auto", "botorch", "numpy"),
-        default="auto",
-        help=(
-            "Which GP backend to use. 'auto' tries BoTorch first and "
-            "falls back to numpy. Default: %(default)s."
-        ),
-    )
-    p.add_argument(
         "--k-promoted",
         type=int,
         default=K_PROMOTED_SANITY,
@@ -375,7 +318,7 @@ def main(argv: list[str] | None = None) -> int:
     _validate_args(args)
 
     rng = np.random.default_rng(args.seed)
-    backend_name, fit_fn = _select_gp_backend(args.gp_backend)
+    fit_fn = _fit_gp_numpy
 
     # 1) LHS samples + synthetic-objective evaluations.
     X = lhs_sample(args.n_lhs, args.d, rng=rng)
@@ -437,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
             "d": args.d,
             "seed": args.seed,
             "n_iters": args.n_iters,
-            "gp_backend": backend_name,
+            "gp_backend": GP_BACKEND_NAME,
             "k_promoted_expected": args.k_promoted,
             "gp_fit_time_gate_s": GP_FIT_TIME_GATE_S,
         },
