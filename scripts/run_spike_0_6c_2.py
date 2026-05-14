@@ -1,13 +1,23 @@
 #!/usr/bin/env python
-"""Spike 0.6c.2 — NACA 0012 oscillating-airfoil benchmark validation runner.
+"""Spike 0.6c.2 — NACA 0012 numerical-consistency benchmark runner.
 
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.6c (lines 1839-1844);
 protocol in docs/spike_0_6c_protocol.md.
 
 Consumes the operator-supplied per-cycle measurements from a 5-cycle
 NACA 0012 pitching simulation (run through the locked Tier-1 cfg with
-``k_reduced ≈ 0.55``, ``Re ≈ 40k``, pitching about quarter-chord) and
-compares the integrated last-4-cycle metrics to published references.
+``k_reduced ≈ 0.55``, ``Re ≈ 40k``, pitching about quarter-chord, ±10°)
+and applies two internal-consistency gates:
+
+* **Convergence:** per-metric relative range across kept cycles < 2%
+  for ``c_l_max``, ``c_l_min``, ``c_d_mean``.
+* **C_L symmetry:** ``|⟨c_l_max⟩ + ⟨c_l_min⟩| / max(|⟨c_l_max⟩|,
+  |⟨c_l_min⟩|) < 5%`` on kept-cycle averages.
+
+No literature-reference comparison: the (Re=40k, k=0.55, ±10°, mean
+α=0°) operating point has no published reference within ±15% scatter
+(see ``fanopt.cfd.spike_0_6c`` module docstring). Quantitative
+cross-solver validation (SU2 vs PyFR) is deferred to Phase 5.
 
 Inputs
 ------
@@ -16,21 +26,12 @@ Inputs
     CSV with one row per cycle. Columns:
     ``cycle_index, c_l_max, c_l_min, c_d_mean, c_l_hysteresis_area``.
     The aggregator discards the first cycle (initial transient) and
-    integrates the remaining 4 per the spec.
-
-``--reference``
-    Optional JSON file with reference values keyed by metric name. If
-    omitted, the runner ships a default ``NACA0012_REFERENCE`` dict
-    representative of the McAlister/Carr UH110A studies.
+    runs the gates over the remaining 4.
 
 ``--k-reduced`` / ``--reynolds``
     Reduced-frequency and Reynolds number actually run. Recorded in the
     result so the operator can verify both fall in the spec bands
     ([0.5, 0.6] and [30000, 50000]).
-
-``--reference-source``
-    Free-form provenance string for the reference values (e.g.,
-    "McAlister/Carr UH110A 1978, fig 7c").
 
 Outputs
 -------
@@ -43,8 +44,8 @@ Outputs
 Exit codes
 ----------
 
-* ``0`` — all metrics within ±15% of their references.
-* ``1`` — at least one metric outside the ±15% tolerance.
+* ``0`` — both gates pass.
+* ``1`` — convergence or symmetry gate fails.
 * ``2`` — input error (missing file, missing column, non-numeric).
 """
 from __future__ import annotations
@@ -61,8 +62,8 @@ from fanopt.cfd.spike_0_6c import (
     BENCHMARK_K_REDUCED_MIN,
     BENCHMARK_RE_MAX,
     BENCHMARK_RE_MIN,
-    BENCHMARK_TOLERANCE_PCT,
-    NACA0012_REFERENCE,
+    CONVERGENCE_TOLERANCE_PCT,
+    SYMMETRY_TOLERANCE_PCT,
     BenchmarkCycleData,
     analyze_benchmark,
 )
@@ -121,23 +122,6 @@ def _read_measured(path: Path) -> tuple[BenchmarkCycleData, ...]:
     return tuple(out)
 
 
-def _load_reference(path: Path | None) -> tuple[dict[str, float], str]:
-    if path is None:
-        return dict(NACA0012_REFERENCE), "shipped:NACA0012_REFERENCE"
-    if not path.exists():
-        raise FileNotFoundError(f"reference JSON not found: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"{path}: reference JSON must be an object at top level")
-    out: dict[str, float] = {}
-    for k, v in data.items():
-        try:
-            out[str(k)] = float(v)
-        except (TypeError, ValueError) as e:
-            raise ValueError(f"{path}: value for {k!r} is not numeric ({v!r})") from e
-    return out, f"file:{path}"
-
-
 # ---- I/O helpers ----------------------------------------------------------
 
 
@@ -172,15 +156,6 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="CSV with per-cycle measured aerodynamic coefficients.",
     )
     p.add_argument(
-        "--reference",
-        type=Path,
-        default=None,
-        help=(
-            "Optional reference JSON. If omitted, uses the shipped "
-            "NACA0012_REFERENCE default."
-        ),
-    )
-    p.add_argument(
         "--k-reduced",
         type=float,
         required=True,
@@ -197,12 +172,6 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             f"Reynolds number of the run (spec band: "
             f"{BENCHMARK_RE_MIN:.0f}-{BENCHMARK_RE_MAX:.0f})."
         ),
-    )
-    p.add_argument(
-        "--reference-source",
-        type=str,
-        default="operator-supplied",
-        help="Free-form provenance string for the reference values.",
     )
     p.add_argument(
         "--result-json",
@@ -234,7 +203,6 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         cycles = _read_measured(args.measured)
-        reference, source_label = _load_reference(args.reference)
     except (FileNotFoundError, ValueError) as e:
         print(f"[spike_0_6c_2] input error: {e}", file=sys.stderr)
         return 2
@@ -273,14 +241,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = analyze_benchmark(
             cycles=cycles,
-            reference=reference,
             k_reduced=args.k_reduced,
             reynolds=args.reynolds,
-            reference_source=(
-                args.reference_source
-                if args.reference is not None
-                else f"{args.reference_source} ({source_label})"
-            ),
         )
     except ValueError as e:
         print(f"[spike_0_6c_2] analysis error: {e}", file=sys.stderr)
@@ -289,20 +251,24 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "spec_reference": "docs/plan_R11.md §Phase 0 Spike 0.6c (sub-spike 0.6c.2)",
         "lock_reference": "H10 (= Round-9 HIGH-10): Tier-1 cfg benchmark validation",
-        "tolerance_pct": BENCHMARK_TOLERANCE_PCT,
+        "gate_thresholds": {
+            "convergence_tolerance_pct": CONVERGENCE_TOLERANCE_PCT,
+            "symmetry_tolerance_pct": SYMMETRY_TOLERANCE_PCT,
+        },
         "inputs": {
             "measured_csv": str(args.measured),
-            "reference_source": result.reference_source,
             "k_reduced": result.k_reduced,
             "reynolds": result.reynolds,
         },
         "result": {
             "k_reduced": result.k_reduced,
             "reynolds": result.reynolds,
-            "reference_source": result.reference_source,
             "cycles": [asdict(c) for c in result.cycles],
-            "comparisons": [asdict(c) for c in result.comparisons],
-            "all_metrics_within_15pct": result.all_metrics_within_15pct,
+            "convergence": [asdict(c) for c in result.convergence],
+            "symmetry": asdict(result.symmetry),
+            "diagnostic_hysteresis_area_mean": result.diagnostic_hysteresis_area_mean,
+            "convergence_passed": result.convergence_passed,
+            "symmetry_passed": result.symmetry_passed,
             "passed": result.passed,
         },
     }
@@ -312,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         f"[spike_0_6c_2] cycles               {len(result.cycles)} "
-        f"(discard 1, integrate {len(result.cycles) - 1})"
+        f"(discard 1, keep {len(result.cycles) - 1})"
     )
     print(
         f"[spike_0_6c_2] k_reduced            {result.k_reduced} "
@@ -322,13 +288,25 @@ def main(argv: list[str] | None = None) -> int:
         f"[spike_0_6c_2] reynolds             {result.reynolds:g} "
         f"(band [{BENCHMARK_RE_MIN:.0f}, {BENCHMARK_RE_MAX:.0f}])"
     )
-    print(f"[spike_0_6c_2] reference_source     {result.reference_source}")
-    for c in result.comparisons:
+    print(f"[spike_0_6c_2] convergence (range < {CONVERGENCE_TOLERANCE_PCT:.1f}%):")
+    for c in result.convergence:
         mark = "ok" if c.passed else "XX"
         print(
-            f"  - {c.metric_name:<22} meas={c.measured:>10.4f}  "
-            f"ref={c.reference:>10.4f}  pct={c.pct_diff:+7.2f}%  [{mark}]"
+            f"  - {c.metric_name:<22} mean={c.mean:>10.4f}  "
+            f"range={c.relative_range_pct:>6.2f}%  [{mark}]"
         )
+    sym = result.symmetry
+    sym_mark = "ok" if sym.passed else "XX"
+    print(
+        f"[spike_0_6c_2] symmetry             "
+        f"⟨c_l_max⟩={sym.c_l_max_mean:+.4f}  ⟨c_l_min⟩={sym.c_l_min_mean:+.4f}  "
+        f"asym={sym.asymmetry_pct:.2f}%  (gate {SYMMETRY_TOLERANCE_PCT:.1f}%)  [{sym_mark}]"
+    )
+    print(
+        f"[spike_0_6c_2] diagnostic           "
+        f"⟨c_l_hysteresis_area⟩={result.diagnostic_hysteresis_area_mean:+.4f} "
+        f"(not gated; cross-solver check in Phase 5)"
+    )
     print(f"[spike_0_6c_2] passed               {result.passed}")
     print(f"[spike_0_6c_2] result_json          {args.result_json}")
     print(f"[spike_0_6c_2] marker               {marker}")

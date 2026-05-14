@@ -13,6 +13,7 @@ Covers:
 """
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 
 import pytest
@@ -289,8 +290,6 @@ def test_fallback_recommends_retune_when_no_gp_breach() -> None:
 
 def test_iso_compute_point_serializes_via_asdict() -> None:
     """asdict produces a JSON-serialisable dict of the dataclass fields."""
-    import json
-
     pt = IsoComputePoint(
         budget_hours=30,
         sobol_best_j_fan=100.0,

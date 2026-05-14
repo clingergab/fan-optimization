@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from scipy.stats.qmc import Sobol
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 # Plan §Phase 0 Spike 0.7c (H7 lock) names the canonical path as
@@ -56,14 +57,6 @@ def _sobol_samples(n: int, d: int, *, seed: int) -> np.ndarray:
     coverage. The seed is forwarded so two invocations with identical
     flags produce identical sample sets.
     """
-    try:
-        from scipy.stats.qmc import Sobol  # type: ignore[import-not-found]
-    except ImportError as exc:  # pragma: no cover -- scipy is a runtime dep
-        raise SystemExit(
-            "scipy is required for the Sobol seed generator. "
-            "Install with `pip install scipy` and re-run."
-        ) from exc
-
     sampler = Sobol(d=d, scramble=True, seed=int(seed))
     return np.asarray(sampler.random(n=n), dtype=float)
 

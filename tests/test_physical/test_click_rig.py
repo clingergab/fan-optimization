@@ -10,6 +10,7 @@ docs/spike_0_4_protocol.md.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 
 import pytest
@@ -400,6 +401,4 @@ def test_spike_04_result_serializes_via_asdict() -> None:
     assert d["engagement_force"]["passed"] is True
     assert d["cycle_life"]["passed"] is True
     # Round-trip the dict through JSON to confirm nothing exotic leaks through.
-    import json
-
     json.dumps(d)

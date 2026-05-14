@@ -19,7 +19,7 @@ if `data/spike_0_6c/PASS` is absent.
 | Sub-spike | What it gates | Pass criteria |
 |---|---|---|
 | **0.6c.1 — cfg sanity** | sub-spike 0.6c.2 (the benchmark itself) | rendered cfg parses; `MACH == 1e-9` (Round-9 HIGH-12 lock); EITHER `FREESTREAM_OPTION = FREESTREAM_VELOCITY` OR `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`; SU2 completes ≥ 1 outer time step on a probe mesh |
-| **0.6c.2 — benchmark** | Phase 4 launch (`scripts/launch_phase4.py`) | every reported metric within ±15% of its published reference, integrated over the last 4 of 5 cycles |
+| **0.6c.2 — benchmark** | Phase 4 launch (`scripts/launch_phase4.py`) | two internal-consistency gates: (a) per-metric relative range across kept cycles < 2% on `c_l_max`, `c_l_min`, `c_d_mean`; (b) `\|⟨c_l_max⟩ + ⟨c_l_min⟩\| / max(\|⟨c_l_max⟩\|, \|⟨c_l_min⟩\|) < 5%` |
 
 ---
 
@@ -60,11 +60,11 @@ You need:
     (by design — the cfg-only path cannot satisfy the spec's
     "1 outer time step on a probe mesh" requirement).
   - Gmsh — needed to mesh the NACA 0012 case for sub-spike 0.6c.2.
-- A published reference dataset for the case you choose to reproduce
-  (see §Reference data below). The runner ships a default
-  `NACA0012_REFERENCE` dict representative of the McAlister/Carr UH110A
-  studies; for a publication-grade run, override it with values taken
-  directly from one cited paper.
+- No external reference dataset is required (see §Reference data
+  below). Sub-spike 0.6c.2 runs two **internal-consistency** gates on
+  the SU2 output alone; the literature-comparison gate that earlier
+  draft protocols enumerated has been retired (see the explanation in
+  §Reference data).
 
 ---
 
@@ -170,38 +170,64 @@ shipped template is `data/spike_0_6c/measured.template.csv`.
 ```
 python scripts/run_spike_0_6c_2.py \
   --measured data/spike_0_6c/measured.csv \
-  --reference data/spike_0_6c/reference.json \
   --k-reduced 0.55 \
-  --reynolds 40000 \
-  --reference-source "McAlister/Carr UH110A 1978 — fig 7c"
+  --reynolds 40000
 ```
 
-The analyzer discards cycle 0 (initial transient), integrates cycles
-1-4, and compares each integrated metric to the reference. Writes
-`data/spike_0_6c/sub_2_result.json` + a `sub_2.{PASS,FAIL}` marker.
+The analyzer discards cycle 0 (initial transient) and runs two
+internal-consistency gates on the remaining 4 cycles:
 
-**Pass criterion:** every metric within ±15% of its reference value.
+* **Convergence:** per-metric relative range across kept cycles is
+  `100 * (max - min) / |mean|`. For `c_l_max`, `c_l_min`, `c_d_mean`,
+  each must be < 2% (`CONVERGENCE_TOLERANCE_PCT`).
+* **C_L symmetry:** with mean α = 0° and a symmetric airfoil, kept-cycle
+  averages must satisfy
+  `|⟨c_l_max⟩ + ⟨c_l_min⟩| / max(|⟨c_l_max⟩|, |⟨c_l_min⟩|) < 5%`
+  (`SYMMETRY_TOLERANCE_PCT`).
+
+Writes `data/spike_0_6c/sub_2_result.json` + a `sub_2.{PASS,FAIL}`
+marker. The cycle-mean of `c_l_hysteresis_area` is logged as a
+diagnostic in the result but is NOT gated (the loop is near
+sign-inversion at k=0.55; a relative-range gate on a near-zero quantity
+is unstable, and quantitative cross-solver validation is deferred to
+Phase 5).
+
+**Pass criterion:** both gates clear (convergence AND symmetry).
 
 ---
 
 ## Reference data
 
-The shipped `NACA0012_REFERENCE` dict in
-`src/fanopt/cfd/spike_0_6c.py` is a *template default* representative of
-the McAlister/Carr UH110A studies + Anderson oscillating-airfoil DB
-low-Re symmetric-foil subset. For a publication-grade run, override the
-reference values with numbers taken directly from one of:
+**No literature reference comparison.** A targeted literature survey
+(2026-05) confirmed the (Re=40k, k=0.55, ±10°, mean α=0°, c/4 pivot)
+operating point is in a gap between the well-studied low-Re/low-k
+attached-pitching regime (Kim & Chang 2013 at Re=48k k=0.1 ±6°) and
+the moderate-Re/high-k dynamic-stall regime (MDPI 2025 at Re=66k;
+McCroskey/Carr at Re~10⁶). At this Re even well-studied points have
+≥25% inter-study scatter on C_L_max — the ±15% literature-comparison
+gate that earlier drafts enumerated is **not defensible** at this
+operating point.
 
-- **McAlister, K.W. & Carr, L.W. (1978)** — Water-tunnel visualizations
-  of dynamic stall on the UH110A airfoil. NASA Tech Memo. Provides
-  lift/drag hysteresis loops for `k_reduced ≈ 0.5-0.6` at low Re.
-- **Anderson, J.M. et al. (1998)** — Oscillating foils of high
-  propulsive efficiency. J. Fluid Mech. The Anderson oscillating-airfoil
-  database is widely cited for NACA 0012 benchmark cases.
+Internal-consistency gates substitute: they validate that SU2 is
+solving its own equations consistently. Convergence proves the time
+discretisation is fine enough; symmetry proves the geometry/motion
+axis is wired correctly. Together they catch the failure modes that
+the literature gate would have caught (mesh-too-coarse, dt-too-large,
+sign-flipped omega) without pretending to ground-truth at an operating
+point nobody has published.
 
-Pass the chosen paper's values via `--reference data/spike_0_6c/reference.json`
-and cite the paper in `--reference-source`. The shipped template is
-`data/spike_0_6c/reference.template.json`.
+Quantitative cross-solver validation (SU2 vs PyFR with comparable
+numerical-method coverage) is deferred to **Phase 5**, where PyFR is
+already provisioned in the verification budget. The cross-solver
+acceptance bound (researcher recommendation): C_L_max within ±20%,
+C_d_mean within ±25%, hysteresis loop *sign* matches and area within a
+factor of 2.
+
+If a future spike or campaign chooses to run a different operating
+point that *does* have literature coverage (e.g., Kim & Chang's Re=48k,
+k=0.1, ±6° point), the analyzer can be invoked with
+`--allow-out-of-band` to bypass the band check, but the internal-
+consistency gates remain the V1 pass criterion.
 
 ---
 
@@ -233,15 +259,15 @@ If sub-spike 0.6c.1 fails:
 | `outer_time_steps_completed == 0` with SU2 installed | SU2 launch error | Inspect SU2 stdout in `data/spike_0_6c/probe/`; common causes: mesh missing, marker names mismatch |
 | `outer_time_steps_completed == 0` without SU2 | SU2 not on PATH | Install SU2 or run this sub-spike on a Colab Pro CPU session |
 
-If sub-spike 0.6c.2 fails (any metric > ±15% deviation):
+If sub-spike 0.6c.2 fails:
 
-| Symptom | Likely cause | Fix |
+| Gate that failed | Likely cause | Fix |
 |---|---|---|
-| Drag metric high; lift roughly OK | Mesh quality / first-cell height | Halve first-cell height; verify boundary-layer y+ < 1 |
-| Lift peaks late in the cycle | dt convergence | Halve `TIME_STEP`; re-run; verify cycle 2 vs cycle 3 < 5% |
-| Forces oscillate within a cycle | Inner-iter convergence | Bump `INNER_ITER` from 100 to 200; verify residuals reach `CONV_RESIDUAL_MINVAL` |
-| Hysteresis area very low | Low-Mach prec coefficients | Tighten `MIN_ROE_TURKEL_PREC` / `MAX_ROE_TURKEL_PREC` band |
-| All metrics scaled wrong by ~constant | AMPL unit (rad vs deg) drift | Verify SU2 build commit pinned in `material_locks.SU2_COMMIT` |
+| Convergence on `c_l_max` (range ≥ 2%) | dt too large; cycles haven't settled | Halve `TIME_STEP`; re-run; if still divergent, add more cycles |
+| Convergence on `c_d_mean` | Inner-iter convergence | Bump `INNER_ITER` from 100 to 200; verify residuals reach `CONV_RESIDUAL_MINVAL` |
+| Convergence on all three metrics | Mesh quality / first-cell height | Halve first-cell height; verify boundary-layer y+ < 1 |
+| Symmetry (asymmetry ≥ 5%) | Sign error on `PITCHING_OMEGA_Y` or motion origin | Verify `PITCHING_OMEGA_VEC` is negative-y (Round-9 HIGH-12 / C11 lock); verify `motion_origin_x` = quarter-chord |
+| Symmetry, all metrics scaled wrong by ~constant | AMPL unit (rad vs deg) drift | Verify SU2 build commit pinned in `material_locks.SU2_COMMIT` |
 
 **Do NOT silently proceed.** Phase 4 launch is hard-gated on this spike
 passing.

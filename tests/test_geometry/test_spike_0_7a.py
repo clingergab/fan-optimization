@@ -16,7 +16,10 @@ import pytest
 
 from fanopt.geometry.spike_0_7a import (
     ADVERSARIAL_PARAM_SETS,
+    L_BLADE_M,
+    PANEL_TANGENTIAL_OUTER_M,
     RANDOM_DOCUMENTED_FAIL_GATE,
+    RIB_TIP_TAPER_M,
     SCHEMA_BOUNDS,
     GeomSanityRecord,
     Spike07aResult,
@@ -142,11 +145,6 @@ def test_adversarial_primitive_set_is_at_bounds_edge() -> None:
     )
     assert c["prim_active"] is True
     # The primitive sits at the boundary of the 5 mm click-clearance lock.
-    from fanopt.geometry.spike_0_7a import (
-        L_BLADE_M,
-        PANEL_TANGENTIAL_OUTER_M,
-        RIB_TIP_TAPER_M,
-    )
     boundary_x = L_BLADE_M - RIB_TIP_TAPER_M - 0.005
     assert abs(c["prim_x_m"] - boundary_x) < 1e-9
     assert abs(abs(c["prim_y_m"]) - (PANEL_TANGENTIAL_OUTER_M - 0.005)) < 1e-9

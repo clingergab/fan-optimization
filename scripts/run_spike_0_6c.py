@@ -40,9 +40,10 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fanopt.cfd.spike_0_6c import (
-    BenchmarkComparison,
     BenchmarkCycleData,
     BenchmarkResult,
+    ConvergenceCheck,
+    SymmetryCheck,
     Tier1CfgSanityResult,
     analyze_spike_06c,
 )
@@ -107,23 +108,34 @@ def _load_sub_2(path: Path) -> BenchmarkResult:
             )
             for c in r.get("cycles", [])
         )
-        comparisons = tuple(
-            BenchmarkComparison(
+        convergence = tuple(
+            ConvergenceCheck(
                 metric_name=str(c["metric_name"]),
-                measured=float(c["measured"]),
-                reference=float(c["reference"]),
-                pct_diff=float(c["pct_diff"]),
+                values=tuple(float(v) for v in c["values"]),
+                mean=float(c["mean"]),
+                relative_range_pct=float(c["relative_range_pct"]),
                 passed=bool(c["passed"]),
             )
-            for c in r.get("comparisons", [])
+            for c in r.get("convergence", [])
+        )
+        sym = r["symmetry"]
+        symmetry = SymmetryCheck(
+            c_l_max_mean=float(sym["c_l_max_mean"]),
+            c_l_min_mean=float(sym["c_l_min_mean"]),
+            asymmetry_pct=float(sym["asymmetry_pct"]),
+            passed=bool(sym["passed"]),
         )
         return BenchmarkResult(
             k_reduced=float(r["k_reduced"]),
             reynolds=float(r["reynolds"]),
             cycles=cycles,
-            reference_source=str(r.get("reference_source", "")),
-            comparisons=comparisons,
-            all_metrics_within_15pct=bool(r.get("all_metrics_within_15pct", False)),
+            convergence=convergence,
+            symmetry=symmetry,
+            diagnostic_hysteresis_area_mean=float(
+                r.get("diagnostic_hysteresis_area_mean", 0.0)
+            ),
+            convergence_passed=bool(r.get("convergence_passed", False)),
+            symmetry_passed=bool(r.get("symmetry_passed", False)),
             passed=bool(r.get("passed", False)),
         )
     except (KeyError, TypeError, ValueError) as e:
@@ -201,9 +213,13 @@ def main(argv: list[str] | None = None) -> int:
                 "k_reduced": result.sub_06c_2.k_reduced,
                 "reynolds": result.sub_06c_2.reynolds,
                 "cycles": [asdict(c) for c in result.sub_06c_2.cycles],
-                "reference_source": result.sub_06c_2.reference_source,
-                "comparisons": [asdict(c) for c in result.sub_06c_2.comparisons],
-                "all_metrics_within_15pct": result.sub_06c_2.all_metrics_within_15pct,
+                "convergence": [asdict(c) for c in result.sub_06c_2.convergence],
+                "symmetry": asdict(result.sub_06c_2.symmetry),
+                "diagnostic_hysteresis_area_mean": (
+                    result.sub_06c_2.diagnostic_hysteresis_area_mean
+                ),
+                "convergence_passed": result.sub_06c_2.convergence_passed,
+                "symmetry_passed": result.sub_06c_2.symmetry_passed,
                 "passed": result.sub_06c_2.passed,
             },
             "overall_passed": result.overall_passed,
@@ -225,8 +241,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"[spike_0_6c] sub_06c_2  = "
         f"{'PASS' if result.sub_06c_2.passed else 'FAIL'} "
-        f"(metrics_within_15pct={result.sub_06c_2.all_metrics_within_15pct}, "
-        f"comparisons={len(result.sub_06c_2.comparisons)})"
+        f"(convergence_passed={result.sub_06c_2.convergence_passed}, "
+        f"symmetry_passed={result.sub_06c_2.symmetry_passed})"
     )
     print(
         f"[spike_0_6c] OVERALL    = "

@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from fanopt.cfd.configs import render_unsteady_cfg
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -44,8 +46,6 @@ def _render_unsteady_cfg() -> str:
     and required by this gate. The probe-mesh placeholder is fine for the
     parse-only invariants this test checks.
     """
-    from fanopt.cfd.configs import render_unsteady_cfg
-
     return render_unsteady_cfg(
         mesh_filename="probe.su2",
         marker_fan="FAN",

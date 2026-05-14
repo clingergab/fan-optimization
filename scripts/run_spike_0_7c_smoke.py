@@ -29,14 +29,17 @@ CFD hour.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import shutil
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from scipy.stats.qmc import Sobol
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT / "scripts") not in sys.path:
@@ -62,19 +65,13 @@ def _synth_sobol_records(
 ) -> list[dict[str, Any]]:
     """Generate n synthetic Sobol-seed records.
 
-    Uses ``scipy.stats.qmc.Sobol`` if available, else falls back to LHS
-    (the two are equivalently uniform low-discrepancy fillers for the
-    purpose of this smoke test). Each record is timestamped with a fixed
-    per-record wall_time so cumulative-compute arithmetic is exact.
+    Uses ``scipy.stats.qmc.Sobol`` (a hard runtime dep) for low-discrepancy
+    coverage. Each record is timestamped with a fixed per-record wall_time
+    so cumulative-compute arithmetic is exact.
     """
-    try:
-        from scipy.stats.qmc import Sobol  # type: ignore[import-not-found]
-
-        seed = int(rng.integers(0, 2**31 - 1))
-        sampler = Sobol(d=d, scramble=True, seed=seed)
-        X = np.asarray(sampler.random(n=n), dtype=float)
-    except ImportError:  # pragma: no cover -- scipy is a runtime dep
-        X = lhs_sample(n, d, rng=rng)
+    seed = int(rng.integers(0, 2**31 - 1))
+    sampler = Sobol(d=d, scramble=True, seed=seed)
+    X = np.asarray(sampler.random(n=n), dtype=float)
 
     records: list[dict[str, Any]] = []
     for i, row in enumerate(X):
@@ -147,8 +144,6 @@ def _synth_bo_records(
 
 def _hash_row(row: np.ndarray) -> str:
     """Cheap deterministic hash of a parameter vector."""
-    import hashlib
-
     h = hashlib.sha1(np.asarray(row, dtype=float).tobytes()).hexdigest()
     return h[:16]
 
@@ -304,8 +299,6 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     if cleanup_tmp:  # pragma: no cover -- left as False; explicit toggle.
-        import shutil
-
         shutil.rmtree(out_dir, ignore_errors=True)
     # Defensive: ensure all math values are finite.
     for p in payload["per_budget"]:
