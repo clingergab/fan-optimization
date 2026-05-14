@@ -114,3 +114,64 @@ def test_polyline_custom_chord_scales_all_x() -> None:
     pts_double = airfoil_polyline(32, chord=2.0)
     for (x1, _), (x2, _) in zip(pts_unit, pts_double):
         assert x2 == pytest.approx(2.0 * x1, rel=1e-12)
+
+
+def test_polyline_consecutive_segments_short() -> None:
+    """No consecutive-point jump longer than ~2% of chord.
+
+    Catches the pre-fix bug where the polyline went TE → upper → LE,
+    then jumped from LE all the way back to near-TE on the lower
+    surface (a chord-spanning straight line) before traversing lower.
+    That bad ordering passed every other test in this file (the points
+    were all correct; only the traversal order was wrong) but produced
+    "intersections in the 1D mesh" errors when fed to gmsh.
+
+    For 200 cosine-spaced points, worst-case adjacent-pair spacing is
+    near the LE/TE corners where the cosine spacing is densest; with
+    n=64 a 0.02-chord bound is conservative. Any chord-spanning jump
+    blows past it by 50x.
+    """
+    pts = airfoil_polyline(64, chord=1.0)
+    n = len(pts)
+    max_gap = 0.0
+    worst_i = 0
+    for i in range(n):
+        j = (i + 1) % n  # closed loop — also check the closing segment
+        dx = pts[j][0] - pts[i][0]
+        dy = pts[j][1] - pts[i][1]
+        gap = math.hypot(dx, dy)
+        if gap > max_gap:
+            max_gap = gap
+            worst_i = i
+    assert max_gap < 0.10, (
+        f"polyline has a consecutive-pair jump of {max_gap:.4f} chords "
+        f"at index {worst_i} ({pts[worst_i]} -> {pts[(worst_i + 1) % n]}). "
+        "Cosine-spaced airfoil points should not produce gaps near "
+        "this size — check the polyline ordering."
+    )
+
+
+def test_polyline_traverses_around_airfoil_monotonically() -> None:
+    """The loop should go TE → LE on one surface, then LE → TE on the other.
+
+    Concretely: the x-coordinate should monotonically decrease over the
+    first half of the polyline (TE → LE on upper surface) and then
+    monotonically increase over the second half (LE → TE on lower surface).
+    Cosine spacing makes this strict; under the pre-fix bug, the second
+    half started near-TE and went toward LE, violating this property.
+    """
+    pts = airfoil_polyline(64, chord=1.0)
+    n = len(pts)
+    # First half: x should be decreasing (TE → LE on upper)
+    half = n // 2
+    for i in range(half - 1):
+        assert pts[i + 1][0] <= pts[i][0] + 1e-9, (
+            f"upper-surface traversal not monotonic at index {i}: "
+            f"x[{i}]={pts[i][0]:.4f}, x[{i+1}]={pts[i+1][0]:.4f}"
+        )
+    # Second half: x should be increasing (LE → TE on lower)
+    for i in range(half, n - 1):
+        assert pts[i + 1][0] >= pts[i][0] - 1e-9, (
+            f"lower-surface traversal not monotonic at index {i}: "
+            f"x[{i}]={pts[i][0]:.4f}, x[{i+1}]={pts[i+1][0]:.4f}"
+        )

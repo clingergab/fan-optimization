@@ -72,13 +72,14 @@ def airfoil_polyline(
 
     Returns a list of (x, y) tuples starting at the trailing edge, going
     forward along the upper surface to the leading edge, then back along
-    the lower surface to the trailing edge. Cosine spacing denses points
-    near LE and TE (where curvature is highest).
+    the lower surface to the trailing edge — i.e., traverses the contour
+    monotonically with no jumps. Cosine spacing denses points near LE
+    and TE (where curvature is highest).
 
     Parameters
     ----------
     n : number of points along each surface (upper, lower). Total polyline
-        length is roughly 2n − 2 after de-duplicating LE / TE.
+        length is 2n − 2 after de-duplicating LE / TE.
     chord : chord length, m.
 
     Raises
@@ -89,7 +90,11 @@ def airfoil_polyline(
         raise ValueError(f"n must be ≥ 16 for a usable NACA 0012, got {n}")
     beta = [math.pi * i / (n - 1) for i in range(n)]
     xs = [chord * 0.5 * (1.0 - math.cos(b)) for b in beta]
-    upper = [(x, naca0012_y(x, chord=chord)) for x in xs]
-    lower = [(x, -naca0012_y(x, chord=chord)) for x in reversed(xs)]
-    # Drop the duplicated LE / TE between the two halves.
-    return list(reversed(upper)) + lower[1:-1]
+    # upper surface in LE → TE order; lower surface in LE → TE order too.
+    upper_le_to_te = [(x, naca0012_y(x, chord=chord)) for x in xs]
+    lower_le_to_te = [(x, -naca0012_y(x, chord=chord)) for x in xs]
+    # Build the closed loop TE → upper → LE → lower → TE:
+    #   - reverse upper to traverse TE → LE
+    #   - keep lower in LE → TE order, dropping its endpoints (they're
+    #     already in the upper traversal at LE and the loop close at TE)
+    return list(reversed(upper_le_to_te)) + lower_le_to_te[1:-1]
