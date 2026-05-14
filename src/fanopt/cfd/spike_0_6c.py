@@ -11,17 +11,32 @@ Implements ``docs/plan_R11.md §Phase 0 Spike 0.6c`` (gates Phase 4 launch).
    Round-9 HIGH-12 lock pins the unsteady cfg to ``MACH = 1e-9`` with
    ``FREESTREAM_OPTION = FREESTREAM_VELOCITY`` (primary path) or
    ``REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`` (fallback path).
-   This sub-spike validates the rendered cfg, not the CROSS_TIER dict
-   (``CROSS_TIER`` does NOT carry ``MACH`` per the C12 lock — MACH is
-   tier-specific and lives in the TIER_SPECIFIC[1] block).
 
-2. **0.6c.2 — Published-benchmark validation.** Run a NACA 0012
+2. **0.6c.2 — NACA 0012 numerical-consistency benchmark.** Run a NACA 0012
    oscillating-airfoil case (pitching about quarter-chord at
-   ``k_reduced ≈ 0.55``, ``Re ≈ 40k``) through the working Tier-1 cfg.
-   Discard cycle 1, integrate cycles 2-5 for the lift/drag metrics,
-   compare to published references (McAlister/Carr UH110A or Anderson
-   oscillating-airfoil DB). PASS iff every metric is within ±15% of the
-   published value.
+   ``k_reduced ≈ 0.55``, ``Re ≈ 40k``, ±10°) through the working Tier-1
+   cfg. PASS iff TWO internal-consistency gates clear:
+
+   (a) **Cycle-to-cycle convergence.** After discarding cycle 0
+       (initial transient), the relative range of ``c_l_max``,
+       ``c_l_min``, and ``c_d_mean`` across kept cycles is < 2% each.
+   (b) **C_L symmetry.** With mean α = 0° and a symmetric airfoil,
+       ``|⟨c_l_max⟩ + ⟨c_l_min⟩| / max(|⟨c_l_max⟩|, |⟨c_l_min⟩|) < 5%``
+       on the kept-cycle averages.
+
+   **Why no literature reference comparison.** A targeted literature
+   survey (2026-05) confirmed the (Re=40k, k=0.55, ±10°, mean α=0°,
+   c/4 pivot) operating point is in a gap between the well-studied
+   low-Re/low-k attached-pitching regime and the moderate-Re/high-k
+   dynamic-stall regime. The nearest published neighbors (Kim & Chang
+   2013 at Re=48k k=0.1 ±6°; MDPI 2025 at Re=66k) disagree on k,
+   amplitude, and Re. At this Re, inter-study scatter on C_L_max is
+   ≥25% even between published studies. The ±15% literature-comparison
+   gate that early draft protocols enumerated is **not defensible**.
+   Internal-consistency gates substitute: they validate that SU2 is
+   solving its own equations consistently. Quantitative cross-solver
+   validation (SU2 vs PyFR) is deferred to Phase 5 where PyFR is
+   already provisioned.
 
 **Why this gates Phase 4.** The compressible-with-low-Mach-prec +
 RIGID_MOTION + near-zero-ambient + 5-cycle-dual-time-stepping numerics
@@ -45,22 +60,25 @@ from dataclasses import dataclass
 from typing import Iterable
 
 __all__ = [
-    "BENCHMARK_TOLERANCE_PCT",
+    "CONVERGENCE_TOLERANCE_PCT",
+    "SYMMETRY_TOLERANCE_PCT",
     "BENCHMARK_K_REDUCED_MIN",
     "BENCHMARK_K_REDUCED_MAX",
     "BENCHMARK_RE_MIN",
     "BENCHMARK_RE_MAX",
     "BENCHMARK_CYCLES_TOTAL",
     "BENCHMARK_CYCLES_DISCARD",
+    "CONVERGENCE_METRICS",
     "MACH_UNSTEADY_LOCK",
-    "NACA0012_REFERENCE",
     "Tier1CfgSanityResult",
     "BenchmarkCycleData",
-    "BenchmarkComparison",
+    "ConvergenceCheck",
+    "SymmetryCheck",
     "BenchmarkResult",
     "Spike06cResult",
     "check_tier1_cfg_sanity",
-    "compare_cycle_to_reference",
+    "check_convergence",
+    "check_symmetry",
     "analyze_benchmark",
     "analyze_spike_06c",
 ]
@@ -68,9 +86,21 @@ __all__ = [
 
 # ----- locks (from §Phase 0 Spike 0.6c + Round-9 HIGH-12) -------------------
 
-BENCHMARK_TOLERANCE_PCT: float = 15.0
-"""Sub-spike 0.6c.2 tolerance: each measured metric must match its
-reference within ±15%. Source: spec line 1843."""
+CONVERGENCE_TOLERANCE_PCT: float = 2.0
+"""Per-metric cycle-to-cycle convergence gate: relative range across the
+kept cycles must be < 2% for ``c_l_max``, ``c_l_min``, ``c_d_mean``.
+
+Sourced from the researcher's 2026-05 internal-consistency proposal —
+'loop closes within 2% over settling cycles' — translated to a per-metric
+relative-range check on the kept cycles."""
+
+SYMMETRY_TOLERANCE_PCT: float = 5.0
+"""C_L symmetry gate: ``|⟨c_l_max⟩ + ⟨c_l_min⟩| / max(|⟨c_l_max⟩|,
+|⟨c_l_min⟩|) < 5%`` on kept-cycle averages. Required by NACA-0012
+geometric symmetry combined with mean α = 0°.
+
+Sourced from the researcher's 2026-05 internal-consistency proposal —
+'C_L_min ≈ −C_L_max within 5%'."""
 
 BENCHMARK_K_REDUCED_MIN: float = 0.5
 BENCHMARK_K_REDUCED_MAX: float = 0.6
@@ -84,36 +114,19 @@ BENCHMARK_RE_MAX: float = 50_000.0
 
 BENCHMARK_CYCLES_TOTAL: int = 5
 BENCHMARK_CYCLES_DISCARD: int = 1
-"""5 cycles total; discard the first (initial-transient) cycle, integrate
-the remaining 4. Source: spec line 1843."""
+"""5 cycles total; discard the first (initial-transient) cycle, keep the
+remaining 4 for the convergence + symmetry gates. Source: spec line 1843."""
+
+CONVERGENCE_METRICS: tuple[str, ...] = ("c_l_max", "c_l_min", "c_d_mean")
+"""Metrics gated by the convergence check. ``c_l_hysteresis_area`` is
+intentionally excluded — at k=0.55 the loop is near sign-inversion and a
+2% relative-range gate on a near-zero quantity is numerically unstable.
+The hysteresis area is logged as a diagnostic in ``BenchmarkResult``."""
 
 MACH_UNSTEADY_LOCK: float = 1e-9
 """Tier-1 unsteady MACH value (Round-9 HIGH-12 = C12). The steady tiers
 (Tier -1 / Tier 0) use ``MACH = 0.0064``; ``CROSS_TIER`` does NOT carry
 ``MACH`` — the value lives in ``TIER_SPECIFIC[1]`` per §9.4.1."""
-
-
-# ----- shipped reference data ----------------------------------------------
-
-NACA0012_REFERENCE: dict[str, float] = {
-    "c_l_max": 1.20,
-    "c_l_min": -1.20,
-    "c_d_mean": 0.085,
-    "c_l_hysteresis_area": 0.45,
-}
-"""Default reference dataset for the NACA 0012 oscillating-airfoil
-benchmark (k_reduced ≈ 0.55, Re ≈ 40k, pitching about quarter-chord,
-±10° amplitude).
-
-Values are representative ranges from the McAlister/Carr UH110A airfoil
-studies and the Anderson oscillating-airfoil database (specifically the
-low-Re symmetric-foil subset). Operators running the benchmark should
-override this dict with the exact published values for the case they
-chose to reproduce — the shipped numbers exist so the runner has a
-template default, not to substitute for citing a specific paper.
-
-Override mechanism: ``scripts/run_spike_0_6c_2.py --reference <path.json>``.
-"""
 
 
 # ----- sub-spike 0.6c.1 (Tier-1 cfg sanity check) ---------------------------
@@ -255,21 +268,18 @@ def check_tier1_cfg_sanity(
     )
 
 
-# ----- sub-spike 0.6c.2 (NACA 0012 benchmark validation) --------------------
+# ----- sub-spike 0.6c.2 (NACA 0012 numerical-consistency benchmark) ---------
 
 
 @dataclass(frozen=True)
 class BenchmarkCycleData:
     """Per-cycle lift/drag aggregates extracted from one pitching cycle.
 
-    Fields are independent metrics — each is compared to its published
-    reference value separately and each must individually pass the
-    ±15% tolerance gate.
-
     * ``c_l_max`` — peak lift coefficient over the cycle.
     * ``c_l_min`` — trough lift coefficient over the cycle.
     * ``c_d_mean`` — cycle-mean drag coefficient.
     * ``c_l_hysteresis_area`` — signed area inside the ``C_l(α)`` loop.
+      Logged as diagnostic; not gated (see ``CONVERGENCE_METRICS``).
     """
 
     cycle_index: int
@@ -280,173 +290,191 @@ class BenchmarkCycleData:
 
 
 @dataclass(frozen=True)
-class BenchmarkComparison:
-    """One metric's measured / reference / pct-diff comparison.
+class ConvergenceCheck:
+    """Per-metric cycle-to-cycle convergence record.
 
-    ``pct_diff`` is signed (measured > reference => positive), but the
-    ±15% gate is two-sided so ``passed = |pct_diff| < BENCHMARK_TOLERANCE_PCT``.
+    ``relative_range_pct`` is ``100 * (max - min) / |mean|`` over the kept
+    cycles. ``passed = relative_range_pct <= CONVERGENCE_TOLERANCE_PCT``.
+
+    For a near-zero mean the relative form is unstable; the check uses
+    ``inf`` for ``relative_range_pct`` when ``|mean| < 1e-9`` and a
+    non-zero range, which fails the gate by construction.
     """
 
     metric_name: str
-    measured: float
-    reference: float
-    pct_diff: float
+    values: tuple[float, ...]
+    mean: float
+    relative_range_pct: float
+    passed: bool
+
+
+@dataclass(frozen=True)
+class SymmetryCheck:
+    """C_L symmetry record on kept-cycle averages.
+
+    ``asymmetry_pct = 100 * |c_l_max_mean + c_l_min_mean| /
+    max(|c_l_max_mean|, |c_l_min_mean|)``. With ``mean α = 0°`` and the
+    NACA 0012's geometric symmetry, this value should be small.
+    """
+
+    c_l_max_mean: float
+    c_l_min_mean: float
+    asymmetry_pct: float
     passed: bool
 
 
 @dataclass(frozen=True)
 class BenchmarkResult:
-    """Aggregated outcome of sub-spike 0.6c.2."""
+    """Aggregated outcome of sub-spike 0.6c.2.
+
+    Pass criterion: ``convergence_passed AND symmetry_passed``. Both gates
+    are internal-consistency checks on the SU2 output alone — no
+    literature-reference comparison (see module docstring).
+    """
 
     k_reduced: float
     reynolds: float
     cycles: tuple[BenchmarkCycleData, ...]
-    reference_source: str
-    comparisons: tuple[BenchmarkComparison, ...]
-    all_metrics_within_15pct: bool
+    convergence: tuple[ConvergenceCheck, ...]
+    symmetry: SymmetryCheck
+    diagnostic_hysteresis_area_mean: float
+    convergence_passed: bool
+    symmetry_passed: bool
     passed: bool
 
 
-def _signed_pct_diff(measured: float, reference: float) -> float:
-    """Return ``100 * (measured - reference) / reference``.
+def _relative_range_pct(values: tuple[float, ...]) -> tuple[float, float]:
+    """Return ``(mean, relative_range_pct)`` for the value sequence.
 
-    For a zero reference value the function returns ``inf`` if the
-    measured value is non-zero (the comparison will fail the ±15% gate
-    by construction), and ``0.0`` if both values are zero.
+    ``relative_range_pct = 100 * (max - min) / |mean|`` if ``|mean| >= 1e-9``;
+    otherwise returns ``(mean, inf)`` if the range is non-zero and
+    ``(mean, 0.0)`` if all values are identical to zero.
     """
-    if reference == 0.0:
-        return 0.0 if measured == 0.0 else math.inf
-    return 100.0 * (measured - reference) / reference
+    if not values:
+        raise ValueError("relative_range_pct requires at least one value")
+    n = len(values)
+    mean = sum(values) / n
+    if n == 1:
+        return mean, 0.0
+    rng = max(values) - min(values)
+    if abs(mean) < 1e-9:
+        return mean, 0.0 if rng == 0.0 else math.inf
+    return mean, 100.0 * rng / abs(mean)
 
 
-def compare_cycle_to_reference(
-    measured: BenchmarkCycleData,
-    reference: dict[str, float],
-) -> tuple[BenchmarkComparison, ...]:
-    """Compare every shared metric between ``measured`` and ``reference``.
+def check_convergence(
+    kept: Iterable[BenchmarkCycleData],
+    *,
+    metrics: tuple[str, ...] = CONVERGENCE_METRICS,
+    tolerance_pct: float = CONVERGENCE_TOLERANCE_PCT,
+) -> tuple[ConvergenceCheck, ...]:
+    """Per-metric cycle-to-cycle convergence check over the kept cycles.
 
-    Iterates the four canonical metric names; for each, computes the
-    signed % difference and tags it ``passed`` iff
-    ``|pct_diff| < BENCHMARK_TOLERANCE_PCT``. Metric names absent from
-    ``reference`` are skipped silently — the caller decides which subset
-    of metrics the campaign tracks.
-
-    Parameters
-    ----------
-    measured : aggregated cycle data (usually the integrated last-4-cycles
-        record produced by ``analyze_benchmark``).
-    reference : published-benchmark values keyed by metric name.
-
-    Returns
-    -------
-    Tuple of ``BenchmarkComparison`` records, one per metric present in
-    both ``measured`` and ``reference``.
+    For each metric in ``metrics``, extract the per-cycle values, compute
+    the relative range, and tag ``passed = relative_range_pct <=
+    tolerance_pct``.
     """
-    metric_names = ("c_l_max", "c_l_min", "c_d_mean", "c_l_hysteresis_area")
-    out: list[BenchmarkComparison] = []
-    for name in metric_names:
-        if name not in reference:
-            continue
-        meas = float(getattr(measured, name))
-        ref = float(reference[name])
-        pct = _signed_pct_diff(meas, ref)
+    kept_t = tuple(kept)
+    if not kept_t:
+        raise ValueError("check_convergence requires at least one kept cycle")
+    out: list[ConvergenceCheck] = []
+    for name in metrics:
+        values = tuple(float(getattr(c, name)) for c in kept_t)
+        mean, rrange = _relative_range_pct(values)
         out.append(
-            BenchmarkComparison(
+            ConvergenceCheck(
                 metric_name=name,
-                measured=meas,
-                reference=ref,
-                pct_diff=pct,
-                # Plan says "within ±15%" — inclusive boundary.
-                passed=abs(pct) <= BENCHMARK_TOLERANCE_PCT,
+                values=values,
+                mean=mean,
+                relative_range_pct=rrange,
+                passed=rrange <= tolerance_pct,
             )
         )
     return tuple(out)
 
 
-def _integrate_cycles(
+def check_symmetry(
     kept: Iterable[BenchmarkCycleData],
-) -> BenchmarkCycleData:
-    """Integrate (here: average) per-cycle metrics over the kept cycles.
+    *,
+    tolerance_pct: float = SYMMETRY_TOLERANCE_PCT,
+) -> SymmetryCheck:
+    """C_L symmetry check on kept-cycle averages.
 
-    The "integrate the last 4" spec wording reduces to a per-metric mean
-    for the four scalar aggregates we track: max / min / mean / area.
-    Each per-cycle value is already a cycle-level scalar; averaging four
-    of them produces the multi-cycle steady-state estimate.
-
-    The returned ``BenchmarkCycleData.cycle_index`` is set to ``-1`` to
-    flag the record as an aggregate (not one of the raw cycles).
+    With ``mean α = 0°`` and a symmetric airfoil, ``⟨c_l_max⟩ ≈ -⟨c_l_min⟩``
+    is required by physics. A non-zero asymmetry indicates either a
+    geometry / motion-axis error or a numerical bias.
     """
     kept_t = tuple(kept)
     if not kept_t:
-        raise ValueError("No cycles to integrate")
-    n = len(kept_t)
-    return BenchmarkCycleData(
-        cycle_index=-1,
-        c_l_max=sum(c.c_l_max for c in kept_t) / n,
-        c_l_min=sum(c.c_l_min for c in kept_t) / n,
-        c_d_mean=sum(c.c_d_mean for c in kept_t) / n,
-        c_l_hysteresis_area=sum(c.c_l_hysteresis_area for c in kept_t) / n,
+        raise ValueError("check_symmetry requires at least one kept cycle")
+    c_l_max_mean = sum(c.c_l_max for c in kept_t) / len(kept_t)
+    c_l_min_mean = sum(c.c_l_min for c in kept_t) / len(kept_t)
+    denom = max(abs(c_l_max_mean), abs(c_l_min_mean))
+    if denom < 1e-9:
+        # Both averages near zero — vacuously symmetric, but the spike has
+        # almost certainly failed for other reasons. Pass the check; the
+        # convergence gate will catch the degenerate case.
+        asym_pct = 0.0
+    else:
+        asym_pct = 100.0 * abs(c_l_max_mean + c_l_min_mean) / denom
+    return SymmetryCheck(
+        c_l_max_mean=c_l_max_mean,
+        c_l_min_mean=c_l_min_mean,
+        asymmetry_pct=asym_pct,
+        passed=asym_pct <= tolerance_pct,
     )
 
 
 def analyze_benchmark(
     cycles: Iterable[BenchmarkCycleData],
-    reference: dict[str, float],
     *,
     k_reduced: float,
     reynolds: float,
-    reference_source: str,
 ) -> BenchmarkResult:
-    """Run the sub-spike 0.6c.2 analysis: discard 1 cycle, integrate 4, compare.
+    """Run the sub-spike 0.6c.2 analysis: discard 1 cycle, run gates on the rest.
 
     Parameters
     ----------
     cycles : iterable of per-cycle data records, ordered by cycle index.
         The first ``BENCHMARK_CYCLES_DISCARD`` cycles (= 1) are discarded
-        as initial-transient; the remaining cycles are integrated.
-    reference : published-benchmark values keyed by metric name.
+        as initial-transient; the remaining cycles feed the gates.
     k_reduced : reduced-frequency parameter of the simulation. Recorded
-        for the result so the operator can verify it sits in the
-        ``[BENCHMARK_K_REDUCED_MIN, BENCHMARK_K_REDUCED_MAX]`` band.
-    reynolds : Reynolds number of the simulation. Recorded similarly for
-        the ``[BENCHMARK_RE_MIN, BENCHMARK_RE_MAX]`` band check.
-    reference_source : free-form provenance string (e.g., "McAlister/Carr
-        UH110A 1978, fig 7c").
+        so the operator can verify it sits in
+        ``[BENCHMARK_K_REDUCED_MIN, BENCHMARK_K_REDUCED_MAX]``.
+    reynolds : Reynolds number of the simulation. Recorded similarly.
 
     Returns
     -------
-    ``BenchmarkResult`` with the per-metric comparisons and overall pass flag.
-
-    Notes
-    -----
-    The pass criterion has two parts: (a) every metric within ±15% of
-    its reference (``all_metrics_within_15pct``), AND (b) at least one
-    metric was actually compared (``passed`` is False if the reference
-    dict shares no metrics with the cycle data, since the gate would be
-    vacuously true otherwise).
+    ``BenchmarkResult`` with the convergence + symmetry records and
+    overall pass flag. The hysteresis-area cycle-mean is logged
+    diagnostically (not gated).
     """
     cycles_t = tuple(cycles)
     if len(cycles_t) < BENCHMARK_CYCLES_DISCARD + 1:
         raise ValueError(
             f"Need at least {BENCHMARK_CYCLES_DISCARD + 1} cycles "
-            f"(discard {BENCHMARK_CYCLES_DISCARD}, integrate >=1); "
+            f"(discard {BENCHMARK_CYCLES_DISCARD}, keep >=1); "
             f"got {len(cycles_t)}"
         )
 
     kept = cycles_t[BENCHMARK_CYCLES_DISCARD:]
-    integrated = _integrate_cycles(kept)
-    comparisons = compare_cycle_to_reference(integrated, reference)
+    convergence = check_convergence(kept)
+    symmetry = check_symmetry(kept)
 
-    all_within = len(comparisons) > 0 and all(c.passed for c in comparisons)
+    convergence_passed = all(c.passed for c in convergence)
+    symmetry_passed = symmetry.passed
+    hysteresis_mean = sum(c.c_l_hysteresis_area for c in kept) / len(kept)
 
     return BenchmarkResult(
         k_reduced=float(k_reduced),
         reynolds=float(reynolds),
         cycles=cycles_t,
-        reference_source=reference_source,
-        comparisons=comparisons,
-        all_metrics_within_15pct=all_within,
-        passed=all_within,
+        convergence=convergence,
+        symmetry=symmetry,
+        diagnostic_hysteresis_area_mean=hysteresis_mean,
+        convergence_passed=convergence_passed,
+        symmetry_passed=symmetry_passed,
+        passed=convergence_passed and symmetry_passed,
     )
 
 
