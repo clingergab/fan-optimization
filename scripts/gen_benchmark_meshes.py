@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 import gmsh  # type: ignore[import-not-found]
@@ -55,22 +56,32 @@ def build_naca0012_mesh(
     farfield_radius_chord: float = 50.0,
     n_airfoil_points: int = 200,
     cells_circ: int = 240,
+    verbose: bool = False,
 ) -> Path:
     """Build a 2D O-grid mesh around a NACA 0012 airfoil and write .su2.
 
     `farfield_radius_chord` of 50 is standard for low-Re aero benchmarks.
     The distance-threshold field clusters cells near the wall for boundary
     layer resolution.
+
+    When `verbose=True`, gmsh prints its own per-phase timing + stats AND
+    this function prints stage markers for high-level progress tracking
+    (useful for slow Colab CPU runs).
     """
+    def _stage(msg: str) -> None:
+        if verbose:
+            print(f"[gen_meshes:naca0012] {msg}", flush=True)
+    _stage(f"start: n_airfoil_points={n_airfoil_points} chord={chord} ff={farfield_radius_chord}x cells_circ={cells_circ}")
+    t0 = time.perf_counter()
     gmsh.initialize()
     try:
-        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.option.setNumber("General.Terminal", 1 if verbose else 0)
         gmsh.option.setNumber("Mesh.Algorithm", 6)  # Frontal-Delaunay (2D)
         gmsh.option.setNumber("Mesh.RecombineAll", 1)  # Quads
         gmsh.option.setNumber("Mesh.Smoothing", 10)
         gmsh.model.add("naca0012")
 
-        # ---- Airfoil curve (closed polyline) ----
+        _stage("building airfoil + far-field geometry...")
         pts = airfoil_polyline(n_airfoil_points, chord=chord)
         airfoil_tags = []
         for x, y in pts:
@@ -78,7 +89,6 @@ def build_naca0012_mesh(
         airfoil_curve = gmsh.model.geo.addSpline(airfoil_tags + [airfoil_tags[0]])
         airfoil_loop = gmsh.model.geo.addCurveLoop([airfoil_curve])
 
-        # ---- Far-field circle centered at the airfoil quarter-chord ----
         cx, cy = 0.25 * chord, 0.0
         ff_center = gmsh.model.geo.addPoint(cx, cy, 0.0)
         ff_radius = farfield_radius_chord * chord
@@ -95,13 +105,11 @@ def build_naca0012_mesh(
             gmsh.model.geo.addCircleArc(ff_pts[3], ff_center, ff_pts[0]),
         ]
         ff_loop = gmsh.model.geo.addCurveLoop(ff_arcs)
-
-        # ---- Surface = annulus between airfoil and far-field ----
         surface = gmsh.model.geo.addPlaneSurface([ff_loop, airfoil_loop])
 
         gmsh.model.geo.synchronize()
 
-        # ---- Mesh sizing: Distance + Threshold field ----
+        _stage("configuring distance-threshold size field for wall clustering...")
         dist_field = gmsh.model.mesh.field.add("Distance")
         gmsh.model.mesh.field.setNumbers(dist_field, "CurvesList", [airfoil_curve])
         gmsh.model.mesh.field.setNumber(dist_field, "Sampling", 200)
@@ -112,19 +120,27 @@ def build_naca0012_mesh(
         gmsh.model.mesh.field.setNumber(thresh_field, "SizeMax", chord)
         gmsh.model.mesh.field.setNumber(thresh_field, "DistMin", 0.0)
         gmsh.model.mesh.field.setNumber(thresh_field, "DistMax", ff_radius * 0.2)
-
         gmsh.model.mesh.field.setAsBackgroundMesh(thresh_field)
 
-        # ---- Physical groups (SU2 markers) ----
         gmsh.model.addPhysicalGroup(1, [airfoil_curve], name="AIRFOIL")
         gmsh.model.addPhysicalGroup(1, ff_arcs, name="FARFIELD")
         gmsh.model.addPhysicalGroup(2, [surface], name="FLOW")
 
+        _stage("meshing 2D (this is the slow phase, ~30-90 s on Colab CPU)...")
         gmsh.model.mesh.generate(2)
+        _stage(f"meshing done ({time.perf_counter() - t0:.1f}s elapsed); optimizing with Netgen...")
         gmsh.model.mesh.optimize("Netgen")
 
+        n_nodes = len(gmsh.model.mesh.getNodes()[0])
+        n_elems = sum(
+            len(tags) for _dim, _et, tags in zip(*gmsh.model.mesh.getElements(2))
+        )
+        _stage(f"mesh stats: {n_nodes} nodes, {n_elems} 2D elements")
+
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        _stage(f"writing {out_path}...")
         gmsh.write(str(out_path))
+        _stage(f"done ({time.perf_counter() - t0:.1f}s total)")
         return out_path
     finally:
         gmsh.finalize()
@@ -216,6 +232,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=200,
         help="Number of points along the airfoil surface. Default 200.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help=(
+            "Print per-stage progress markers + enable gmsh's terminal "
+            "output. Recommended for Colab runs where the meshing phase "
+            "is slow and you want feedback."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -229,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
             chord=args.chord,
             farfield_radius_chord=args.farfield_radius_chord,
             n_airfoil_points=args.n_airfoil_points,
+            verbose=args.verbose,
         )
     else:
         path = build_probe_mesh(out)
