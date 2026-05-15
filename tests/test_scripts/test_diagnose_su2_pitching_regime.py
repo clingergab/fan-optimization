@@ -3,6 +3,7 @@
 Exercises the classification logic + cross-correlation phase detector
 against synthetic SU2 histories with known force-regime properties.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,6 @@ import numpy as np
 import pytest
 
 import diagnose_su2_pitching_regime as diag
-
 
 # ---------------------------------------------------------------------------
 # Synthetic history generators
@@ -299,12 +299,18 @@ def test_cli_writes_json_and_png(tmp_path: Path) -> None:
     out_png = tmp_path / "diag.png"
     rc = diag.main(
         [
-            "--history", str(history),
-            "--omega-shm-rad-per-s", str(2.0 * math.pi),
-            "--theta-max-rad", str(math.radians(10.0)),
-            "--n-cycles", str(n_cycles),
-            "--out-json", str(out_json),
-            "--out-png", str(out_png),
+            "--history",
+            str(history),
+            "--omega-shm-rad-per-s",
+            str(2.0 * math.pi),
+            "--theta-max-rad",
+            str(math.radians(10.0)),
+            "--n-cycles",
+            str(n_cycles),
+            "--out-json",
+            str(out_json),
+            "--out-png",
+            str(out_png),
         ]
     )
     assert rc == 0
@@ -324,10 +330,14 @@ def test_cli_no_plot_skips_png(tmp_path: Path) -> None:
     out_png = tmp_path / "diag.png"
     rc = diag.main(
         [
-            "--history", str(history),
-            "--omega-shm-rad-per-s", str(2.0 * math.pi),
-            "--out-json", str(out_json),
-            "--out-png", str(out_png),
+            "--history",
+            str(history),
+            "--omega-shm-rad-per-s",
+            str(2.0 * math.pi),
+            "--out-json",
+            str(out_json),
+            "--out-png",
+            str(out_png),
             "--no-plot",
         ]
     )
@@ -339,8 +349,10 @@ def test_cli_no_plot_skips_png(tmp_path: Path) -> None:
 def test_cli_missing_history_exits_2(tmp_path: Path) -> None:
     rc = diag.main(
         [
-            "--history", str(tmp_path / "nope.csv"),
-            "--omega-shm-rad-per-s", str(2.0 * math.pi),
+            "--history",
+            str(tmp_path / "nope.csv"),
+            "--omega-shm-rad-per-s",
+            str(2.0 * math.pi),
         ]
     )
     assert rc == 2

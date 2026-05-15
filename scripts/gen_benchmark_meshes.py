@@ -210,11 +210,111 @@ def build_probe_mesh(out_path: Path) -> Path:
         gmsh.finalize()
 
 
+def build_thin_plate_2d_mesh(
+    out_path: Path,
+    *,
+    chord: float = 1.0,
+    aspect_ratio: float = 50.0,
+    farfield_radius_chord: float = 50.0,
+    n_chord_points: int = 80,
+    verbose: bool = False,
+) -> Path:
+    """Build a 2D thin-plate mesh inside a circular farfield (for Spike 0.6d.2).
+
+    A high-aspect-ratio rectangle approximates a thin plate; the SU2 mesh
+    has two physical groups (``PLATE`` viscous wall + ``FARFIELD`` outer
+    boundary) matching ``configs/su2/thin_plate_2d_pitching.cfg.j2``.
+
+    The plate is centered at the origin with its chord aligned along x.
+    ``aspect_ratio`` is chord / thickness (default 50:1 → 1 m × 0.02 m).
+    Cell size grows by ~10× from plate surface to farfield via gmsh's
+    distance + threshold fields; ~10-20k cells total.
+    """
+
+    def _stage(msg: str) -> None:
+        if verbose:
+            print(f"[gen_meshes:thin_plate_2d] {msg}", flush=True)
+
+    thickness = chord / aspect_ratio
+    ff_radius = farfield_radius_chord * chord
+
+    _stage(f"start: chord={chord} thickness={thickness:.4f} ff_radius={ff_radius:.1f}")
+    t0 = time.perf_counter()
+    gmsh.initialize()
+    try:
+        if verbose:
+            gmsh.option.setNumber("General.Terminal", 1)
+        else:
+            gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.model.add("thin_plate_2d")
+
+        # Plate rectangle (centered at origin; chord along x).
+        half_c = chord / 2.0
+        half_t = thickness / 2.0
+        plate_lc = thickness / 4.0  # cell size at plate surface
+        p1 = gmsh.model.geo.addPoint(-half_c, -half_t, 0.0, plate_lc)
+        p2 = gmsh.model.geo.addPoint(+half_c, -half_t, 0.0, plate_lc)
+        p3 = gmsh.model.geo.addPoint(+half_c, +half_t, 0.0, plate_lc)
+        p4 = gmsh.model.geo.addPoint(-half_c, +half_t, 0.0, plate_lc)
+        l_p1 = gmsh.model.geo.addLine(p1, p2)
+        l_p2 = gmsh.model.geo.addLine(p2, p3)
+        l_p3 = gmsh.model.geo.addLine(p3, p4)
+        l_p4 = gmsh.model.geo.addLine(p4, p1)
+        plate_loop = gmsh.model.geo.addCurveLoop([l_p1, l_p2, l_p3, l_p4])
+
+        # Circular farfield boundary.
+        ff_lc = ff_radius / 30.0  # cell size at farfield
+        c0 = gmsh.model.geo.addPoint(0.0, 0.0, 0.0, ff_lc)
+        cn = gmsh.model.geo.addPoint(0.0, -ff_radius, 0.0, ff_lc)
+        ce = gmsh.model.geo.addPoint(+ff_radius, 0.0, 0.0, ff_lc)
+        cs = gmsh.model.geo.addPoint(0.0, +ff_radius, 0.0, ff_lc)
+        cw = gmsh.model.geo.addPoint(-ff_radius, 0.0, 0.0, ff_lc)
+        a1 = gmsh.model.geo.addCircleArc(cn, c0, ce)
+        a2 = gmsh.model.geo.addCircleArc(ce, c0, cs)
+        a3 = gmsh.model.geo.addCircleArc(cs, c0, cw)
+        a4 = gmsh.model.geo.addCircleArc(cw, c0, cn)
+        ff_loop = gmsh.model.geo.addCurveLoop([a1, a2, a3, a4])
+
+        surface = gmsh.model.geo.addPlaneSurface([ff_loop, plate_loop])
+        gmsh.model.geo.synchronize()
+
+        # Distance + threshold field for boundary-layer clustering.
+        d_field = gmsh.model.mesh.field.add("Distance")
+        gmsh.model.mesh.field.setNumbers(d_field, "CurvesList", [l_p1, l_p2, l_p3, l_p4])
+        gmsh.model.mesh.field.setNumber(d_field, "Sampling", n_chord_points)
+
+        t_field = gmsh.model.mesh.field.add("Threshold")
+        gmsh.model.mesh.field.setNumber(t_field, "InField", d_field)
+        gmsh.model.mesh.field.setNumber(t_field, "SizeMin", plate_lc)
+        gmsh.model.mesh.field.setNumber(t_field, "SizeMax", ff_lc)
+        gmsh.model.mesh.field.setNumber(t_field, "DistMin", chord * 0.1)
+        gmsh.model.mesh.field.setNumber(t_field, "DistMax", chord * 5.0)
+        gmsh.model.mesh.field.setAsBackgroundMesh(t_field)
+
+        gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+
+        gmsh.model.addPhysicalGroup(1, [l_p1, l_p2, l_p3, l_p4], name="PLATE")
+        gmsh.model.addPhysicalGroup(1, [a1, a2, a3, a4], name="FARFIELD")
+        gmsh.model.addPhysicalGroup(2, [surface], name="FLOW")
+
+        _stage("generating 2D mesh")
+        gmsh.model.mesh.generate(2)
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        gmsh.write(str(out_path))
+        _stage(f"done ({time.perf_counter() - t0:.1f}s total) -> {out_path}")
+        return out_path
+    finally:
+        gmsh.finalize()
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--kind",
-        choices=("naca0012", "probe"),
+        choices=("naca0012", "probe", "thin_plate_2d"),
         required=True,
         help="Which mesh to build.",
     )
@@ -223,8 +323,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Output .su2 path. Defaults to "
-            "data/spike_0_6c/meshes/<kind>.su2 under the repo root."
+            "Output .su2 path. Defaults to data/spike_0_6c/meshes/<kind>.su2 "
+            "for naca0012/probe, or data/spike_0_6d/meshes/<kind>.su2 for "
+            "thin_plate_2d, under the repo root."
         ),
     )
     parser.add_argument(
@@ -259,7 +360,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    out = args.out or (DEFAULT_MESH_DIR / f"{args.kind}.su2")
+    if args.out is not None:
+        out = args.out
+    elif args.kind == "thin_plate_2d":
+        out = REPO_ROOT / "data" / "spike_0_6d" / "meshes" / "thin_plate_2d.su2"
+    else:
+        out = DEFAULT_MESH_DIR / f"{args.kind}.su2"
 
     if args.kind == "naca0012":
         path = build_naca0012_mesh(
@@ -267,6 +373,13 @@ def main(argv: list[str] | None = None) -> int:
             chord=args.chord,
             farfield_radius_chord=args.farfield_radius_chord,
             n_airfoil_points=args.n_airfoil_points,
+            verbose=args.verbose,
+        )
+    elif args.kind == "thin_plate_2d":
+        path = build_thin_plate_2d_mesh(
+            out,
+            chord=args.chord,
+            farfield_radius_chord=args.farfield_radius_chord,
             verbose=args.verbose,
         )
     else:

@@ -1,45 +1,68 @@
-% SU2 config template — Spike 0.6c.2 NACA 0012 oscillating-airfoil benchmark.
+% SU2 config template — wind-tunnel-frame NACA 0012 oscillating-airfoil
+% benchmark. Phase-5 prep deliverable (NOT a V1 gate).
+%
 % Source-of-truth: docs/plan_R11.md §Phase 0 Spike 0.6c (lines 1839-1844)
-% Protocol:       docs/spike_0_6c_protocol.md
+% V1 scope:        docs/phase_logs/spike_0_6c.md  ("V1 decision — Spike
+%                  0.6c.2 deferred to Phase 5 (2026-05-XX)")
 %
-% This template mirrors the locked Tier-1 unsteady numerics (Round-9 HIGH-12 /
-% C12) on a published reference case so we can validate the numerics before
-% Phase 4 launches. Phase 4 launch (`scripts/launch_phase4.py`) refuses to
-% create the `phase4-launch` tag if `phase0/spike_0_6c/PASS` is absent.
+% Why this template exists (and what changed on 2026-05-XX):
 %
-% Reference case (default — operator may substitute another low-Re pitching
-% case as long as both reference data are cited):
+%   The 2026-05-XX regime diagnostic
+%   (`scripts/diagnose_su2_pitching_regime.py`) confirmed that running
+%   this benchmark with the production Tier-1 numerics (MACH = 1e-9 +
+%   FREESTREAM_PRESS_EQ_ONE) produces moving-body-in-still-air
+%   added-mass / quadratic-drag forces — CL oscillates at 2× the
+%   pitching frequency with a non-physical mean bias. Those numerics
+%   are correct for fan3d_unsteady.cfg.j2 (where the fan really IS
+%   moving through still air) but they make the cfg unvalidatable
+%   against any published wind-tunnel reference, since wind-tunnel
+%   data is collected in the conventional frame (airfoil pitches about
+%   a fixed point, freestream flows past it).
+%
+%   This template is the wind-tunnel-frame version: the freestream is
+%   ON (MACH > 0, non-trivial Reynolds via REYNOLDS_NUMBER /
+%   REYNOLDS_LENGTH), and the airfoil pitches about its quarter chord
+%   in place. CL/CD should behave like the published references at the
+%   matched (k_reduced, Re) point.
+%
+%   This cfg has NO V1 consumer. It exists so Phase 5's cross-solver
+%   gate (SU2 vs PyFR p=3 on G4 GPU — Round-9 HIGH-11 lock) starts
+%   from a conceptually sound benchmark cfg instead of repeating the
+%   2026-05 diagnostic loop.
+%
+% Reference case (default — operator may substitute another low-Re
+% pitching case as long as both reference data and rationale are cited):
 %   NACA 0012, pitching about quarter-chord
 %   k_reduced ≈ 0.55  (band: 0.5 - 0.6)
 %   Re        ≈ 40000 (band: 30000 - 50000)
 %   amplitude ≈ ±10°
 %   5 cycles total; discard cycle 1; integrate cycles 2-5
 %
-% Operator-supplied template variables (rendered via fanopt.cfd.configs):
-%   {{ mesh_filename }}        - .su2 mesh path (NACA 0012 O-grid or C-grid)
-%   {{ marker_airfoil }}       - physical-group name on the airfoil surface
-%   {{ marker_farfield }}      - physical-group name on the outer boundary
+% Operator-supplied template variables (rendered via
+% `fanopt.cfd.configs.render_benchmark_cfg`):
+%   {{ mesh_filename }}        - .su2 mesh path (NACA 0012 O-grid / C-grid)
+%   {{ marker_airfoil }}       - physical-group name on airfoil surface
+%   {{ marker_farfield }}      - physical-group name on outer boundary
+%   {{ mach_number }}          - MACH (default 0.05 — low enough to call
+%                                effectively incompressible; high enough
+%                                that the compressible solver is well
+%                                conditioned with LOW_MACH_PREC = YES)
 %   {{ reynolds_number }}      - target Re (within [30000, 50000])
 %   {{ reynolds_length }}      - reference chord length (m)
-%   {{ pitching_omega_y }}     - angular frequency (rad/s) for the target k_reduced
-%   {{ pitching_ampl_y }}      - pitch amplitude (rad); default ~0.1745 (= 10°)
-%   {{ motion_origin_x }}      - pitching axis x-location (quarter-chord = 0.25 * c)
+%   {{ pitching_omega_y }}     - angular frequency (rad/s) for the target
+%                                k_reduced; sign follows C11 convention
+%   {{ pitching_ampl_y }}      - pitch amplitude (rad); default ~0.1745
+%                                (= 10°)
+%   {{ motion_origin_x }}      - pitching axis x-location (quarter-chord
+%                                = 0.25 * c)
 %   {{ time_step }}            - dt = T/200 by spec
 %   {{ max_time }}             - 5 * T (5 full cycles)
 %   {{ time_iter }}            - 5 * 200 = 1000 outer time steps
 %
-% Tier-1 lock invariants this template MUST satisfy (same gate as the
-% production Tier-1 cfg, enforced by tests/test_cfd/test_unsteady_freestream_consistency.py):
-%   1. MACH_NUMBER = 1e-9                          (Round-9 HIGH-12 / C12)
-%   2. REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE  (SU2 v8.0.1 fallback path)
-%   3. LOW_MACH_PREC = YES                         (compressible low-Mach prec)
-%   4. TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER (5-cycle dual-time-stepping)
-%   5. GRID_MOVEMENT = RIGID_MOTION                (body via pitching about quarter-chord)
-%
-% Note: SU2 v8.0.1 rejects `FREESTREAM_OPTION = FREESTREAM_VELOCITY` at
-% parse time. This template uses the equivalent fallback path
-% (compressible-zero-flow via REF_DIMENSIONALIZATION + reference state)
-% — same numerics as the Tier-1 production cfg fan3d_unsteady.cfg.j2.
+% NOT a Tier-1 lock-equivalence template — the MACH lock (Round-9
+% HIGH-12 / C12) intentionally does NOT apply here. The Tier-1
+% production cfg `fan3d_unsteady.cfg.j2` is the source of truth for the
+% MACH = 1e-9 unsteady lock.
 %
 % --------------------------------------------------------------------------
 
@@ -48,16 +71,15 @@ KIND_TURB_MODEL= NONE
 MATH_PROBLEM= DIRECT
 RESTART_SOL= NO
 
-% --- Round-9 HIGH-12 / C12 unsteady freestream lock (SU2 v8.0.1 fallback) ---
-MACH_NUMBER= 1e-9
-REF_DIMENSIONALIZATION= FREESTREAM_PRESS_EQ_ONE
-FREESTREAM_TEMPERATURE= 300.0
-FREESTREAM_PRESSURE= 101325.0
+% --- wind-tunnel-frame freestream (Phase-5-prep, NOT the Tier-1 lock) ---
+MACH_NUMBER= {{ mach_number }}
+FREESTREAM_TEMPERATURE= {{ freestream_temperature | default(300.0) }}
+FREESTREAM_PRESSURE= {{ freestream_pressure | default(101325.0) }}
 
 REYNOLDS_NUMBER= {{ reynolds_number }}
 REYNOLDS_LENGTH= {{ reynolds_length }}
 
-% --- low-Mach preconditioning (Tier-1 lock) ---
+% --- low-Mach preconditioning (MACH ~ 0.05 needs this for conditioning) ---
 LOW_MACH_PREC= YES
 MIN_ROE_TURKEL_PREC= 0.01
 MAX_ROE_TURKEL_PREC= 0.2

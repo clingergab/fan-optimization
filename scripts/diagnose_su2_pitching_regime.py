@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Diagnose the force-regime of a SU2 pitching-airfoil run.
 
-Spike 0.6c.2 diagnostic (added 2026-05-XX after the first Cell 8 run
+Spike 0.6c.2 diagnostic (added 2026-05-14 after the first Cell 8 run
 produced non-physical CL values). Goal: determine whether the SU2
 history shows **wind-tunnel-like** force behavior (CL ∝ α, in phase),
 **added-mass-dominated** behavior (CL ∝ d²α/dt², leading α by ~90°),
@@ -40,7 +40,7 @@ Independently:
   a large bias indicates a numerical artifact, sign error, or
   asymmetric geometry/motion bug.
 
-Spec reference: ``docs/phase_logs/spike_0_6c.md`` (2026-05-XX appendix
+Spec reference: ``docs/phase_logs/spike_0_6c.md`` (2026-05-14 appendix
 when the diagnostic runs).
 """
 from __future__ import annotations
@@ -63,7 +63,6 @@ if str(REPO_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import parse_su2_history_to_cycles as parse_cli  # noqa: E402
-
 
 # Classification thresholds (degrees of phase lag).
 WIND_TUNNEL_MAX_LAG_DEG: float = 30.0
@@ -114,9 +113,7 @@ def _phase_lag_via_xcorr(
     return _normalise_lag_degrees(lag_fraction * 360.0)
 
 
-def _classify(
-    bias_ratio: float, phase_lag_deg: float
-) -> tuple[str, list[str]]:
+def _classify(bias_ratio: float, phase_lag_deg: float) -> tuple[str, list[str]]:
     """Return (primary_label, list_of_findings).
 
     ``primary_label`` is the regime classification; ``findings`` is a
@@ -219,9 +216,7 @@ def diagnose_history(
     bias_ratio = abs(cl_mean) / cl_amplitude if cl_amplitude > 0.0 else float("inf")
 
     dt_eff = float(t_kept[1] - t_kept[0]) if len(t_kept) > 1 else 1.0
-    phase_lag_deg = _phase_lag_via_xcorr(
-        cl_kept, alpha_kept, dt_eff, omega_shm_rad_per_s
-    )
+    phase_lag_deg = _phase_lag_via_xcorr(cl_kept, alpha_kept, dt_eff, omega_shm_rad_per_s)
 
     label, findings = _classify(bias_ratio, phase_lag_deg)
 

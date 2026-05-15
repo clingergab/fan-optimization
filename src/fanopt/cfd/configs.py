@@ -10,7 +10,8 @@ Public API:
     render_unsteady_cfg(params)     -> str  # Tier 1 (3D unsteady, MACH=1e-9)
     render_steady_cfg(params)       -> str  # Tier 0 (3D steady, MACH=0.0064)
     render_slice_steady_cfg(params) -> str  # Tier -1 (2D mid-radius slice)
-    render_benchmark_cfg(params)    -> str  # Spike 0.6c.2 NACA 0012
+    render_benchmark_cfg(params)    -> str  # wind-tunnel NACA 0012 (Phase 5 prep)
+    render_thin_plate_2d_pitching_cfg(params) -> str  # Spike 0.6d.2 (H10 supplement)
 
     CROSS_TIER (dict)    - keys shared across all tiers
     TIER_SPECIFIC (dict) - {tier: {key: locked_value}} — MACH belongs here
@@ -45,6 +46,7 @@ __all__ = [
     "render_steady_cfg",
     "render_slice_steady_cfg",
     "render_benchmark_cfg",
+    "render_thin_plate_2d_pitching_cfg",
     "TemplateRenderError",
 ]
 
@@ -311,14 +313,23 @@ def render_benchmark_cfg(
     time_step: float,
     max_time: float,
     time_iter: int,
+    mach_number: float = 0.05,
+    freestream_temperature: float = 300.0,
+    freestream_pressure: float = 101325.0,
     inner_iter: int = 100,
     cfl_number: float = 1.0,
 ) -> str:
-    """Render the Spike 0.6c.2 NACA 0012 benchmark template.
+    """Render the wind-tunnel-frame NACA 0012 oscillating-airfoil template.
 
-    Uses the same Round-9 HIGH-12 fallback freestream syntax as the
-    Tier-1 production cfg (REF_DIMENSIONALIZATION + reference state),
-    since SU2 v8.0.1 rejects the primary FREESTREAM_VELOCITY directive.
+    Phase-5 prep deliverable. Renders a conventional wind-tunnel-frame
+    cfg (MACH > 0, freestream ON, airfoil pitches in place) suitable
+    for validation against published low-Re pitching references. NOT
+    a Tier-1 lock-equivalence template — the MACH = 1e-9 unsteady lock
+    (Round-9 HIGH-12 / C12) intentionally does NOT apply here.
+
+    Default ``mach_number = 0.05`` is the conventional "low enough to
+    be effectively incompressible, high enough that the compressible
+    solver stays well conditioned with LOW_MACH_PREC = YES" choice.
     """
     env = _env()
     try:
@@ -329,6 +340,69 @@ def render_benchmark_cfg(
         return tpl.render(
             mesh_filename=mesh_filename,
             marker_airfoil=marker_airfoil,
+            marker_farfield=marker_farfield,
+            mach_number=mach_number,
+            freestream_temperature=freestream_temperature,
+            freestream_pressure=freestream_pressure,
+            reynolds_number=reynolds_number,
+            reynolds_length=reynolds_length,
+            pitching_omega_y=pitching_omega_y,
+            pitching_ampl_y=pitching_ampl_y,
+            motion_origin_x=motion_origin_x,
+            time_step=time_step,
+            max_time=max_time,
+            time_iter=time_iter,
+            inner_iter=inner_iter,
+            cfl_number=cfl_number,
+        )
+    except jinja2.UndefinedError as e:
+        raise TemplateRenderError(f"missing template variable: {e}") from e
+
+
+def render_thin_plate_2d_pitching_cfg(
+    *,
+    mesh_filename: str,
+    marker_plate: str,
+    marker_farfield: str,
+    pitching_omega_y: float,
+    pitching_ampl_y: float,
+    motion_origin_x: float,
+    time_step: float,
+    max_time: float,
+    time_iter: int,
+    reynolds_number: float = 40000.0,
+    reynolds_length: float = 1.0,
+    inner_iter: int = 100,
+    cfl_number: float = 1.0,
+) -> str:
+    """Render the Spike 0.6d.2 2D thin-plate pitching template.
+
+    Mirrors the production Tier-1 unsteady numerics (Round-9 HIGH-12 / C12:
+    ``MACH=1e-9`` + ``REF_DIMENSIONALIZATION=FREESTREAM_PRESS_EQ_ONE`` +
+    ``LOW_MACH_PREC=YES`` + ``DUAL_TIME_STEPPING-2ND_ORDER`` +
+    ``GRID_MOVEMENT=RIGID_MOTION``) on a 2D thin-plate geometry where the
+    Sedov/Newman closed-form added-mass moment is known. The H10 supplement
+    spike (0.6d.2) compares SU2's inviscid-phase pitching moment against
+    that closed form within ±15%.
+
+    The 2D thin-plate cfg intentionally does NOT take a ``mach_number``
+    parameter — it must use the production unsteady lock to be a faithful
+    test of the production numerics. C11 sign lock applies:
+    ``pitching_omega_y`` must be negative on the productive stroke.
+    """
+    if pitching_omega_y > 0:
+        raise TemplateRenderError(
+            "pitching_omega_y must be ≤ 0 per C11 lock " "(negative y on productive stroke)"
+        )
+    env = _env()
+    try:
+        tpl = env.get_template("thin_plate_2d_pitching.cfg.j2")
+    except jinja2.TemplateNotFound as e:
+        raise TemplateRenderError(f"template not found: {e}") from e
+    try:
+        return tpl.render(
+            mesh_filename=mesh_filename,
+            marker_plate=marker_plate,
             marker_farfield=marker_farfield,
             reynolds_number=reynolds_number,
             reynolds_length=reynolds_length,

@@ -1,22 +1,21 @@
 #!/usr/bin/env python
-"""Spike 0.6c — aggregator + Phase 4 launch gate marker.
+"""Spike 0.6c — aggregator + Phase 4 launch gate marker (V1 scope).
 
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.6c (lines 1839-1844);
 protocol in docs/spike_0_6c_protocol.md.
 
-Reads the per-sub-spike result JSONs written by
-``scripts/run_spike_0_6c_1.py`` and ``scripts/run_spike_0_6c_2.py``,
-rolls them up into a ``Spike06cResult``, and writes the
-``phase0/spike_0_6c/PASS`` marker iff BOTH sub-spikes individually
-passed.
+**V1 scope (post-2026-05-14):** reads only the sub-spike 0.6c.1 result
+JSON (written by ``scripts/run_spike_0_6c_1.py``) and writes the
+``data/spike_0_6c/PASS`` marker iff sub-spike 0.6c.1 passed. Sub-spike
+0.6c.2 (NACA 0012 numerical-consistency benchmark) was deferred to
+Phase 5 — see ``docs/phase_logs/spike_0_6c.md`` for the decision record.
 
 Phase 4 launch (``scripts/launch_phase4.py``) refuses to create the
 ``phase4-launch`` git tag if the ``PASS`` marker is absent.
 
-Inputs (defaults point at the per-runner output paths):
+Inputs:
 
 * ``--sub-1-json`` — sub-spike 0.6c.1 result JSON.
-* ``--sub-2-json`` — sub-spike 0.6c.2 result JSON.
 
 Outputs:
 
@@ -26,10 +25,11 @@ Outputs:
 
 Exit codes:
 
-* ``0`` — both sub-spikes passed; ``PASS`` marker written.
-* ``1`` — at least one sub-spike failed; ``FAIL`` marker written.
+* ``0`` — sub-spike 0.6c.1 passed; ``PASS`` marker written.
+* ``1`` — sub-spike 0.6c.1 failed; ``FAIL`` marker written.
 * ``2`` — input error (missing / malformed result JSON).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,10 +40,6 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fanopt.cfd.spike_0_6c import (
-    BenchmarkCycleData,
-    BenchmarkResult,
-    ConvergenceCheck,
-    SymmetryCheck,
     Tier1CfgSanityResult,
     analyze_spike_06c,
 )
@@ -51,7 +47,6 @@ from fanopt.cfd.spike_0_6c import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO_ROOT / "data" / "spike_0_6c"
 DEFAULT_SUB_1_JSON = DEFAULT_DIR / "sub_1_result.json"
-DEFAULT_SUB_2_JSON = DEFAULT_DIR / "sub_2_result.json"
 DEFAULT_OUT_JSON = DEFAULT_DIR / "results.json"
 
 
@@ -92,54 +87,6 @@ def _load_sub_1(path: Path) -> Tier1CfgSanityResult:
         raise ValueError(f"{path}: malformed sub_1 result: {e}") from e
 
 
-def _load_sub_2(path: Path) -> BenchmarkResult:
-    payload = _load_json(path)
-    r = payload.get("result") if isinstance(payload, dict) else None
-    if not isinstance(r, dict):
-        raise ValueError(f"{path}: missing 'result' block")
-    try:
-        cycles = tuple(
-            BenchmarkCycleData(
-                cycle_index=int(c["cycle_index"]),
-                c_l_max=float(c["c_l_max"]),
-                c_l_min=float(c["c_l_min"]),
-                c_d_mean=float(c["c_d_mean"]),
-                c_l_hysteresis_area=float(c["c_l_hysteresis_area"]),
-            )
-            for c in r.get("cycles", [])
-        )
-        convergence = tuple(
-            ConvergenceCheck(
-                metric_name=str(c["metric_name"]),
-                values=tuple(float(v) for v in c["values"]),
-                mean=float(c["mean"]),
-                relative_range_pct=float(c["relative_range_pct"]),
-                passed=bool(c["passed"]),
-            )
-            for c in r.get("convergence", [])
-        )
-        sym = r["symmetry"]
-        symmetry = SymmetryCheck(
-            c_l_max_mean=float(sym["c_l_max_mean"]),
-            c_l_min_mean=float(sym["c_l_min_mean"]),
-            asymmetry_pct=float(sym["asymmetry_pct"]),
-            passed=bool(sym["passed"]),
-        )
-        return BenchmarkResult(
-            k_reduced=float(r["k_reduced"]),
-            reynolds=float(r["reynolds"]),
-            cycles=cycles,
-            convergence=convergence,
-            symmetry=symmetry,
-            diagnostic_hysteresis_area_mean=float(r.get("diagnostic_hysteresis_area_mean", 0.0)),
-            convergence_passed=bool(r.get("convergence_passed", False)),
-            symmetry_passed=bool(r.get("symmetry_passed", False)),
-            passed=bool(r.get("passed", False)),
-        )
-    except (KeyError, TypeError, ValueError) as e:
-        raise ValueError(f"{path}: malformed sub_2 result: {e}") from e
-
-
 # ---- I/O ------------------------------------------------------------------
 
 
@@ -166,12 +113,6 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Sub-spike 0.6c.1 result JSON. Default: %(default)s.",
     )
     p.add_argument(
-        "--sub-2-json",
-        type=Path,
-        default=DEFAULT_SUB_2_JSON,
-        help="Sub-spike 0.6c.2 result JSON. Default: %(default)s.",
-    )
-    p.add_argument(
         "--out",
         type=Path,
         default=DEFAULT_OUT_JSON,
@@ -191,35 +132,26 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         sub_1 = _load_sub_1(args.sub_1_json)
-        sub_2 = _load_sub_2(args.sub_2_json)
     except (FileNotFoundError, ValueError) as e:
         print(f"[spike_0_6c] input error: {e}", file=sys.stderr)
         return 2
 
-    result = analyze_spike_06c(sub_1, sub_2)
+    result = analyze_spike_06c(sub_1)
 
     payload = {
         "spec_reference": "docs/plan_R11.md §Phase 0 Spike 0.6c",
-        "lock_reference": "H10 (Tier-1 cfg benchmark) + Round-9 HIGH-12 / C12 (unsteady MACH)",
+        "lock_reference": "H10 (Tier-1 cfg sanity) + Round-9 HIGH-12 / C12 (unsteady MACH)",
+        "v1_scope_note": (
+            "V1: gates on sub_06c_1 only. Sub-spike 0.6c.2 (NACA 0012 "
+            "benchmark) deferred to Phase 5 per docs/phase_logs/spike_0_6c.md "
+            "(2026-05-14 diagnostic addendum)."
+        ),
         "phase4_gate_note": (
             "Phase 4 launch (scripts/launch_phase4.py) refuses to create the "
             "`phase4-launch` tag if data/spike_0_6c/PASS is absent."
         ),
         "result": {
             "sub_06c_1": asdict(result.sub_06c_1),
-            "sub_06c_2": {
-                "k_reduced": result.sub_06c_2.k_reduced,
-                "reynolds": result.sub_06c_2.reynolds,
-                "cycles": [asdict(c) for c in result.sub_06c_2.cycles],
-                "convergence": [asdict(c) for c in result.sub_06c_2.convergence],
-                "symmetry": asdict(result.sub_06c_2.symmetry),
-                "diagnostic_hysteresis_area_mean": (
-                    result.sub_06c_2.diagnostic_hysteresis_area_mean
-                ),
-                "convergence_passed": result.sub_06c_2.convergence_passed,
-                "symmetry_passed": result.sub_06c_2.symmetry_passed,
-                "passed": result.sub_06c_2.passed,
-            },
             "overall_passed": result.overall_passed,
         },
     }
@@ -236,15 +168,8 @@ def main(argv: list[str] | None = None) -> int:
         f"FREESTREAM_OPTION={result.sub_06c_1.freestream_option!r}, "
         f"outer_steps={result.sub_06c_1.outer_time_steps_completed})"
     )
-    print(
-        f"[spike_0_6c] sub_06c_2  = "
-        f"{'PASS' if result.sub_06c_2.passed else 'FAIL'} "
-        f"(convergence_passed={result.sub_06c_2.convergence_passed}, "
-        f"symmetry_passed={result.sub_06c_2.symmetry_passed})"
-    )
-    print(
-        f"[spike_0_6c] OVERALL    = " f"{'PASS' if result.overall_passed else 'FAIL'}  -> {marker}"
-    )
+    print("[spike_0_6c] sub_06c_2  = DEFERRED TO PHASE 5 (cross-solver validation)")
+    print(f"[spike_0_6c] OVERALL    = {'PASS' if result.overall_passed else 'FAIL'}  -> {marker}")
     print(f"[spike_0_6c] results    = {args.out}")
 
     return 0 if result.overall_passed else 1
