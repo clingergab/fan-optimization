@@ -106,3 +106,59 @@ def test_build_probe_mesh_creates_parent_dir(tmp_path: Path) -> None:
     rc = cli.main(["--kind", "probe", "--out", str(out)])
     assert rc == 0
     assert out.exists()
+
+
+# ---- thin_plate_2d (Spike 0.6d.2 — H10 supplement, 2026-05-14) -----------
+
+
+def test_cli_parse_args_thin_plate_2d() -> None:
+    """The kind=thin_plate_2d enum is supported (added 2026-05-14)."""
+    args = cli.parse_args(["--kind", "thin_plate_2d"])
+    assert args.kind == "thin_plate_2d"
+
+
+def test_thin_plate_2d_mesh_generates(tmp_path: Path) -> None:
+    """thin_plate_2d mesh: SU2 file written with PLATE + FARFIELD markers.
+
+    Markers must match `configs/su2/thin_plate_2d_pitching.cfg.j2` (which
+    expects `marker_plate` and `marker_farfield`).
+    """
+    out = tmp_path / "thin_plate.su2"
+    rc = cli.main(
+        [
+            "--kind",
+            "thin_plate_2d",
+            "--out",
+            str(out),
+            "--farfield-radius-chord",
+            "10.0",  # smaller domain for test speed
+        ]
+    )
+    assert rc == 0
+    assert out.exists()
+    text = out.read_text()
+    assert "NDIME= 2" in text
+    # Required markers for 0.6d.2 cfg template.
+    assert "PLATE" in text
+    assert "FARFIELD" in text
+
+
+def test_thin_plate_2d_default_output_path_under_spike_0_6d(tmp_path: Path) -> None:
+    """Default output for thin_plate_2d goes to data/spike_0_6d/meshes/, not 0.6c."""
+    # Run with no --out arg, capture the path used.
+    out_default = cli.REPO_ROOT / "data" / "spike_0_6d" / "meshes" / "thin_plate_2d.su2"
+    # Make sure stale cleanup if a prior test left one behind.
+    if out_default.exists():
+        out_default.unlink()
+    rc = cli.main(
+        [
+            "--kind",
+            "thin_plate_2d",
+            "--farfield-radius-chord",
+            "5.0",  # tiny for test speed
+        ]
+    )
+    assert rc == 0
+    assert out_default.exists()
+    # Clean up.
+    out_default.unlink()

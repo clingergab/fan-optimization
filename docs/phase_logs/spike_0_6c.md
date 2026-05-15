@@ -27,7 +27,63 @@ sub-spikes must individually pass for the aggregator to write `PASS`.
 
 ---
 
-## V1 decision — literature-comparison gate retired (2026-05-13)
+## V1 decision — Spike 0.6c.2 deferred to Phase 5 (2026-05-14, supersedes the 2026-05-13 revision)
+
+**Decision:** sub-spike 0.6c.2 (NACA 0012 numerical-consistency benchmark) is **dropped from the Phase 4 launch gate** and deferred entirely to Phase 5 cross-solver validation. Phase 4 launch gates on sub-spike 0.6c.1 (cfg sanity) alone. The 2026-05-13 internal-consistency revision (convergence + symmetry gates) was conceptually unsound and is itself retired.
+
+**Evidence trail.** Cell 8 on Colab (notebook `colab_spike_0_6c.ipynb`) ran the production-faithful benchmark cfg for ~10h and produced a non-NaN history.csv. Re-running the analyzer (the original ±15% literature-gate version, before the 2026-05-13 revision was pulled) flagged every metric off by 6–9 orders of magnitude:
+
+```
+c_l_max     meas = 1,133,343    ref =  1.20    pct = +94,445,138 %
+c_l_min     meas =   510,112    ref = -1.20    pct = -42,509,422 %
+c_d_mean    meas =   895,251    ref =  0.085   pct = +1,053,236,158 %
+c_l_hyst    meas =44,058,190    ref =  0.45    pct = +9,790,708,799 %
+```
+
+The 2026-05-14 regime diagnostic (`scripts/diagnose_su2_pitching_regime.py`) on the same history.csv produced:
+
+```
+cl_mean          +8.18e+05
+cl_amplitude      3.66e+05
+bias_ratio        2.234
+phase_lag_deg    +88.2°    (single-frequency cross-corr — see caveat)
+CLASSIFICATION   ADDED_MASS_DOMINANCE
+Findings:
+  • NON-PHYSICAL BIAS: |cycle-mean|/amplitude = 2.234 exceeds threshold 0.2
+  • ADDED-MASS DOMINANCE: |phase lag| = 88.2° in the [60, 120]° band
+```
+
+The PNG trace plot showed the smoking gun: **CL oscillates at 2× the prescribed pitching frequency**, with both CL and CD strictly positive throughout. The 2× harmonic is the signature of `V_local²`-proportional drag (quadratic in body velocity); the cross-correlation's 88° phase reading is artifact of fitting a 2ω signal against a 1ω basis. The actual force regime is quadratic-in-velocity body-in-still-air drag, not wind-tunnel lift.
+
+**Why this kills the 2026-05-13 revision.** The convergence + symmetry gates I designed in the 2026-05-13 revision implicitly assumed wind-tunnel-frame physics: convergence is meaningful when steady-state cycles produce repeatable C_L peaks; symmetry assumes C_L(α) flips sign with α for a symmetric airfoil. Neither holds for body-in-still-air physics:
+
+- Convergence: did pass on the secondary data (cycles 1–4 had ranges of ~10%, failing the 2% gate, but that's because the data was bad numerics not because the regime is wrong).
+- Symmetry: c_l_min was positive (+5.1e5) instead of negative — but **in body-in-still-air, c_l_min ≈ −c_l_max is NOT required**. The "lift" force is driven by added-mass + quadratic drag, neither of which flips sign with α in the conventional way. The symmetry gate was assuming aerodynamic-lift physics that doesn't apply.
+
+So the 2026-05-13 revision wasn't just a bad gate threshold — the underlying premise (wind-frame symmetry of CL) was wrong for the cfg's physics regime. Demoting 0.6c.2 to Phase 5 cross-solver validation is the honest fix.
+
+**What 0.6c.1 still gates.** Sub-spike 0.6c.1 (cfg sanity) remains in V1 as the Phase 4 launch gate. It confirms:
+
+- The production Tier-1 cfg parses cleanly under the deployed SU2 build.
+- The Round-9 HIGH-12 lock holds (`MACH = 1e-9` + freestream-syntax fallback).
+- SU2 completes at least one outer time step on a probe mesh (the cfg + solver launch successfully).
+
+That's the minimum sanity bar to know the production cfg isn't broken before Phase 4 spends compute on it. Numerical-correctness validation (the SU2-vs-PyFR cross-solver check) lives in Phase 5.
+
+**Phase 5 deliverable (the new home of 0.6c.2):**
+
+- Run a published wind-tunnel NACA 0012 oscillating-airfoil case through SU2 with a **wind-tunnel-frame** cfg (non-zero freestream MACH; the production-faithful MACH=1e-9 cfg is for the fan, not for benchmarks).
+- Run the same case through PyFR p=3 on Colab Pro G4 GPU (per Round-9 HIGH-11; T4 will OOM).
+- Compare: C_L_max within ±20%, C_d_mean within ±25%, hysteresis loop sign matches and area within 2× (researcher-recommended bounds; see 2026-05-13 literature-survey report archived in the conversation transcript).
+- Cross-solver agreement establishes absolute-accuracy bounds on the SU2 numerical scheme; the production cfg's MACH=1e-9 regime is then trusted by the same solver + numerics provenance.
+
+**Code-side cleanup landed in the same commit.** Removed from `src/fanopt/cfd/spike_0_6c.py`: `CONVERGENCE_TOLERANCE_PCT`, `SYMMETRY_TOLERANCE_PCT`, `CONVERGENCE_METRICS`, `ConvergenceCheck`, `SymmetryCheck`, `BenchmarkCycleData`, `BenchmarkResult`, `check_convergence`, `check_symmetry`, `analyze_benchmark`. Removed entirely: `scripts/run_spike_0_6c_2.py`. Simplified: `scripts/run_spike_0_6c.py` (now reads only sub_1 result). All retired identifiers entered in `docs/retired_phrases.yaml`.
+
+---
+
+## V1 decision — literature-comparison gate retired (2026-05-13) — SUPERSEDED 2026-05-14
+
+*(Retained for traceability of the decision sequence; the 2026-05-14 decision above subsumes this one.)*
 
 The early draft protocol enumerated a ±15% literature-comparison gate
 on four metrics (`c_l_max`, `c_l_min`, `c_d_mean`, `c_l_hysteresis_area`)

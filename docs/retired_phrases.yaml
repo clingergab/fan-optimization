@@ -357,6 +357,122 @@ retired_phrases:
       - 'retired'
       - 'no longer'
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Spike 0.6c.2 deferral to Phase 5 (2026-05-14)
+  # The 2026-05-14 regime diagnostic on Cell 8's history.csv confirmed
+  # the production-faithful MACH=1e-9 cfg produces body-in-still-air
+  # forces (CL at 2× the prescribed pitching frequency, bias ratio
+  # 2.234 — non-physical for a wind-tunnel-frame symmetry gate). The
+  # 2026-05-13 internal-consistency revision (convergence + symmetry)
+  # was conceptually unsound because the symmetry gate implicitly
+  # assumed wind-tunnel physics. Demoted 0.6c.2 to Phase 5 where PyFR
+  # cross-solver validation takes over. The six identifiers below were
+  # removed from src/fanopt/cfd/spike_0_6c.py; this batch catches
+  # reintroduction.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - pattern: '\bCONVERGENCE_TOLERANCE_PCT\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14) — symmetry gate retired; cross-solver in Phase 5'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+      - 'pre-Phase-5-deferral'
+
+  - pattern: '\bSYMMETRY_TOLERANCE_PCT\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14) — symmetry gate implicitly assumed wind-tunnel physics; production cfg is body-in-still-air'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+      - 'pre-Phase-5-deferral'
+
+  - pattern: '\bCONVERGENCE_METRICS\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
+  - pattern: '\bConvergenceCheck\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14) — convergence dataclass removed with the symmetry-gate code'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
+  - pattern: '\bSymmetryCheck\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
+  - pattern: '\bcheck_convergence\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
+  - pattern: '\bcheck_symmetry\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
+  - pattern: '\banalyze_benchmark\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14) — benchmark analyzer removed; aggregator now reads sub_1 only'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
+  - pattern: '\bBenchmarkResult\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
+  - pattern: '\bBenchmarkCycleData\b'
+    retired_by: 'Spike 0.6c.2 deferral to Phase 5 (2026-05-14)'
+    allow_list_sections:
+      - 'Appendix D'
+      - 'revision history'
+    allow_list_disclaimers:
+      - 'earlier draft'
+      - 'retired'
+      - 'no longer'
+
 # ─────────────────────────────────────────────────────────────────────
 # Maintenance policy (Round 9 lock):
 # When a new review round retires an architectural pattern:

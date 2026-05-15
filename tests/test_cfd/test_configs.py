@@ -27,6 +27,7 @@ from fanopt.cfd.configs import (
     render_benchmark_cfg,
     render_slice_steady_cfg,
     render_steady_cfg,
+    render_thin_plate_2d_pitching_cfg,
     render_unsteady_cfg,
 )
 
@@ -268,8 +269,13 @@ def test_render_benchmark_template_not_found(monkeypatch, tmp_path) -> None:
         )
 
 
-def test_benchmark_renders_naca_0012_style() -> None:
-    """Spike 0.6c.2 NACA 0012 template renders with the same HIGH-12 locks."""
+def test_benchmark_renders_wind_tunnel_frame() -> None:
+    """Wind-tunnel-frame NACA 0012 template renders with MACH > 0 + freestream ON.
+
+    Phase-5 prep: NOT the Tier-1 MACH = 1e-9 lock. The whole point of
+    the 2026-05-14 deferral is that the benchmark must run in the
+    conventional wind-tunnel frame, not body-in-still-air.
+    """
     out = render_benchmark_cfg(
         mesh_filename="naca0012.su2",
         marker_airfoil="AIRFOIL",
@@ -283,10 +289,58 @@ def test_benchmark_renders_naca_0012_style() -> None:
         max_time=5.0,
         time_iter=5000,
     )
-    assert "MACH_NUMBER= 1e-9" in out
-    assert "REF_DIMENSIONALIZATION= FREESTREAM_PRESS_EQ_ONE" in out
+    assert "MACH_NUMBER= 0.05" in out
+    # The body-in-still-air directive (Tier-1 production fallback) MUST
+    # be absent — its presence is the conceptual bug the 2026-05-14
+    # diagnostic invalidated.
+    assert "REF_DIMENSIONALIZATION" not in out
     assert "DUAL_TIME_STEPPING-2ND_ORDER" in out
     assert "RIGID_MOTION" in out
+    # Freestream defaults sane for low-Re aerodynamic flow.
+    assert "FREESTREAM_TEMPERATURE= 300.0" in out
+    assert "FREESTREAM_PRESSURE= 101325.0" in out
+    assert "LOW_MACH_PREC= YES" in out
+
+
+def test_benchmark_mach_number_parameterizable() -> None:
+    """``mach_number`` parameter overrides the default 0.05."""
+    out = render_benchmark_cfg(
+        mesh_filename="x.su2",
+        marker_airfoil="A",
+        marker_farfield="F",
+        reynolds_number=40000,
+        reynolds_length=1.0,
+        pitching_omega_y=-3.0,
+        pitching_ampl_y=0.1,
+        motion_origin_x=0.25,
+        time_step=0.001,
+        max_time=5.0,
+        time_iter=5000,
+        mach_number=0.1,
+    )
+    assert "MACH_NUMBER= 0.1" in out
+    assert "MACH_NUMBER= 0.05" not in out
+
+
+def test_benchmark_freestream_state_parameterizable() -> None:
+    """Freestream temperature + pressure can be overridden for non-STP cases."""
+    out = render_benchmark_cfg(
+        mesh_filename="x.su2",
+        marker_airfoil="A",
+        marker_farfield="F",
+        reynolds_number=40000,
+        reynolds_length=1.0,
+        pitching_omega_y=-3.0,
+        pitching_ampl_y=0.1,
+        motion_origin_x=0.25,
+        time_step=0.001,
+        max_time=5.0,
+        time_iter=5000,
+        freestream_temperature=288.15,
+        freestream_pressure=95000.0,
+    )
+    assert "FREESTREAM_TEMPERATURE= 288.15" in out
+    assert "FREESTREAM_PRESSURE= 95000.0" in out
 
 
 def test_benchmark_marker_airfoil_propagates() -> None:
@@ -401,6 +455,92 @@ def test_unsteady_template_file_exists() -> None:
 
 def test_benchmark_template_file_exists() -> None:
     assert (CFD_TEMPLATES_DIR / "oscillating_airfoil_benchmark.cfg.j2").exists()
+
+
+# ---- render_thin_plate_2d_pitching (Spike 0.6d.2 H10 supplement) ---------
+
+
+@pytest.fixture
+def thin_plate_render() -> str:
+    return render_thin_plate_2d_pitching_cfg(
+        mesh_filename="thin_plate_2d.su2",
+        marker_plate="PLATE",
+        marker_farfield="FARFIELD",
+        pitching_omega_y=-12.5664,  # C11 sign lock
+        pitching_ampl_y=0.1745,
+        motion_origin_x=0.25,
+        time_step=2.5e-3,
+        max_time=2.5,
+        time_iter=1000,
+    )
+
+
+def test_thin_plate_2d_cfg_mirrors_production_tier1_numerics(
+    thin_plate_render: str,
+) -> None:
+    """0.6d.2 cfg MUST match production Tier-1 numerics — that's the point."""
+    assert "MACH_NUMBER= 1e-9" in thin_plate_render
+    assert "REF_DIMENSIONALIZATION= FREESTREAM_PRESS_EQ_ONE" in thin_plate_render
+    assert "LOW_MACH_PREC= YES" in thin_plate_render
+    assert "DUAL_TIME_STEPPING-2ND_ORDER" in thin_plate_render
+    assert "RIGID_MOTION" in thin_plate_render
+
+
+def test_thin_plate_2d_cfg_pitching_about_quarter_chord(
+    thin_plate_render: str,
+) -> None:
+    assert "MOTION_ORIGIN= 0.25 0.0 0.0" in thin_plate_render
+
+
+def test_thin_plate_2d_cfg_omega_y_negative_per_c11(
+    thin_plate_render: str,
+) -> None:
+    """C11 sign lock — y-component of PITCHING_OMEGA must be negative."""
+    m = re.search(
+        r"^PITCHING_OMEGA=\s*([\d.+-eE]+)\s+([\d.+-eE]+)\s+([\d.+-eE]+)",
+        thin_plate_render,
+        re.MULTILINE,
+    )
+    assert m is not None
+    _, y, _ = (float(g) for g in m.groups())
+    assert y < 0
+
+
+def test_thin_plate_2d_cfg_renders_with_defaults() -> None:
+    """Render should succeed with default reynolds/inner_iter/cfl."""
+    out = render_thin_plate_2d_pitching_cfg(
+        mesh_filename="x.su2",
+        marker_plate="P",
+        marker_farfield="F",
+        pitching_omega_y=-10.0,
+        pitching_ampl_y=0.1,
+        motion_origin_x=0.25,
+        time_step=1e-3,
+        max_time=1.0,
+        time_iter=1000,
+    )
+    assert "REYNOLDS_NUMBER= 40000" in out
+    assert "INNER_ITER= 100" in out
+
+
+def test_thin_plate_2d_cfg_rejects_positive_omega_per_c11() -> None:
+    """C11 sign lock — the renderer refuses to flip the sign."""
+    with pytest.raises(TemplateRenderError, match="C11"):
+        render_thin_plate_2d_pitching_cfg(
+            mesh_filename="x.su2",
+            marker_plate="P",
+            marker_farfield="F",
+            pitching_omega_y=+12.5664,  # wrong sign
+            pitching_ampl_y=0.1,
+            motion_origin_x=0.25,
+            time_step=1e-3,
+            max_time=1.0,
+            time_iter=1000,
+        )
+
+
+def test_thin_plate_2d_template_file_exists() -> None:
+    assert (CFD_TEMPLATES_DIR / "thin_plate_2d_pitching.cfg.j2").exists()
 
 
 def test_slice_steady_template_file_exists() -> None:

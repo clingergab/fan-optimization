@@ -1,17 +1,27 @@
 #!/usr/bin/env python
 """Phase 0 → Phase 4 handoff: create the `phase4-launch` git tag.
 
-Spec reference: docs/plan_R11.md §Phase 0 Spike 0.6c (H10 lock) + §6.2.1
-architecture-bandit growth-gate (the `+10%` rule that activates after this
-tag exists).
+Spec reference: docs/plan_R11.md §Phase 0 Spike 0.6c (H10 lock) + §Phase 0
+Spike 0.6d (2026-05-14 H10 supplement) + §6.2.1 architecture-bandit
+growth-gate (the `+10%` rule that activates after this tag exists).
 
-**The gate this script enforces:**
-- `data/spike_0_6c/PASS` marker must exist before the `phase4-launch` git
-  tag can be created. This marker is written by `run_spike_0_6c.py` IFF
-  both sub-spikes (0.6c.1 Tier-1 cfg sanity + 0.6c.2 NACA 0012 benchmark)
-  passed. Without this marker, Phase 4's Tier-1 numerics are unvalidated
-  and the 1000-h Phase 4 stop-rule budget cannot legitimately start
-  counting.
+**The gate this script enforces (V1, post-2026-05-14 dual-gate):**
+
+The script requires BOTH of the following markers before creating the
+`phase4-launch` git tag:
+
+- `data/spike_0_6c/PASS` — written by `run_spike_0_6c.py` iff Sub-spike
+  0.6c.1 (Tier-1 cfg sanity) passes. Sub-spike 0.6c.2 was deferred to
+  Phase 5 step 62.5 on 2026-05-14 (see `docs/phase_logs/spike_0_6c.md`
+  Note 1).
+- `data/spike_0_6d/PASS` — written by `run_spike_0_6d.py` iff Sub-spike
+  0.6d.1 (symmetry + dimensional sanity) AND Sub-spike 0.6d.2 (added-mass
+  analytic check) both pass. Sub-spike 0.6d.3 is advisory and does NOT
+  gate (see `docs/phase_logs/phase_0_signoff.md` Note 2).
+
+Without BOTH markers, Phase 4's Tier-1 numerics lack independent
+quantitative evidence and the 1000-h Phase 4 stop-rule budget cannot
+legitimately start counting.
 
 **Side effects:**
 - Creates the lightweight `phase4-launch` git tag at HEAD.
@@ -40,7 +50,9 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MARKER = REPO_ROOT / "data" / "spike_0_6c" / "PASS"
+DEFAULT_MARKER_06C = REPO_ROOT / "data" / "spike_0_6c" / "PASS"
+DEFAULT_MARKER_06D = REPO_ROOT / "data" / "spike_0_6d" / "PASS"
+DEFAULT_MARKER = DEFAULT_MARKER_06C  # back-compat alias for the original `--marker`
 PHASE4_TAG = "phase4-launch"
 
 
@@ -49,8 +61,17 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--marker",
         type=Path,
-        default=DEFAULT_MARKER,
+        default=DEFAULT_MARKER_06C,
         help="Path to the Spike 0.6c PASS marker (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--marker-06d",
+        type=Path,
+        default=DEFAULT_MARKER_06D,
+        help=(
+            "Path to the Spike 0.6d PASS marker (H10 supplement; "
+            "2026-05-14 addition). Default: %(default)s."
+        ),
     )
     parser.add_argument(
         "--check",
@@ -75,22 +96,53 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _check_marker(marker: Path) -> tuple[bool, str]:
-    """Return (passed, reason).
+def _check_single_marker(marker: Path, *, spike_label: str, runner_hint: str) -> tuple[bool, str]:
+    """Return (passed, reason) for one marker path.
 
-    `passed=True` iff the marker file exists. The marker is written as an
-    empty file by run_spike_0_6c.py; its existence is the gate. Content is
-    not parsed.
+    `passed=True` iff the marker file exists. Markers are empty sentinel
+    files written by each spike's aggregator; existence is the gate, content
+    is not parsed.
     """
     if not marker.exists():
-        return False, (
-            f"Spike 0.6c PASS marker not found at {marker}. "
-            "Run `python scripts/run_spike_0_6c.py` and confirm both "
-            "sub-spikes pass before attempting Phase 4 launch."
-        )
+        return False, f"{spike_label} marker not found at {marker}. {runner_hint}"
     if marker.is_dir():
         return False, f"{marker} exists but is a directory; expected a file."
-    return True, f"Spike 0.6c PASS marker present at {marker}."
+    return True, f"{spike_label} marker present at {marker}."
+
+
+def _check_marker(marker_06c: Path, marker_06d: Path) -> tuple[bool, str]:
+    """Return (passed, reason) for the dual-gate (0.6c AND 0.6d).
+
+    Phase 4 launch is gated on BOTH markers per the 2026-05-14 plan revision.
+    The order is intentional: we check 0.6c first (the V1-original gate),
+    then 0.6d (the H10 supplement). The first failure short-circuits — its
+    message guides the operator to the right runner.
+    """
+    runner_06c = (
+        "Run `python scripts/run_spike_0_6c.py` to write the marker "
+        "iff Sub-spike 0.6c.1 (Tier-1 cfg sanity) passes. Sub-spike "
+        "0.6c.2 was deferred to Phase 5 step 62.5 on 2026-05-14; see "
+        "docs/phase_logs/spike_0_6c.md Note 1."
+    )
+    runner_06d = (
+        "Run `python scripts/run_spike_0_6d.py` to write the marker "
+        "iff Sub-spike 0.6d.1 (symmetry + dimensional sanity) AND "
+        "Sub-spike 0.6d.2 (added-mass analytic check) both pass. "
+        "Sub-spike 0.6d.3 is advisory and does NOT gate. See "
+        "docs/phase_logs/phase_0_signoff.md Note 2 for the rationale."
+    )
+
+    ok_c, reason_c = _check_single_marker(
+        marker_06c, spike_label="Spike 0.6c PASS", runner_hint=runner_06c
+    )
+    if not ok_c:
+        return False, reason_c
+    ok_d, reason_d = _check_single_marker(
+        marker_06d, spike_label="Spike 0.6d PASS", runner_hint=runner_06d
+    )
+    if not ok_d:
+        return False, reason_d
+    return True, f"Both markers present: 0.6c={marker_06c}; 0.6d={marker_06d}."
 
 
 def _tag_exists(repo_root: Path, tag: str) -> bool:
@@ -130,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         gate_reason = "FORCED — marker check bypassed via --force."
         print(f"[launch_phase4] WARNING: {gate_reason}", file=sys.stderr)
     else:
-        gate_passed, gate_reason = _check_marker(args.marker)
+        gate_passed, gate_reason = _check_marker(args.marker, args.marker_06d)
 
     print(f"[launch_phase4] gate: {'PASS' if gate_passed else 'FAIL'}  {gate_reason}")
 

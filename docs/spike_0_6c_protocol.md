@@ -1,25 +1,39 @@
-# Spike 0.6c — Tier-1 unsteady-config benchmark validation (H10 lock)
+# Spike 0.6c — Tier-1 unsteady-config sanity (V1 scope)
 
 **Spec reference:** `docs/plan_R11.md §Phase 0 Spike 0.6c` (lines 1839-1844).
 
-**Lock callouts:** H10 (Tier-1 cfg benchmark validation), Round-9 HIGH-12
+**Lock callouts:** H10 (Tier-1 cfg sanity), Round-9 HIGH-12
 (= C12, the unsteady `MACH = 1e-9` lock).
+
+**V1 scope (2026-05-14 revision):** sub-spike **0.6c.1 only** gates
+Phase 4 launch. Sub-spike 0.6c.2 (NACA 0012 numerical-consistency
+benchmark) was **deferred to Phase 5** after the 2026-05-14 regime
+diagnostic confirmed the production-faithful MACH=1e-9 cfg produces
+body-in-still-air added-mass/drag forces that can't be validated
+against any published wind-tunnel NACA 0012 benchmark in the same
+frame. Full decision record:
+`docs/phase_logs/spike_0_6c.md` → "2026-05-14 diagnostic addendum".
 
 **Why this exists.** The compressible-with-low-Mach-prec + RIGID_MOTION +
 near-zero-ambient + 5-cycle-dual-time-stepping numerics combination is
-locked on engineering judgment. Without benchmark validation, the entire
-Tier 1 dataset (the only "true J_fan" tier) rests on unvalidated
-numerics — a silent error in any of the locked numerics would propagate
-through every Phase 4/5 Tier-1 result.
+locked on engineering judgment. Sub-spike 0.6c.1 confirms the cfg
+parses cleanly under the deployed SU2 build AND that SU2 completes at
+least one outer time-step on a probe mesh — that the cfg is
+SYNTACTICALLY VALID and the solver-cfg combination LAUNCHES. The
+remaining numerical-validation work (does the solver produce *correct*
+numbers?) is the Phase 5 cross-solver gate (SU2 vs PyFR; PyFR already
+provisioned in the Phase 5 verification budget).
 
-**Phase 4 launch is gated on this spike passing.**
+**Phase 4 launch is gated on sub-spike 0.6c.1 passing.**
 `scripts/launch_phase4.py` refuses to create the `phase4-launch` git tag
-if `data/spike_0_6c/PASS` is absent.
+if `data/spike_0_6c/PASS` is absent. The aggregator
+(`scripts/run_spike_0_6c.py`) writes the PASS marker iff
+`sub_06c_1.passed` is True (V1 scope).
 
-| Sub-spike | What it gates | Pass criteria |
+| Sub-spike | Phase 0 gate? | Pass criteria |
 |---|---|---|
-| **0.6c.1 — cfg sanity** | sub-spike 0.6c.2 (the benchmark itself) | rendered cfg parses; `MACH == 1e-9` (Round-9 HIGH-12 lock); EITHER `FREESTREAM_OPTION = FREESTREAM_VELOCITY` OR `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`; SU2 completes ≥ 1 outer time step on a probe mesh |
-| **0.6c.2 — benchmark** | Phase 4 launch (`scripts/launch_phase4.py`) | two internal-consistency gates: (a) per-metric relative range across kept cycles < 2% on `c_l_max`, `c_l_min`, `c_d_mean`; (b) `\|⟨c_l_max⟩ + ⟨c_l_min⟩\| / max(\|⟨c_l_max⟩\|, \|⟨c_l_min⟩\|) < 5%` |
+| **0.6c.1 — cfg sanity** | ✅ V1 Phase 4 launch gate | rendered cfg parses; `MACH == 1e-9` (Round-9 HIGH-12 lock); EITHER `FREESTREAM_OPTION = FREESTREAM_VELOCITY` OR `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`; SU2 completes ≥ 1 outer time step on a probe mesh |
+| **0.6c.2 — benchmark** | ❌ Deferred to Phase 5 | SU2 vs PyFR cross-solver agreement on a published wind-tunnel NACA 0012 oscillating-airfoil case (acceptance bounds: C_L_max within ±20%, C_d_mean within ±25%, hysteresis loop sign matches + area within 2×) |
 
 ---
 
@@ -103,131 +117,35 @@ reference cfg can be tightened.
 
 ---
 
-## Step 2 — Sub-spike 0.6c.2 (NACA 0012 oscillating-airfoil benchmark)
+## Step 2 — Sub-spike 0.6c.2 (NACA 0012 benchmark) — **DEFERRED TO PHASE 5**
 
-### 2.1 Mesh the NACA 0012
+The previously-shipped `scripts/run_spike_0_6c_2.py` analyzer + the
+shipped wind-tunnel-style benchmark cfg pipeline have been **removed
+from V1**. The 2026-05-14 regime diagnostic on Cell 8's history.csv
+(see `docs/phase_logs/spike_0_6c.md` → "2026-05-14 diagnostic
+addendum") confirmed:
 
-Generate an O-grid or C-grid mesh of the NACA 0012 airfoil with Gmsh.
-Industry-standard sizing for low-Re oscillating-airfoil cases:
+- The production-faithful MACH=1e-9 cfg produces body-in-still-air
+  added-mass/quadratic-drag forces, NOT wind-tunnel-like aerodynamic
+  lift.
+- CL oscillates at **2× the prescribed pitching frequency** (clear
+  quadratic-in-velocity signature), with cycle-mean **2.234× the
+  amplitude** — both characteristic of body-in-still-air physics.
+- The 2026-05-13 internal-consistency revision (convergence + symmetry
+  gates) implicitly assumed wind-tunnel physics and is therefore
+  unsound for the production cfg's regime.
 
-- Boundary-layer first-cell height: ~1e-4 · chord
-- Growth ratio in the boundary layer: 1.15
-- Aspect ratio at the wall: ≤ 50:1
-- Far-field radius: ≥ 50 · chord (Riemann far-field)
+**Where 0.6c.2 lives now (Phase 5):** quantitative cross-solver
+validation (SU2 vs PyFR on a published wind-tunnel NACA 0012
+oscillating-airfoil case in the conventional frame) with the
+researcher-recommended acceptance bound:
 
-Write the mesh to `data/spike_0_6c/naca0012.su2` (or wherever the cfg's
-`MESH_FILENAME` points).
+- C_L_max within ±20%
+- C_d_mean within ±25%
+- Hysteresis loop sign matches + area within a factor of 2
 
-### 2.2 Render the benchmark cfg
-
-Use `configs/su2/oscillating_airfoil_benchmark.cfg.j2` (locked Tier-1
-numerics: `MACH = 1e-9`, `FREESTREAM_OPTION = FREESTREAM_VELOCITY`,
-`LOW_MACH_PREC = YES`, `TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER`,
-`GRID_MOVEMENT = RIGID_MOTION`).
-
-Operator-supplied template variables (see the template's header for the
-canonical list):
-
-- `mesh_filename` — path to the .su2 mesh
-- `marker_airfoil` — physical-group name on the airfoil surface
-- `marker_farfield` — physical-group name on the far-field
-- `reynolds_number` — target Re in [30000, 50000]
-- `reynolds_length` — reference chord (e.g., 1.0 m, or whatever matches
-  the mesh)
-- `pitching_omega_y` — angular frequency (rad/s); compute from
-  `k_reduced = ω · c / (2 · U_∞)` with target `k_reduced ≈ 0.55`
-- `pitching_ampl_y` — pitch amplitude (rad); 10° = 0.1745 rad
-- `motion_origin_x` — quarter-chord position
-- `time_step` — T / 200 with T = 2π / `pitching_omega_y`
-- `max_time` — 5 · T
-- `time_iter` — 5 × 200 = 1000
-
-### 2.3 Run the benchmark
-
-```
-SU2_CFD configs/su2/oscillating_airfoil_benchmark.cfg
-```
-
-Expected wall-time: ~6-12 hours on Colab Pro CPU (per spec line 1843;
-booked under Phase 0).
-
-### 2.4 Extract per-cycle aerodynamic coefficients
-
-For each of the 5 cycles, extract from SU2's `surface_flow.csv` /
-`history.csv`:
-
-- `c_l_max` — peak lift coefficient
-- `c_l_min` — trough lift coefficient
-- `c_d_mean` — cycle-mean drag coefficient
-- `c_l_hysteresis_area` — signed area inside the `C_l(α)` loop
-
-Write the rows to `data/spike_0_6c/measured.csv` with header
-`cycle_index, c_l_max, c_l_min, c_d_mean, c_l_hysteresis_area`. The
-shipped template is `data/spike_0_6c/measured.template.csv`.
-
-### 2.5 Run the analyzer
-
-```
-python scripts/run_spike_0_6c_2.py \
-  --measured data/spike_0_6c/measured.csv \
-  --k-reduced 0.55 \
-  --reynolds 40000
-```
-
-The analyzer discards cycle 0 (initial transient) and runs two
-internal-consistency gates on the remaining 4 cycles:
-
-* **Convergence:** per-metric relative range across kept cycles is
-  `100 * (max - min) / |mean|`. For `c_l_max`, `c_l_min`, `c_d_mean`,
-  each must be < 2% (`CONVERGENCE_TOLERANCE_PCT`).
-* **C_L symmetry:** with mean α = 0° and a symmetric airfoil, kept-cycle
-  averages must satisfy
-  `|⟨c_l_max⟩ + ⟨c_l_min⟩| / max(|⟨c_l_max⟩|, |⟨c_l_min⟩|) < 5%`
-  (`SYMMETRY_TOLERANCE_PCT`).
-
-Writes `data/spike_0_6c/sub_2_result.json` + a `sub_2.{PASS,FAIL}`
-marker. The cycle-mean of `c_l_hysteresis_area` is logged as a
-diagnostic in the result but is NOT gated (the loop is near
-sign-inversion at k=0.55; a relative-range gate on a near-zero quantity
-is unstable, and quantitative cross-solver validation is deferred to
-Phase 5).
-
-**Pass criterion:** both gates clear (convergence AND symmetry).
-
----
-
-## Reference data
-
-**No literature reference comparison.** A targeted literature survey
-(2026-05) confirmed the (Re=40k, k=0.55, ±10°, mean α=0°, c/4 pivot)
-operating point is in a gap between the well-studied low-Re/low-k
-attached-pitching regime (Kim & Chang 2013 at Re=48k k=0.1 ±6°) and
-the moderate-Re/high-k dynamic-stall regime (MDPI 2025 at Re=66k;
-McCroskey/Carr at Re~10⁶). At this Re even well-studied points have
-≥25% inter-study scatter on C_L_max — the ±15% literature-comparison
-gate that earlier drafts enumerated is **not defensible** at this
-operating point.
-
-Internal-consistency gates substitute: they validate that SU2 is
-solving its own equations consistently. Convergence proves the time
-discretisation is fine enough; symmetry proves the geometry/motion
-axis is wired correctly. Together they catch the failure modes that
-the literature gate would have caught (mesh-too-coarse, dt-too-large,
-sign-flipped omega) without pretending to ground-truth at an operating
-point nobody has published.
-
-Quantitative cross-solver validation (SU2 vs PyFR with comparable
-numerical-method coverage) is deferred to **Phase 5**, where PyFR is
-already provisioned in the verification budget. The cross-solver
-acceptance bound (researcher recommendation): C_L_max within ±20%,
-C_d_mean within ±25%, hysteresis loop *sign* matches and area within a
-factor of 2.
-
-If a future spike or campaign chooses to run a different operating
-point that *does* have literature coverage (e.g., Kim & Chang's Re=48k,
-k=0.1, ±6° point), the analyzer can be invoked with
-`--allow-out-of-band` to bypass the band check, but the internal-
-consistency gates remain the V1 pass criterion.
+PyFR is already provisioned in the Phase 5 verification budget; the
+cross-solver script + cfg land as Phase 5 deliverables.
 
 ---
 
@@ -237,9 +155,11 @@ consistency gates remain the V1 pass criterion.
 python scripts/run_spike_0_6c.py
 ```
 
-This consumes the per-sub-spike result JSONs and writes:
+V1 scope: the aggregator reads only the sub-spike 0.6c.1 result and
+writes:
 
-- `data/spike_0_6c/results.json` — aggregate result.
+- `data/spike_0_6c/results.json` — aggregate result (with a
+  `v1_scope_note` field documenting the 0.6c.2 → Phase 5 deferral).
 - `data/spike_0_6c/PASS` (or `FAIL`) — the Phase 4 launch gate marker.
 
 `scripts/launch_phase4.py` checks for the `PASS` marker before creating
@@ -256,18 +176,8 @@ If sub-spike 0.6c.1 fails:
 | `parsed_ok = False` | MACH directive missing / malformed | Re-render the cfg; verify Jinja2 substitution is wired |
 | `mach_value != 1e-9` | TIER_SPECIFIC[1] lock drift | Verify §9.4.1 TIER_SPECIFIC[1] dict; ensure CROSS_TIER does NOT carry MACH (per Round-9 HIGH-12 / C12) |
 | `freestream_option == ""` and `ref_dimensionalization is None` | Neither H10 syntax present | Add `FREESTREAM_OPTION = FREESTREAM_VELOCITY` (primary) OR `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE` (fallback) |
-| `outer_time_steps_completed == 0` with SU2 installed | SU2 launch error | Inspect SU2 stdout in `data/spike_0_6c/probe/`; common causes: mesh missing, marker names mismatch |
+| `outer_time_steps_completed == 0` with SU2 installed | SU2 launch error OR log not captured | Inspect SU2 stdout in `data/spike_0_6c/probe/`; common causes: mesh missing, marker names mismatch, sub_1 runner not capturing SU2's stdout to the log file the parser scans |
 | `outer_time_steps_completed == 0` without SU2 | SU2 not on PATH | Install SU2 or run this sub-spike on a Colab Pro CPU session |
-
-If sub-spike 0.6c.2 fails:
-
-| Gate that failed | Likely cause | Fix |
-|---|---|---|
-| Convergence on `c_l_max` (range ≥ 2%) | dt too large; cycles haven't settled | Halve `TIME_STEP`; re-run; if still divergent, add more cycles |
-| Convergence on `c_d_mean` | Inner-iter convergence | Bump `INNER_ITER` from 100 to 200; verify residuals reach `CONV_RESIDUAL_MINVAL` |
-| Convergence on all three metrics | Mesh quality / first-cell height | Halve first-cell height; verify boundary-layer y+ < 1 |
-| Symmetry (asymmetry ≥ 5%) | Sign error on `PITCHING_OMEGA_Y` or motion origin | Verify `PITCHING_OMEGA_VEC` is negative-y (Round-9 HIGH-12 / C11 lock); verify `motion_origin_x` = quarter-chord |
-| Symmetry, all metrics scaled wrong by ~constant | AMPL unit (rad vs deg) drift | Verify SU2 build commit pinned in `material_locks.SU2_COMMIT` |
 
 **Do NOT silently proceed.** Phase 4 launch is hard-gated on this spike
 passing.
@@ -277,11 +187,13 @@ passing.
 ## What this rig is reused for
 
 - **Phase 4 launch gate** — `scripts/launch_phase4.py` consults the
-  `phase0/spike_0_6c/PASS` marker before tagging `phase4-launch`.
-- **Phase 4/5 Tier-1 trust** — once 0.6c.2 passes, the Tier-1 numerics
-  are validated against published data, so every subsequent Tier-1
-  evaluation can be trusted as a "true J_fan" sample (modulo the per-run
-  config-hash assertion in §9.4.1).
+  `data/spike_0_6c/PASS` marker before tagging `phase4-launch`.
+- **Phase 4/5 Tier-1 trust** — sub-spike 0.6c.1 confirms the production
+  Tier-1 cfg parses + launches under the deployed SU2 build. Numerical
+  correctness validation (the "are the numbers *right*?" question) lives
+  in Phase 5 via the SU2-vs-PyFR cross-solver gate; until that
+  cross-check completes, Tier-1 evaluations are trusted only as
+  "syntactically valid + solver-launchable".
 - **Regression baseline** — if SU2 / Gmsh / mesh-gen pipelines change
-  later, re-running this spike confirms the change preserved the
-  numerics.
+  later, re-running 0.6c.1 confirms the change preserved the cfg-load +
+  solver-launch path.

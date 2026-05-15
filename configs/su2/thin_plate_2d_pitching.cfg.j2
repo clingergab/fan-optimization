@@ -1,0 +1,100 @@
+% SU2 config template — 2D thin-plate pitching benchmark for Spike 0.6d.2.
+%
+% Purpose: render a 2D thin-plate pitching cfg that mirrors the production
+% Tier-1 numerics (MACH=1e-9 + REF_DIMENSIONALIZATION=FREESTREAM_PRESS_EQ_ONE
+% + LOW_MACH_PREC + DUAL_TIME_STEPPING) on a 2D geometry where the
+% Sedov/Newman closed-form added-mass moment is known. The point of this
+% benchmark is to verify that SU2's inviscid-phase pitching moment about
+% the pivot matches the closed form within ±15%.
+%
+% Spec reference: docs/report-final.md §Phase 0 Spike 0.6d (sub-spike 0.6d.2).
+% Protocol:       docs/spike_0_6d_protocol.md.
+% Motivation:     docs/phase_logs/phase_0_signoff.md Note 2.
+%
+% Lock callouts (must match the production Tier-1 unsteady cfg
+% `fan3d_unsteady.cfg.j2`):
+%   1. MACH_NUMBER = 1e-9                            (Round-9 HIGH-12 / C12)
+%   2. REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE  (SU2 v8.0.1 fallback)
+%   3. LOW_MACH_PREC = YES                           (compressible low-Mach prec)
+%   4. TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER  (5-cycle dual-time-stepping)
+%   5. GRID_MOVEMENT = RIGID_MOTION                  (body via pitching)
+%
+% Operator-supplied template variables (rendered via
+% `fanopt.cfd.configs.render_thin_plate_2d_pitching_cfg`):
+%   {{ mesh_filename }}        - .su2 mesh path (2D thin plate, ~50:1 AR)
+%   {{ marker_plate }}         - physical-group name on the plate surface
+%   {{ marker_farfield }}      - physical-group name on the outer boundary
+%   {{ pitching_omega_y }}     - angular frequency (rad/s); negative per C11
+%   {{ pitching_ampl_y }}      - pitch amplitude (rad)
+%   {{ motion_origin_x }}      - pitching axis x-location (quarter-chord = 0.25 c)
+%   {{ time_step }}            - dt = T/200
+%   {{ max_time }}             - 5 × T  (5 full cycles)
+%   {{ time_iter }}            - 5 × 200 = 1000 outer time steps
+%
+% --------------------------------------------------------------------------
+
+SOLVER= NAVIER_STOKES
+KIND_TURB_MODEL= NONE
+MATH_PROBLEM= DIRECT
+RESTART_SOL= NO
+
+% --- Round-9 HIGH-12 / C12 unsteady freestream lock (matches production) ---
+MACH_NUMBER= 1e-9
+REF_DIMENSIONALIZATION= FREESTREAM_PRESS_EQ_ONE
+FREESTREAM_TEMPERATURE= 300.0
+FREESTREAM_PRESSURE= 101325.0
+
+REYNOLDS_NUMBER= {{ reynolds_number | default(40000) }}
+REYNOLDS_LENGTH= {{ reynolds_length | default(1.0) }}
+
+% --- low-Mach preconditioning (matches production Tier-1) ---
+LOW_MACH_PREC= YES
+MIN_ROE_TURKEL_PREC= 0.01
+MAX_ROE_TURKEL_PREC= 0.2
+
+% --- dual-time-stepping (matches production Tier-1; 5 cycles, dt = T/200) ---
+TIME_DOMAIN= YES
+TIME_MARCHING= DUAL_TIME_STEPPING-2ND_ORDER
+TIME_STEP= {{ time_step }}
+MAX_TIME= {{ max_time }}
+TIME_ITER= {{ time_iter }}
+INNER_ITER= {{ inner_iter | default(100) }}
+
+% --- pitching about the quarter-chord (C11 sign lock: omega_y < 0) ---
+GRID_MOVEMENT= RIGID_MOTION
+MOTION_ORIGIN= {{ motion_origin_x }} 0.0 0.0
+PITCHING_OMEGA= 0.0 {{ pitching_omega_y }} 0.0
+PITCHING_AMPL=  0.0 {{ pitching_ampl_y }} 0.0
+
+% --- boundary conditions ---
+MARKER_HEATFLUX= ( {{ marker_plate }}, 0.0 )
+MARKER_FAR= ( {{ marker_farfield }} )
+MARKER_MONITORING= ( {{ marker_plate }} )
+MARKER_PLOTTING= ( {{ marker_plate }} )
+
+% --- output ---
+MESH_FILENAME= {{ mesh_filename }}
+MESH_FORMAT= SU2
+TABULAR_FORMAT= CSV
+CONV_FILENAME= history
+SURFACE_FILENAME= surface_flow
+VOLUME_FILENAME= flow
+OUTPUT_FILES= ( RESTART, PARAVIEW, SURFACE_CSV )
+HISTORY_OUTPUT= ( ITER, RMS_RES, AERO_COEFF, FLOW_COEFF )
+
+% --- numerics ---
+NUM_METHOD_GRAD= WEIGHTED_LEAST_SQUARES
+CFL_NUMBER= {{ cfl_number | default(1.0) }}
+CONV_NUM_METHOD_FLOW= ROE
+MUSCL_FLOW= YES
+SLOPE_LIMITER_FLOW= VENKATAKRISHNAN
+TIME_DISCRE_FLOW= EULER_IMPLICIT
+LINEAR_SOLVER= FGMRES
+LINEAR_SOLVER_PREC= LU_SGS
+LINEAR_SOLVER_ERROR= 1E-6
+LINEAR_SOLVER_ITER= 25
+
+% --- convergence ---
+CONV_RESIDUAL_MINVAL= -8
+CONV_STARTITER= 10
+SCREEN_WRT_FREQ_INNER= 10

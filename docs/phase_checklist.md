@@ -11,11 +11,11 @@ Authoritative decision record: **`docs/phase_logs/phase_0_signoff.md`**.
 
 Hardware-instrumented measurement (anemometer, IMU, torsion pendulum) is deferred to V2. V1 ships a printable optimized fan judged by qualitative blinded A/B feel test against the printed flat-panel baseline. Spike 0.6c (CFD numerics validation) is the **only non-negotiable kept-in-V1 spike** — without it, the sim-only V1 is unmoored from physical reality. Deferred-spike sentinels live at `data/spike_0_{2,3,5,7c}/deferral.json`. Full V2 specs in `docs/V2_backlog.md`.
 
-## Spike 0.6c.2 gate revision (2026-05-13, tactical under V1)
+## Spike 0.6c.2 deferred to Phase 5 (2026-05-14, supersedes 2026-05-13 revision)
 
-Authoritative decision record: **`docs/phase_logs/spike_0_6c.md` → "V1 decision — literature-comparison gate retired"**.
+Authoritative decision record: **`docs/phase_logs/spike_0_6c.md` → "V1 decision — Spike 0.6c.2 deferred to Phase 5 (2026-05-14)"**.
 
-A targeted literature survey confirmed the (Re=40k, k=0.55, ±10°, mean α=0°) operating point has no published reference within defensible scatter (≥25% inter-study C_L_max). The ±15% literature-comparison gate is **retired**. Replaced with two internal-consistency gates: (a) per-metric convergence (relative range < 2% on `c_l_max`, `c_l_min`, `c_d_mean` across kept cycles); (b) C_L symmetry (`|⟨c_l_max⟩ + ⟨c_l_min⟩| / max(|⟨c_l_max⟩|, |⟨c_l_min⟩|) < 5%`). Quantitative cross-solver validation (SU2 vs PyFR) is **deferred to Phase 5** where PyFR is already provisioned. Tactical revision under V1 scope; does NOT change the V1/V2 split.
+The 2026-05-14 regime diagnostic on Cell 8's SU2 history.csv confirmed the production-faithful MACH=1e-9 cfg produces body-in-still-air added-mass/quadratic-drag forces (CL at 2× the prescribed pitching frequency, bias ratio 2.234) — not wind-tunnel-like aerodynamic lift. The 2026-05-13 internal-consistency revision (convergence + symmetry gates) implicitly assumed wind-tunnel physics and is itself superseded. Sub-spike 0.6c.2 is now a **Phase 5 deliverable**: SU2 vs PyFR cross-solver agreement (C_L_max within ±20%, C_d_mean within ±25%, hysteresis loop sign matches + area within 2×). PyFR is already provisioned in the Phase 5 budget. Phase 4 launch gates on sub-spike 0.6c.1 only.
 
 ---
 
@@ -30,7 +30,9 @@ Dependencies flow forward (per plan §Phase 0 dependency table): 0.0 → 0.1 (pa
 | Spike 0.2 / 0.3 / 0.5 / 0.7c | `[→V2]` | V1 substitutes wired; revisit only on V2 |
 | Spike 0.4 (click cycle + V1 lock) | Operator-blocked | Code done; needs printed test articles + force gauge |
 | Spike 0.6 main + 0.6a + 0.6b (compute probes) | Operator-blocked | Calibration, not a gate per plan; one M3 run + one Colab run each |
-| Spike 0.6c.1 + 0.6c.2 | `[~]` Cell 8 running on Colab | ~6–12 h SU2 NACA 0012 + parse → analyzer → PASS marker |
+| Spike 0.6c.1 | `[~]` Cell 7 produces `outer_steps=0` — needs stdout-capture fix on Colab | 1 small fix + 1–2 h Colab CPU |
+| Spike 0.6c.2 | `[→Phase 5]` DEFERRED 2026-05-14 — see plan §Phase 5 step 62.5 | Re-enters as 3-solver published-reference benchmark in Phase 5 |
+| Spike 0.6d (2026-05-14 addition; 0.6d.1 + 0.6d.2 gating, 0.6d.3 advisory) | `[ ]` Not started | ~3 days code + ~5–9 h Colab CPU |
 | Spike 0.7a operator steps | Blocked on Phase 1 CadQuery generator | Land `make_outer_envelope` + 5 field functions + primitive function |
 | Spike 0.7b | ✅ done | — |
 | Environment: Mac `conda-lock.yml` | Operator action | One `conda-lock` invocation |
@@ -145,36 +147,58 @@ Dependencies flow forward (per plan §Phase 0 dependency table): 0.0 → 0.1 (pa
 - [ ] **Pass:** completes ≤ 2 min, matches analytic tip deflection within 5%
 - [ ] **If fail:** move §59.5 combined-blade FEA to Colab Pro CPU (M3 keeps geometry/mesh-QC/Fusion/IMU)
 
-### Spike 0.6c — Tier-1 unsteady-config benchmark validation (H10 — gates Phase 4 launch)
+### Spike 0.6c — Tier-1 unsteady-config sanity (V1: gates Phase 4 launch)
 
-**Artifacts shipped (ready to run):**
-- `src/fanopt/cfd/spike_0_6c.py` — library: cfg sanity + new internal-consistency gates (convergence + symmetry) + diagnostic hysteresis logging
+**Artifacts shipped (V1):**
+- `src/fanopt/cfd/spike_0_6c.py` — library: cfg sanity + simplified aggregator (sub_1 only)
 - `src/fanopt/cfd/configs.py` — `render_unsteady_cfg()` with the Round-9 HIGH-12 fallback path locked in by default
 - `configs/su2/fan3d_unsteady.cfg.j2` — production Tier-1 template
-- `configs/su2/oscillating_airfoil_benchmark.cfg.j2` — Spike 0.6c.2 NACA 0012 template
-- `scripts/run_spike_0_6c_1.py` / `run_spike_0_6c_2.py` / `run_spike_0_6c.py` — sub-spike runners + aggregator
-- `scripts/parse_su2_history_to_cycles.py` — SU2 `history.csv` → per-cycle `measured.csv`
+- `scripts/run_spike_0_6c_1.py` / `run_spike_0_6c.py` — sub_1 runner + aggregator
+- `scripts/parse_su2_history_to_cycles.py` — SU2 `history.csv` → per-cycle `measured.csv` (kept for Phase 5 cross-solver use)
+- `scripts/diagnose_su2_pitching_regime.py` — regime classifier (added 2026-05-14 as part of the deferral evidence trail)
 - `scripts/launch_phase4.py` — Phase 4 launch gate; reads `data/spike_0_6c/PASS`
-- `notebooks/colab_spike_0_6c.ipynb` — Colab runbook (Cells 1–11)
-- `docs/spike_0_6c_protocol.md` + `docs/phase_logs/spike_0_6c.md`
-- Pipeline end-to-end test (`tests/test_scripts/test_parse_su2_history.py::test_pipeline_parse_then_analyzer_yields_pass`) de-risks the post-Cell-8 path
+- `notebooks/colab_spike_0_6c.ipynb` — Colab runbook (Cells 1–11 retained; cells 8–10 marked DEFERRED-TO-PHASE-5)
+- `docs/spike_0_6c_protocol.md` + `docs/phase_logs/spike_0_6c.md` (full diagnostic addendum)
 
-**Sub-spike 0.6c.1 — Tier-1 cfg sanity check** ✅
+**Sub-spike 0.6c.1 — Tier-1 cfg sanity check** `[~]` Awaiting Colab `sub_1.PASS`
 - [x] Render locked Tier-1 cfg; run 1 inner iteration on a probe mesh
 - [x] Round-9 HIGH-12 fallback (`MACH_NUMBER = 1e-9` + `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`) shipped as the default — SU2 v8.0.1 rejects the primary `FREESTREAM_OPTION = FREESTREAM_VELOCITY` syntax at parse time
 - [x] Round-9 HIGH-12 + C11 sign locks pinned by `tests/test_cfd/test_unsteady_freestream_consistency.py`
-- [ ] Run on Colab Pro CPU to write `sub_1.PASS` (currently `sub_1.FAIL` from local sandbox without SU2 — by design)
+- [ ] Run on Colab Pro CPU to write `sub_1.PASS` — known issue from the 2026-05 run: `outer_steps=0` even though Cell 8 confirmed SU2 launches successfully. The sub_1 runner may not be capturing SU2's stdout to the log file its parser scans; needs a small Cell 7 fix on Colab before sub_1.PASS will write.
 
-**Sub-spike 0.6c.2 — NACA 0012 numerical-consistency benchmark** `[~]` IN PROGRESS
-- [x] Protocol revised 2026-05-13: replaced ±15% literature-comparison gate with internal-consistency gates (see `docs/phase_logs/spike_0_6c.md`)
-- [x] `CONVERGENCE_TOLERANCE_PCT = 2.0` + `SYMMETRY_TOLERANCE_PCT = 5.0` locked
-- [x] `c_l_hysteresis_area` logged as diagnostic (not gated; near sign-inversion at k=0.55 makes relative-range gating unstable)
-- [x] Retired symbols catalogued in `docs/retired_phrases.yaml` (NACA0012_REFERENCE, BENCHMARK_TOLERANCE_PCT, BenchmarkComparison, compare_cycle_to_reference, all_metrics_within_15pct)
-- [~] Cell 8 running on Colab Pro CPU (~6–12 h NACA 0012 benchmark; SU2 v8.0.1)
-- [ ] On Cell 8 completion: `parse_su2_history_to_cycles` → `measured.csv` → `run_spike_0_6c_2.py` → `sub_2.{PASS,FAIL}`
-- [ ] Aggregate via `run_spike_0_6c.py` → `data/spike_0_6c/PASS` (or `FAIL` + diagnostics decision tree)
-- [ ] **Pass criterion:** convergence + symmetry both clear; `passed = True`
-- [→Phase 5] Quantitative cross-solver gate (SU2 vs PyFR; ±20% C_L_max / ±25% C_d_mean / hysteresis-loop sign match + area within 2×) — researcher-recommended bound; PyFR already provisioned in Phase 5 verification budget
+**Sub-spike 0.6c.2 — NACA 0012 benchmark** `[→Phase 5]` DEFERRED 2026-05-14
+- Removed from V1 scope after the 2026-05-14 regime diagnostic confirmed the moving-body-in-still-air cfg can't be validated against any wind-tunnel reference in the same frame. Full decision record + evidence: `docs/phase_logs/spike_0_6c.md`.
+- Code-side removals (entered in `docs/retired_phrases.yaml`): `CONVERGENCE_TOLERANCE_PCT`, `SYMMETRY_TOLERANCE_PCT`, `CONVERGENCE_METRICS`, `ConvergenceCheck`, `SymmetryCheck`, `BenchmarkCycleData`, `BenchmarkResult`, `check_convergence`, `check_symmetry`, `analyze_benchmark`. Script `run_spike_0_6c_2.py` deleted.
+- Re-enters as **Phase 5 step 62.5** (2026-05-14 addition): three-solver published-reference benchmark (SU2 + PyFR + OpenFOAM `pimpleFoam`) against a body-in-still-air-frame reference case (Sane & Dickinson 2002 / Morison-equation literature). Replaces the wind-tunnel-frame framing entirely. See plan §Phase 5 step 62.5.
+
+### Spike 0.6d — Tier-1 quantitative-sanity counter-checks (2026-05-14 addition; gates Phase 4 launch alongside 0.6c.1)
+
+**Why this spike exists:** After 0.6c.2's deferral, Phase 4 would have launched on Tier-1 evaluations with no independent quantitative check on SU2's body-in-still-air response at MACH=1e-9 — only consistency evidence. Spike 0.6d lands three lightweight independent counter-checks in Phase 0 before ~1300 GPU-hours of Phase 4 compute commits. Full plan reference: §Phase 0 Spike 0.6d.
+
+**Sub-spike 0.6d.1 — Symmetry + dimensional-force sanity** `[ ]` Not started
+- [ ] `src/fanopt/cfd/spike_0_6d.py` — `Tier1SymmetryDimensionalResult` dataclass + analyzers
+- [ ] `scripts/run_spike_0_6d_1.py` — CLI runner: reads existing Cell 8 history.csv + one fresh Tier-1 baseline run; writes `data/spike_0_6d/sub_1_result.json` + marker
+- [ ] Tests: `tests/test_cfd/test_spike_0_6d.py` + `tests/test_scripts/test_run_spike_0_6d.py`
+- [ ] **Pass:** `|F_cycle_avg| < 0.05 × F_cycle_peak`; dimensional `F_cycle_peak ∈ [0.02, 2.0] N`. Runs against the flat-panel baseline; reuses `diagnose_su2_pitching_regime.py` infra.
+
+**Sub-spike 0.6d.2 — 2D added-mass analytic check** `[ ]` Not started
+- [ ] `configs/su2/thin_plate_2d_pitching.cfg.j2` — new 2D thin-plate pitching template; same MACH=1e-9 + RIGID_MOTION + dual-time numerics as production Tier-1
+- [ ] `render_thin_plate_2d_pitching_cfg` in `src/fanopt/cfd/configs.py` + tests
+- [ ] `src/fanopt/cfd/spike_0_6d.py` — `Tier1AddedMassResult` + Sedov/Newman closed-form helper + analyzer
+- [ ] `scripts/run_spike_0_6d_2.py` — CLI runner; writes `data/spike_0_6d/sub_2_result.json` + marker
+- [ ] **Pass:** SU2 inviscid-phase pitching moment within ±15% of closed-form added-mass prediction.
+
+**Sub-spike 0.6d.3 — SU2 incompressible-mode cross-check** `[ ]` Not started (advisory)
+- [ ] `src/fanopt/cfd/configs.py` — `render_unsteady_cfg(solver="INC_NAVIER_STOKES")` variant OR new `render_tier1_incompressible_cfg`
+- [ ] `src/fanopt/cfd/spike_0_6d.py` — `Tier1IncompResult` + analyzer
+- [ ] `scripts/run_spike_0_6d_3.py` — CLI runner; writes `data/spike_0_6d/sub_3_result.json` (advisory, no marker)
+- [ ] **Pass (advisory):** dimensional cycle-averaged forces agree with compressible-MACH=1e-9 output within ±20%.
+
+**Aggregator + Phase 4 gate**
+- [ ] `scripts/run_spike_0_6d.py` — reads sub_1 + sub_2 + (optional) sub_3 result JSONs; writes `data/spike_0_6d/PASS` iff sub_1 AND sub_2 both passed
+- [ ] `scripts/launch_phase4.py` extended: requires both `data/spike_0_6c/PASS` AND `data/spike_0_6d/PASS` markers before creating the `phase4-launch` tag
+- [ ] Tests for `launch_phase4.py` updated to cover the dual-gate requirement
+- [ ] Run on Colab Pro CPU; ~5-9 hours total compute
 
 ### Spike 0.7 — Generative-geometry + BO-infra sanity check
 **Sub-spike 0.7a — Generative geometry sanity:**
