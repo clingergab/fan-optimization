@@ -15,9 +15,10 @@ The script requires BOTH of the following markers before creating the
   Phase 5 step 62.5 on 2026-05-14 (see `docs/phase_logs/spike_0_6c.md`
   Note 1).
 - `data/spike_0_6d/PASS` — written by `run_spike_0_6d.py` iff Sub-spike
-  0.6d.1 (symmetry + dimensional sanity) AND Sub-spike 0.6d.2 (added-mass
-  analytic check) both pass. Sub-spike 0.6d.3 is advisory and does NOT
-  gate (see `docs/phase_logs/phase_0_signoff.md` Note 2).
+  0.6d.2's two-frequency added-mass consistency check passes (the sole,
+  normalization-invariant gate after the 2026-05-15 redesign). Sub-spike
+  0.6d.1 (symmetry/dimensional) and 0.6d.3 (incompressible) are advisory
+  and do NOT gate (see `docs/phase_logs/phase_0_signoff.md` Notes 2-3).
 
 Without BOTH markers, Phase 4's Tier-1 numerics lack independent
 quantitative evidence and the 1000-h Phase 4 stop-rule budget cannot
@@ -126,9 +127,9 @@ def _check_marker(marker_06c: Path, marker_06d: Path) -> tuple[bool, str]:
     )
     runner_06d = (
         "Run `python scripts/run_spike_0_6d.py` to write the marker "
-        "iff Sub-spike 0.6d.1 (symmetry + dimensional sanity) AND "
-        "Sub-spike 0.6d.2 (added-mass analytic check) both pass. "
-        "Sub-spike 0.6d.3 is advisory and does NOT gate. See "
+        "iff Sub-spike 0.6d.2's two-frequency added-mass consistency "
+        "check passes (the sole gate post-2026-05-15 redesign). "
+        "Sub-spikes 0.6d.1 + 0.6d.3 are advisory and do NOT gate. See "
         "docs/phase_logs/phase_0_signoff.md Note 2 for the rationale."
     )
 
