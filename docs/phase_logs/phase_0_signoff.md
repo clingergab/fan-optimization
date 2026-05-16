@@ -124,6 +124,29 @@ After the Note 1 deferral, the V1 confidence picture had Phase 4 about to burn ~
 
 This restores roughly the confidence level we'd have had if the 2026-05-13 internal-consistency gate had been validating actual physics — and via independent channels, not consistency loops. The work is ~3 days my effort + ~5–9 h Colab CPU; calendar impact on V1 ship is ~1 week. The full plan-edit set documenting this lives in `docs/proposed_plan_edits_0_6d.md` (proposed → authorized → applied 2026-05-14).
 
+**Superseded in part by Note 3 (2026-05-15)** — the first live Colab run of Spike 0.6d showed the 0.6d.1 gate design was unsound; the gate was rebuilt around 0.6d.2 only. The Tier-0/1/2/3 confidence layering above still holds, but the Phase-0 Tier-0 evidence is now "frequency-consistent added-mass recovery" (0.6d.2), not the 0.6d.1 symmetry/envelope checks.
+
+## Note 3 — Spike 0.6d gate redesigned to added-mass frequency-consistency (2026-05-15, supersedes Note 2's gate design)
+
+The first live Colab run produced (correctly recovered) `data/spike_0_6c/PASS` via the 0.6c.1 history.csv-evidence path, then ran 0.6d.1 on the deferred 0.6c.2 benchmark history.csv. 0.6d.1 FAILed — and inspection showed the **FAIL was not a clean signal; the gate design was flawed**:
+
+1. **Wrong dataset / circular.** 0.6d.1 re-analysed the deferred 0.6c.2 benchmark output — the exact data the 2026-05-14 diagnostic already classified as added-mass-dominated. Its FAIL re-confirms the deferral rationale; it is not independent new evidence about the production numerics.
+2. **Nondimensionalisation conflation.** The magnitude check compared SU2's `CFx` (nondimensional under `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`, `q_ref = 1`) against a dimensional Newton envelope (`m·ω²·r`). The ~6-order gap is dominated by the nondim convention, not proven non-physical output. The check cannot distinguish "garbage" from "sane forces under a `q_ref=1` convention."
+3. **Symmetry criterion ill-posed for a fan.** A working fan produces NET force by design (asymmetric productive/return stroke); a near-zero-cycle-mean criterion would reject the very physics the project depends on.
+
+**Decision (option "A-lite"):** demote 0.6d.1 + 0.6d.3 to **advisory** (recorded for Phase 5, not gating) and rebuild the gate on a single **normalization-invariant, parameter-free falsification test** — Sub-spike 0.6d.2, redesigned:
+
+- Run the 2D thin-plate at TWO pitching frequencies (ω₁, ω₂), same plate / pivot / θ_max.
+- Fourier-project each moment-coefficient trace onto the added-mass (sin φ) basis; recover `I_a = a_sin/(ω²·θ_max)`.
+- **Gate:** `|I_a(ω₁) − I_a(ω₂)| / mean < 0.25`. `I_a = πρb⁴(1/8+a²)` is frequency-independent by construction; the comparison is SU2-vs-SU2 so the fixed `q_ref` cancels — fully normalization-invariant. A frequency-dependent recovered `I_a` falsifies the MACH=1e-9 + low-Mach-prec numerics *before* Phase 4 spends ~1300 GPU-hours optimizing a wrong objective.
+- The Sedov/Newman closed-form magnitude comparison is computed but **advisory** (absolute scale needs SU2's exact reference-state handling = Phase 5 step 62.5).
+
+**Why this is worth the ~1–2 extra days:** the cost asymmetry — if the 2.234 bias-ratio anomaly (normalization-invariant, unexplained) reflects a numerical artifact, catching it now costs ~days; missing it costs a full Phase-4 redo (~weeks of compute). The redesigned 0.6d.2 degrades gracefully: even if the advisory magnitude stays ambiguous, the frequency-consistency verdict is unambiguous.
+
+**Honest note:** the original 0.6d design (Note 2) passed its synthetic unit tests but its *criteria* did not survive the real nondimensionalisation + physics. The unit tests tested the implementation against the criteria; they could not catch mis-specified criteria. The redesigned 0.6d.2 is validated the same way (synthetic projection in/out) — its soundness rests on the normalization-invariance argument above, which the first live run will confirm or falsify.
+
+Phase 4 gate (post-2026-05-15): `data/spike_0_6c/PASS` (0.6c.1) **AND** `data/spike_0_6d/PASS` (0.6d.2 frequency-consistency only).
+
 ## Sign-off
 
 - [x] Spike 0.2 deferral sentinel committed (`data/spike_0_2/deferral.json`).

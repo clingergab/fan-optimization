@@ -17,17 +17,19 @@ import pytest
 
 from fanopt.cfd.spike_0_6d import (
     MACH_UNSTEADY_LOCK,
+    AddedMassProjection,
     Tier1AddedMassResult,
     Tier1IncompResult,
     Tier1SymmetryDimensionalResult,
     analyze_spike_06d,
-    check_added_mass,
+    check_added_mass_freq_consistency,
     check_incompressible_cross,
     check_symmetry_dimensional,
     compute_added_mass_moment_closed_form_2d_plate,
     compute_dimensional_envelope,
     cycle_averages_and_peaks,
     parse_history_csv,
+    recover_added_mass_projection,
 )
 
 # ---- shared CSV helpers ----------------------------------------------------
@@ -237,42 +239,133 @@ def test_added_mass_closed_form_rejects_nonpositive_inputs() -> None:
         )
 
 
-def test_added_mass_passes_when_su2_within_15pct_of_closed_form() -> None:
-    closed_form = compute_added_mass_moment_closed_form_2d_plate(
-        chord_m=1.0,
-        pivot_offset_normalized=-0.5,
-        pitching_omega_rad_per_s=10.0,
-        pitching_amplitude_rad=0.1,
+# ---- 0.6d.2 added-mass frequency-consistency gate (2026-05-15 redesign) ---
+
+
+def _moment_history_csv(
+    *,
+    omega: float,
+    theta_max: float,
+    ia_nondim: float,
+    drag_nondim: float = 0.0,
+    n_cycles: int = 5,
+    samples_per_cycle: int = 200,
+) -> str:
+    """Synthesize an SU2-style moment history.
+
+    The pure added-mass moment coefficient is ``K·sin(φ)`` where
+    ``K = ia_nondim·ω²·θ_max`` (since ``M_am = -I_a·θ̈ ∝ +sin(ωt)``); the
+    optional ``drag_nondim·cos(φ)`` term is the velocity-in-phase
+    (damping/drag) component the projector must NOT count as added mass.
+    """
+    out = io.StringIO()
+    out.write("Time_Iter,Inner_Iter,CMz,CD\n")
+    k_am = ia_nondim * omega**2 * theta_max
+    total = n_cycles * samples_per_cycle
+    for i in range(total):
+        phi = 2.0 * math.pi * (i % samples_per_cycle) / samples_per_cycle
+        cm = k_am * math.sin(phi) + drag_nondim * math.cos(phi)
+        out.write(f"{i},0,{cm:.8e},0.05\n")
+    return out.getvalue()
+
+
+def test_recover_added_mass_projection_recovers_known_coefficient() -> None:
+    """The Fourier projector recovers the planted I_a (nondim) exactly."""
+    proj = recover_added_mass_projection(
+        _moment_history_csv(omega=6.2832, theta_max=0.1745, ia_nondim=0.037),
+        omega_rad_per_s=6.2832,
+        pitching_amplitude_rad=0.1745,
+        n_cycles=5,
     )
-    su2_within = closed_form * 1.10  # +10%
-    res = check_added_mass(
-        su2_moment_peak=su2_within,
-        chord_m=1.0,
-        pivot_offset_normalized=-0.5,
-        pitching_omega_rad_per_s=10.0,
-        pitching_amplitude_rad=0.1,
+    assert isinstance(proj, AddedMassProjection)
+    assert proj.recovered_ia_nondim == pytest.approx(0.037, rel=1e-3)
+
+
+def test_recover_added_mass_projection_ignores_drag_component() -> None:
+    """A pure cos(φ) (damping) signal contributes ~0 to the added-mass projection."""
+    proj = recover_added_mass_projection(
+        _moment_history_csv(omega=6.2832, theta_max=0.1745, ia_nondim=0.0, drag_nondim=5.0),
+        omega_rad_per_s=6.2832,
+        pitching_amplitude_rad=0.1745,
+        n_cycles=5,
     )
+    assert abs(proj.a_sin) < 1e-6  # no added-mass content
+    assert abs(proj.a_cos) > 1.0  # drag IS present, in the cos projection
+
+
+def test_added_mass_passes_when_frequency_consistent() -> None:
+    """Same planted I_a at ω and 2ω → recovered I_a agrees → GATE PASS.
+
+    This is the normalization-invariant Phase-4 de-risk: I_a is a pure
+    geometric/fluid constant; equal recovery at two frequencies is the
+    signature of physically-faithful added-mass behaviour.
+    """
+    th = 0.1745
+    p1 = recover_added_mass_projection(
+        _moment_history_csv(omega=6.2832, theta_max=th, ia_nondim=0.037),
+        omega_rad_per_s=6.2832,
+        pitching_amplitude_rad=th,
+        n_cycles=5,
+    )
+    p2 = recover_added_mass_projection(
+        _moment_history_csv(omega=12.5664, theta_max=th, ia_nondim=0.037),
+        omega_rad_per_s=12.5664,
+        pitching_amplitude_rad=th,
+        n_cycles=5,
+    )
+    res = check_added_mass_freq_consistency(p1, p2, chord_m=1.0, pivot_offset_normalized=-0.5)
     assert res.passed is True
-    assert abs(res.relative_error) < 0.15
+    assert res.freq_consistency_passed is True
+    assert res.freq_consistency_rel_diff < 0.25
 
 
-def test_added_mass_fails_outside_15pct() -> None:
-    closed_form = compute_added_mass_moment_closed_form_2d_plate(
-        chord_m=1.0,
-        pivot_offset_normalized=-0.5,
-        pitching_omega_rad_per_s=10.0,
-        pitching_amplitude_rad=0.1,
+def test_added_mass_fails_when_frequency_inconsistent() -> None:
+    """Frequency-DEPENDENT recovered I_a (simulated numerical distortion) →
+    GATE FAIL. This is exactly the Phase-4-invalidating failure mode the
+    redesigned gate exists to catch."""
+    th = 0.1745
+    p1 = recover_added_mass_projection(
+        _moment_history_csv(omega=6.2832, theta_max=th, ia_nondim=0.037),
+        omega_rad_per_s=6.2832,
+        pitching_amplitude_rad=th,
+        n_cycles=5,
     )
-    su2_off = closed_form * 1.30  # +30%, well outside ±15%
-    res = check_added_mass(
-        su2_moment_peak=su2_off,
-        chord_m=1.0,
-        pivot_offset_normalized=-0.5,
-        pitching_omega_rad_per_s=10.0,
-        pitching_amplitude_rad=0.1,
+    p2 = recover_added_mass_projection(
+        _moment_history_csv(omega=12.5664, theta_max=th, ia_nondim=0.10),
+        omega_rad_per_s=12.5664,
+        pitching_amplitude_rad=th,
+        n_cycles=5,
     )
+    res = check_added_mass_freq_consistency(p1, p2, chord_m=1.0, pivot_offset_normalized=-0.5)
     assert res.passed is False
-    assert res.relative_error == pytest.approx(0.30, rel=1e-2)
+    assert res.freq_consistency_rel_diff > 0.25
+
+
+def test_added_mass_closed_form_comparison_is_advisory_only() -> None:
+    """The closed-form magnitude check is reported but never gates.
+
+    Frequency-consistent runs PASS the gate even when the closed-form
+    factor is off (the absolute nondim convention is Phase 5's job).
+    """
+    th = 0.1745
+    # Both runs share an I_a that does NOT match the closed-form nondim
+    # value — but they ARE mutually consistent, so the gate must still pass.
+    p1 = recover_added_mass_projection(
+        _moment_history_csv(omega=6.2832, theta_max=th, ia_nondim=0.50),
+        omega_rad_per_s=6.2832,
+        pitching_amplitude_rad=th,
+        n_cycles=5,
+    )
+    p2 = recover_added_mass_projection(
+        _moment_history_csv(omega=12.5664, theta_max=th, ia_nondim=0.50),
+        omega_rad_per_s=12.5664,
+        pitching_amplitude_rad=th,
+        n_cycles=5,
+    )
+    res = check_added_mass_freq_consistency(p1, p2, chord_m=1.0, pivot_offset_normalized=-0.5)
+    assert res.passed is True  # gate keys on freq-consistency ONLY
+    assert res.closed_form_advisory_ok is False  # advisory flag can fail...
+    assert res.passed is True  # ...without affecting the gate
 
 
 # ---- 0.6d.3 incompressible cross-check (advisory) -------------------------
@@ -301,84 +394,68 @@ def test_incompressible_cross_check_logged_as_advisory_on_fail() -> None:
 # ---- aggregator (Spike06dResult) ------------------------------------------
 
 
-def _passing_sub_1() -> Tier1SymmetryDimensionalResult:
-    csv_text = _sinusoidal_history_csv(n_cycles=5, samples_per_cycle=200, amplitude=0.5)
+def _advisory_sub_1(*, passing: bool) -> Tier1SymmetryDimensionalResult:
+    if passing:
+        csv_text = _sinusoidal_history_csv(n_cycles=5, samples_per_cycle=200, amplitude=0.5)
+    else:
+        csv_text = _sinusoidal_history_csv(
+            n_cycles=5, samples_per_cycle=200, amplitude=1.0, mean_bias=2.0
+        )
     return check_symmetry_dimensional(
         csv_text,
         n_cycles=5,
         mass_kg=0.05,
         omega_rad_per_s=12.5664,
         r_cm_m=0.1,
-        envelope_geometry="passing fixture",
+        envelope_geometry="advisory fixture",
     )
 
 
-def _failing_sub_1() -> Tier1SymmetryDimensionalResult:
-    csv_text = _sinusoidal_history_csv(
-        n_cycles=5, samples_per_cycle=200, amplitude=1.0, mean_bias=2.0
-    )
-    return check_symmetry_dimensional(
-        csv_text,
+def _gating_sub_2(*, consistent: bool) -> Tier1AddedMassResult:
+    th = 0.1745
+    p1 = recover_added_mass_projection(
+        _moment_history_csv(omega=6.2832, theta_max=th, ia_nondim=0.037),
+        omega_rad_per_s=6.2832,
+        pitching_amplitude_rad=th,
         n_cycles=5,
-        mass_kg=0.05,
+    )
+    ia2 = 0.037 if consistent else 0.10
+    p2 = recover_added_mass_projection(
+        _moment_history_csv(omega=12.5664, theta_max=th, ia_nondim=ia2),
         omega_rad_per_s=12.5664,
-        r_cm_m=0.1,
-        envelope_geometry="failing fixture",
+        pitching_amplitude_rad=th,
+        n_cycles=5,
     )
+    return check_added_mass_freq_consistency(p1, p2, chord_m=1.0, pivot_offset_normalized=-0.5)
 
 
-def _passing_sub_2() -> Tier1AddedMassResult:
-    closed = compute_added_mass_moment_closed_form_2d_plate(
-        chord_m=1.0,
-        pivot_offset_normalized=-0.5,
-        pitching_omega_rad_per_s=10.0,
-        pitching_amplitude_rad=0.1,
-    )
-    return check_added_mass(
-        su2_moment_peak=closed * 1.05,
-        chord_m=1.0,
-        pivot_offset_normalized=-0.5,
-        pitching_omega_rad_per_s=10.0,
-        pitching_amplitude_rad=0.1,
-    )
-
-
-def _failing_sub_2() -> Tier1AddedMassResult:
-    closed = compute_added_mass_moment_closed_form_2d_plate(
-        chord_m=1.0,
-        pivot_offset_normalized=-0.5,
-        pitching_omega_rad_per_s=10.0,
-        pitching_amplitude_rad=0.1,
-    )
-    return check_added_mass(
-        su2_moment_peak=closed * 1.40,
-        chord_m=1.0,
-        pivot_offset_normalized=-0.5,
-        pitching_omega_rad_per_s=10.0,
-        pitching_amplitude_rad=0.1,
-    )
-
-
-def test_aggregator_pass_requires_sub_1_AND_sub_2_only() -> None:
-    """sub_3 FAIL doesn't block the gate (advisory). sub_1 + sub_2 PASS → gate PASS."""
+def test_aggregator_gates_on_sub_2_only_sub_1_and_sub_3_advisory() -> None:
+    """Redesign (2026-05-15): the gate is sub_2's frequency-consistency
+    ONLY. sub_1 FAIL + sub_3 FAIL must NOT block when sub_2 passes."""
+    failing_sub_1 = _advisory_sub_1(passing=False)
     failing_sub_3 = check_incompressible_cross(
         compressible_force_cycle_avg=0.5, incompressible_force_cycle_avg=0.9
     )
-    assert failing_sub_3.passed is False  # confirm fixture
-    result = analyze_spike_06d(_passing_sub_1(), _passing_sub_2(), failing_sub_3)
-    assert result.overall_passed is True
+    assert failing_sub_1.passed is False  # confirm fixtures
+    assert failing_sub_3.passed is False
+    result = analyze_spike_06d(_gating_sub_2(consistent=True), failing_sub_1, failing_sub_3)
+    assert result.overall_passed is True  # sub_2 passed → gate open
+    assert result.sub_06d_1 is failing_sub_1  # still recorded for Phase 5
     assert result.sub_06d_3 is failing_sub_3
 
 
-def test_aggregator_fail_when_either_gating_subspike_fails() -> None:
-    failing_then_passing = analyze_spike_06d(_failing_sub_1(), _passing_sub_2())
-    passing_then_failing = analyze_spike_06d(_passing_sub_1(), _failing_sub_2())
-    assert failing_then_passing.overall_passed is False
-    assert passing_then_failing.overall_passed is False
+def test_aggregator_fails_only_when_sub_2_fails() -> None:
+    """Even with sub_1 PASSing, a sub_2 frequency-inconsistency closes the gate."""
+    passing_sub_1 = _advisory_sub_1(passing=True)
+    assert passing_sub_1.passed is True
+    result = analyze_spike_06d(_gating_sub_2(consistent=False), passing_sub_1)
+    assert result.overall_passed is False
 
 
-def test_aggregator_handles_missing_sub_3_gracefully() -> None:
-    result = analyze_spike_06d(_passing_sub_1(), _passing_sub_2())
+def test_aggregator_works_with_sub_2_alone() -> None:
+    """sub_1 / sub_3 are optional (advisory) — sub_2 alone determines the gate."""
+    result = analyze_spike_06d(_gating_sub_2(consistent=True))
+    assert result.sub_06d_1 is None
     assert result.sub_06d_3 is None
     assert result.overall_passed is True
 

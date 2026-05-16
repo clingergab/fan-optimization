@@ -1,25 +1,32 @@
-"""Spike 0.6d — Tier-1 quantitative-sanity counter-checks (H10 supplement).
+"""Spike 0.6d — Tier-1 added-mass frequency-consistency gate (H10 supplement).
 
-Three sub-spikes that compensate for the 2026-05-14 Sub-spike 0.6c.2
-deferral by providing three independent quantitative checks on the
-production Tier-1 cfg before Phase 4 burns ~1300 GPU-hours:
+Compensates for the 2026-05-14 Sub-spike 0.6c.2 deferral with an
+independent quantitative check on the production Tier-1 numerics before
+Phase 4 burns ~1300 GPU-hours.
 
-* **0.6d.1 (gating)** — symmetry + dimensional-force sanity. Given an
-  SU2 history.csv on whatever geometry was run (default: NACA 0012 mesh
-  from Spike 0.6c Cell 6), verify cycle-averaged force is near zero
-  (symmetry of periodic pitching) AND dimensional cycle-peak force lies
-  within ±1 order of magnitude of the analytic body-in-still-air
-  envelope ``m × ω² × r_cm``.
+**Gate redesign (2026-05-15).** The live Colab run exposed that the
+original 0.6d.1 magnitude check conflated SU2's q_ref=1 nondimensional
+output with a dimensional Newton envelope, and its symmetry criterion
+is ill-posed for the fan's net-work regime. The gate was redesigned to
+rest solely on a normalization-invariant, parameter-free falsification
+test (0.6d.2 below); 0.6d.1 and 0.6d.3 are now advisory.
 
-* **0.6d.2 (gating)** — 2D thin-plate added-mass analytic check.
-  Compare SU2's inviscid-phase pitching moment against the closed-form
-  Sedov/Newman added-mass moment for a 2D plate pitching about its
-  quarter-chord.
+* **0.6d.2 (GATING)** — 2D thin-plate added-mass frequency-consistency.
+  Run the plate at two pitching frequencies (ω₁, ω₂) and Fourier-project
+  each moment-coefficient trace onto the added-mass (sin φ) basis. The
+  recovered ``I_a = a_sin/(ω²·θ_max)`` is a pure geometric/fluid constant
+  — it MUST be frequency-independent. Disagreement falsifies the Tier-1
+  numerics independent of the FREESTREAM_PRESS_EQ_ONE nondimensionalisation
+  (q_ref is a fixed constant, identical both runs, cancels in the ratio).
+  A Sedov/Newman closed-form magnitude comparison is computed too but is
+  ADVISORY (its absolute interpretation needs SU2's exact reference-state
+  handling, which is Phase 5 step 62.5's job).
 
-* **0.6d.3 (advisory)** — SU2 incompressible-mode cross-check. Compare
-  compressible-with-MACH=1e-9 dimensional forces against native
-  ``INC_NAVIER_STOKES``-mode forces. Failure is logged but does not
-  block Phase 4.
+* **0.6d.1 (advisory)** — symmetry + dimensional-force sanity. Recorded
+  for Phase 5 but does NOT gate (demoted 2026-05-15; see above).
+
+* **0.6d.3 (advisory)** — SU2 incompressible-mode cross-check. Recorded
+  for Phase 5 but does NOT gate.
 
 References:
 
@@ -44,6 +51,7 @@ from fanopt.cfd.spike_0_6c import MACH_UNSTEADY_LOCK
 __all__ = [
     "MACH_UNSTEADY_LOCK",
     "Tier1SymmetryDimensionalResult",
+    "AddedMassProjection",
     "Tier1AddedMassResult",
     "Tier1IncompResult",
     "Spike06dResult",
@@ -52,7 +60,8 @@ __all__ = [
     "compute_dimensional_envelope",
     "check_symmetry_dimensional",
     "compute_added_mass_moment_closed_form_2d_plate",
-    "check_added_mass",
+    "recover_added_mass_projection",
+    "check_added_mass_freq_consistency",
     "check_incompressible_cross",
     "analyze_spike_06d",
 ]
@@ -247,24 +256,68 @@ def check_symmetry_dimensional(
 
 
 @dataclass(frozen=True)
-class Tier1AddedMassResult:
-    """Outcome of ``check_added_mass`` for a 2D thin-plate pitching run.
+class AddedMassProjection:
+    """Fourier projection of one SU2 2D-plate run's moment-coefficient trace.
 
-    Pass criterion: SU2 cycle-peak inviscid-phase pitching moment is within
-    ``tolerance`` (default ±15%) of the closed-form Sedov/Newman added-mass
-    moment.
+    The prescribed motion is ``θ(t) = θ_max·sin(ωt)``, so ``θ̈ ∝ -sin(ωt)``
+    and the pure added-mass moment ``M_am = -I_a·θ̈ ∝ +sin(ωt)`` — i.e. the
+    added-mass component is the **sin(phase) projection** of the moment
+    coefficient; the velocity-in-phase (damping/drag fundamental) component
+    is the **cos(phase) projection**.
+
+    ``recovered_ia_nondim`` = ``a_sin / (ω²·θ_max)`` is the added-mass
+    "inertia" in whatever fixed nondimensionalisation SU2 emits (under
+    ``REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`` the reference
+    dynamic pressure is a frequency-independent constant, so this quantity
+    is comparable run-to-run without recovering dimensional N·m).
     """
 
     history_path: str
-    chord_m: float
-    pivot_offset_normalized: float  # a = (x_pivot - c/2) / (c/2); -0.5 at quarter-chord
-    pitching_omega_rad_per_s: float
+    omega_rad_per_s: float
     pitching_amplitude_rad: float
-    su2_moment_peak: float
-    closed_form_moment_peak: float
-    relative_error: float  # (su2 - closed) / closed
-    tolerance: float
-    passed: bool
+    n_cycles: int
+    a_sin: float  # added-mass-phase Fourier coefficient (∝ sin(ωt))
+    a_cos: float  # damping/drag-phase Fourier coefficient (∝ cos(ωt))
+    recovered_ia_nondim: float  # a_sin / (ω²·θ_max)
+    drag_to_added_mass_ratio: float  # |a_cos| / |a_sin| (regime diagnostic)
+
+
+@dataclass(frozen=True)
+class Tier1AddedMassResult:
+    """Outcome of the 2D thin-plate added-mass verification (sub-spike 0.6d.2).
+
+    **Gating criterion (G1 — frequency-consistency, normalization-invariant):**
+    the recovered added-mass coefficient must agree between two pitching
+    frequencies. ``I_a = πρb⁴(1/8+a²)`` is a pure geometric/fluid constant
+    with NO frequency dependence; if SU2's unsteady solver (MACH=1e-9 +
+    low-Mach preconditioning) is producing physically-faithful added-mass
+    forces, ``a_sin/(ω²·θ_max)`` MUST be the same at ω₁ and ω₂. A mismatch
+    falsifies the numerics — independent of the FREESTREAM_PRESS_EQ_ONE
+    nondimensionalisation (q_ref is a fixed constant, identical both runs,
+    so it cancels in the ratio). This is the Phase-4 de-risk.
+
+    **Advisory diagnostic (closed-form magnitude):** the recovered
+    coefficient is also compared to the Sedov/Newman analytic ``I_a``
+    nondimensionalised under the *assumed* FREESTREAM_PRESS_EQ_ONE
+    convention (q_ref=1, A_ref=L_ref=chord ⇒ divide by chord²). This is
+    reported and flagged if off by more than ``closed_form_factor_tol``,
+    but does NOT gate, because SU2's exact reference-state handling at
+    MACH=1e-9 is not pinned in Phase 0 (that is Phase 5 step 62.5's job).
+    """
+
+    omega_f1_rad_per_s: float
+    omega_f2_rad_per_s: float
+    recovered_ia_nondim_f1: float
+    recovered_ia_nondim_f2: float
+    freq_consistency_rel_diff: float  # |Ia1-Ia2| / mean(|Ia1|,|Ia2|)
+    freq_consistency_tol: float
+    freq_consistency_passed: bool  # GATING
+    closed_form_ia_nondim: float  # analytic I_a / chord² (assumed nondim)
+    closed_form_factor_f1: float  # recovered_f1 / closed_form (advisory)
+    closed_form_factor_tol: float
+    closed_form_advisory_ok: bool  # advisory only — NOT gated
+    drag_to_added_mass_ratio_f1: float  # regime diagnostic (advisory)
+    passed: bool  # == freq_consistency_passed (the gate)
 
 
 def compute_added_mass_moment_closed_form_2d_plate(
@@ -286,13 +339,8 @@ def compute_added_mass_moment_closed_form_2d_plate(
 
         I_a = π ρ b^4 (1/8 + a²)
 
-    The added-mass moment is purely inertial:
-
-        M_added(t) = −I_a × θ̈(t)
-
-    Its peak magnitude is ``|M_added,peak| = I_a × ω² × θ_max``. This is the
-    value SU2's inviscid-phase moment (sampled at the instant of peak ``θ̈``)
-    should match.
+    The added-mass moment is purely inertial: ``M_added(t) = −I_a × θ̈(t)``,
+    peak magnitude ``|M_added,peak| = I_a × ω² × θ_max``.
 
     Returns the per-unit-span peak moment in N·m / m (= N).
     """
@@ -305,38 +353,133 @@ def compute_added_mass_moment_closed_form_2d_plate(
     return inertia_added * pitching_omega_rad_per_s**2 * pitching_amplitude_rad
 
 
-def check_added_mass(
+def _project_fundamental(
+    series: list[float], *, n_cycles: int, discard_first_cycle: bool = True
+) -> tuple[float, float]:
+    """Project ``series`` onto sin(φ), cos(φ) at the fundamental.
+
+    Phase is reconstructed from the cycle fraction (uniform sampling, integer
+    cycles): row ``j`` of the kept window has ``φ_j = 2π·j / rows_per_cycle``.
+    Returns ``(a_sin, a_cos)`` — the amplitudes of the sin/cos fundamental
+    components (``2/N · Σ x·trig(φ)`` over an integer number of cycles).
+    """
+    n = len(series)
+    if n == 0 or n_cycles < 1:
+        return 0.0, 0.0
+    rows_per_cycle = n // n_cycles
+    if rows_per_cycle == 0:
+        kept = series
+        kept_offset = 0
+    elif discard_first_cycle and n_cycles > 1:
+        kept = series[rows_per_cycle:]
+        kept_offset = rows_per_cycle
+    else:
+        kept = series
+        kept_offset = 0
+    if not kept or rows_per_cycle == 0:
+        return 0.0, 0.0
+    s_acc = 0.0
+    c_acc = 0.0
+    for k, x in enumerate(kept):
+        phi = 2.0 * math.pi * (kept_offset + k) / rows_per_cycle
+        s_acc += x * math.sin(phi)
+        c_acc += x * math.cos(phi)
+    return 2.0 * s_acc / len(kept), 2.0 * c_acc / len(kept)
+
+
+def recover_added_mass_projection(
+    history_csv_text: str,
     *,
-    su2_moment_peak: float,
+    omega_rad_per_s: float,
+    pitching_amplitude_rad: float,
+    n_cycles: int,
+    moment_column_candidates: Sequence[str] = ("cmy", "cmz", "cm", "cmoment"),
+    history_path: str = "<inline>",
+) -> AddedMassProjection:
+    """Recover the added-mass coefficient from one SU2 2D-plate run.
+
+    Fourier-projects the moment-coefficient trace onto the added-mass
+    (sin φ) and damping (cos φ) bases over cycles 2..N, then forms the
+    normalization-stable ``recovered_ia_nondim = a_sin / (ω²·θ_max)``.
+    """
+    if omega_rad_per_s <= 0 or pitching_amplitude_rad <= 0:
+        raise ValueError("omega and amplitude must be positive")
+    rows = _per_outer_iter(parse_history_csv(history_csv_text))
+    moment = _column(rows, moment_column_candidates)
+    a_sin, a_cos = _project_fundamental(moment, n_cycles=n_cycles)
+    recovered_ia = a_sin / (omega_rad_per_s**2 * pitching_amplitude_rad)
+    drag_ratio = abs(a_cos) / abs(a_sin) if a_sin != 0 else math.inf
+    return AddedMassProjection(
+        history_path=history_path,
+        omega_rad_per_s=omega_rad_per_s,
+        pitching_amplitude_rad=pitching_amplitude_rad,
+        n_cycles=n_cycles,
+        a_sin=a_sin,
+        a_cos=a_cos,
+        recovered_ia_nondim=recovered_ia,
+        drag_to_added_mass_ratio=drag_ratio,
+    )
+
+
+def check_added_mass_freq_consistency(
+    proj_f1: AddedMassProjection,
+    proj_f2: AddedMassProjection,
+    *,
     chord_m: float,
     pivot_offset_normalized: float,
-    pitching_omega_rad_per_s: float,
-    pitching_amplitude_rad: float,
     fluid_density_kg_per_m3: float = 1.225,
-    tolerance: float = 0.15,
-    history_path: str = "<inline>",
+    freq_consistency_tol: float = 0.25,
+    closed_form_factor_tol: float = 2.0,
 ) -> Tier1AddedMassResult:
-    """Compare SU2 inviscid-phase moment with the Sedov/Newman closed form."""
-    closed_form = compute_added_mass_moment_closed_form_2d_plate(
-        chord_m=chord_m,
-        pivot_offset_normalized=pivot_offset_normalized,
-        pitching_omega_rad_per_s=pitching_omega_rad_per_s,
-        pitching_amplitude_rad=pitching_amplitude_rad,
-        fluid_density_kg_per_m3=fluid_density_kg_per_m3,
+    """Gate on frequency-consistency of the recovered added-mass coefficient.
+
+    G1 (gating): ``|Ia(ω₁) − Ia(ω₂)| / mean`` < ``freq_consistency_tol``.
+    Normalization-invariant — the only thing being compared is SU2 against
+    SU2 at a different frequency, and ``I_a`` must be frequency-independent.
+
+    Closed-form magnitude (advisory): recovered (avg) vs the Sedov/Newman
+    ``I_a`` nondimensionalised under the assumed FREESTREAM_PRESS_EQ_ONE
+    convention. Flagged if off by > ``closed_form_factor_tol``× ; never gates.
+    """
+    ia1 = proj_f1.recovered_ia_nondim
+    ia2 = proj_f2.recovered_ia_nondim
+    mean_mag = (abs(ia1) + abs(ia2)) / 2.0
+    rel_diff = math.inf if mean_mag == 0 else abs(ia1 - ia2) / mean_mag
+    freq_ok = rel_diff <= freq_consistency_tol
+
+    # Advisory closed-form comparison under the assumed nondim convention:
+    # moment-coefficient nondim divides dimensional N·m by q_ref·A_ref·L_ref;
+    # under FREESTREAM_PRESS_EQ_ONE q_ref=1 and A_ref=L_ref=chord ⇒ /chord².
+    b = chord_m / 2.0
+    ia_analytic = (
+        math.pi * fluid_density_kg_per_m3 * b**4 * (1.0 / 8.0 + pivot_offset_normalized**2)
     )
-    rel_err = math.nan if closed_form == 0 else (su2_moment_peak - closed_form) / closed_form
-    passed = (not math.isnan(rel_err)) and abs(rel_err) <= tolerance
+    closed_form_ia_nondim = ia_analytic / (chord_m**2) if chord_m > 0 else math.nan
+    avg_recovered = (ia1 + ia2) / 2.0
+    if closed_form_ia_nondim == 0 or math.isnan(closed_form_ia_nondim):
+        factor = math.nan
+    else:
+        factor = avg_recovered / closed_form_ia_nondim
+    advisory_ok = (
+        not math.isnan(factor)
+        and factor != 0
+        and (1.0 / closed_form_factor_tol) <= abs(factor) <= closed_form_factor_tol
+    )
+
     return Tier1AddedMassResult(
-        history_path=history_path,
-        chord_m=chord_m,
-        pivot_offset_normalized=pivot_offset_normalized,
-        pitching_omega_rad_per_s=pitching_omega_rad_per_s,
-        pitching_amplitude_rad=pitching_amplitude_rad,
-        su2_moment_peak=su2_moment_peak,
-        closed_form_moment_peak=closed_form,
-        relative_error=rel_err,
-        tolerance=tolerance,
-        passed=bool(passed),
+        omega_f1_rad_per_s=proj_f1.omega_rad_per_s,
+        omega_f2_rad_per_s=proj_f2.omega_rad_per_s,
+        recovered_ia_nondim_f1=ia1,
+        recovered_ia_nondim_f2=ia2,
+        freq_consistency_rel_diff=rel_diff,
+        freq_consistency_tol=freq_consistency_tol,
+        freq_consistency_passed=bool(freq_ok),
+        closed_form_ia_nondim=closed_form_ia_nondim,
+        closed_form_factor_f1=factor,
+        closed_form_factor_tol=closed_form_factor_tol,
+        closed_form_advisory_ok=bool(advisory_ok),
+        drag_to_added_mass_ratio_f1=proj_f1.drag_to_added_mass_ratio,
+        passed=bool(freq_ok),  # the gate IS the frequency-consistency check
     )
 
 
@@ -390,31 +533,45 @@ def check_incompressible_cross(
 
 @dataclass(frozen=True)
 class Spike06dResult:
-    """Roll-up of Spike 0.6d (V1 scope, post-2026-05-14).
+    """Roll-up of Spike 0.6d (V1 scope, post-2026-05-15 redesign).
 
-    Gate semantics:
-      * ``overall_passed = sub_06d_1.passed AND sub_06d_2.passed`` —
-        sub_06d_3 is ADVISORY and does NOT affect the gate decision.
+    Gate semantics (redesigned 2026-05-15):
+      * ``overall_passed = sub_06d_2.freq_consistency_passed`` ONLY.
+        Sub-spike 0.6d.2's two-frequency added-mass consistency check is
+        the sole Phase-4 gate — it is the one normalization-invariant,
+        parameter-free falsification test of the Tier-1 unsteady numerics.
+      * Sub-spike 0.6d.1 (symmetry + dimensional envelope) is now
+        **ADVISORY** — it was demoted on 2026-05-15 after the live Colab
+        run showed its magnitude check conflated SU2's q_ref=1
+        nondimensional output with a dimensional Newton envelope, and its
+        symmetry criterion is ill-posed for the fan's net-work regime.
+      * Sub-spike 0.6d.3 (incompressible cross-check) remains ADVISORY.
       * ``scripts/launch_phase4.py`` reads ``data/spike_0_6d/PASS``, which
-        is written by ``scripts/run_spike_0_6d.py`` iff ``overall_passed``.
+        ``scripts/run_spike_0_6d.py`` writes iff ``overall_passed``.
+
+    sub_1 / sub_3 results are still recorded (they feed Phase 5 step 62.5)
+    but do NOT affect the gate decision.
     """
 
-    sub_06d_1: Tier1SymmetryDimensionalResult
     sub_06d_2: Tier1AddedMassResult
+    sub_06d_1: Tier1SymmetryDimensionalResult | None = field(default=None)
     sub_06d_3: Tier1IncompResult | None = field(default=None)
     overall_passed: bool = False
 
 
 def analyze_spike_06d(
-    sub_1: Tier1SymmetryDimensionalResult,
     sub_2: Tier1AddedMassResult,
+    sub_1: Tier1SymmetryDimensionalResult | None = None,
     sub_3: Tier1IncompResult | None = None,
 ) -> Spike06dResult:
-    """Roll up the sub-spike results. ``sub_3`` advisory; does not gate."""
-    overall_passed = bool(sub_1.passed and sub_2.passed)
+    """Roll up the sub-spike results.
+
+    The gate is sub_2's frequency-consistency check ONLY. sub_1 and sub_3
+    are advisory (recorded for Phase 5, do not gate) — see ``Spike06dResult``.
+    """
     return Spike06dResult(
-        sub_06d_1=sub_1,
         sub_06d_2=sub_2,
+        sub_06d_1=sub_1,
         sub_06d_3=sub_3,
-        overall_passed=overall_passed,
+        overall_passed=bool(sub_2.passed),
     )

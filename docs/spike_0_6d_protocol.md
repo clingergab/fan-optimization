@@ -1,33 +1,47 @@
-# Spike 0.6d Protocol — Tier-1 quantitative-sanity counter-checks
+# Spike 0.6d Protocol — Tier-1 added-mass frequency-consistency gate
 
-**Spec reference:** `docs/report-final.md` §Phase 0 Spike 0.6d (added 2026-05-14)
-**Motivation reference:** `docs/phase_logs/phase_0_signoff.md` Note 2; `docs/phase_logs/spike_0_6c.md` Note 1
+> **⚠ REDESIGNED 2026-05-15.** The first live Colab run exposed that the
+> original 0.6d.1-gating design was unsound (nondimensionalisation
+> conflation + a symmetry criterion ill-posed for a net-work fan). The
+> gate was rebuilt around a single normalization-invariant test
+> (0.6d.2). **Authoritative sources:** `docs/report-final.md` §Phase 0
+> Spike 0.6d + `docs/phase_logs/phase_0_signoff.md` **Note 3**. Where
+> this protocol's older sections below disagree with Note 3, Note 3
+> wins; the load-bearing sections have been rewritten to match.
+
+**Spec reference:** `docs/report-final.md` §Phase 0 Spike 0.6d (added 2026-05-14, redesigned 2026-05-15)
+**Motivation reference:** `docs/phase_logs/phase_0_signoff.md` Notes 2 + 3; `docs/phase_logs/spike_0_6c.md` Note 1
 **Gate:** Phase 4 launch — `data/spike_0_6d/PASS` required alongside `data/spike_0_6c/PASS`
 
 | Item | Value |
 |---|---|
-| Spike author | Operator + Claude (2026-05-14) |
+| Spike author | Operator + Claude (2026-05-14; redesigned 2026-05-15) |
 | Spike status | Not started |
-| V1 scope | Yes — gates Phase 4 launch (0.6d.1 + 0.6d.2 only; 0.6d.3 advisory) |
-| Compute | ~5–9 h Colab Pro CPU total |
-| Code budget (Claude) | ~3 days |
+| V1 scope | Yes — gates Phase 4 launch via **0.6d.2 ONLY**; 0.6d.1 + 0.6d.3 advisory |
+| Compute | ~2–4 h Colab Pro CPU (2× short 2D-plate SU2 runs at ω₁, ω₂) |
 
 ---
 
 ## Why this spike exists
 
-After the 2026-05-14 deferral of Sub-spike 0.6c.2 to Phase 5 (see `docs/phase_logs/spike_0_6c.md` Note 1), the V1 gate set lost its absolute-accuracy evidence channel. Phase 4 would have launched on Tier-1 evaluations with only consistency evidence on SU2's body-in-still-air response at MACH=1e-9. Spike 0.6d compensates by providing three independent quantitative checks in Phase 0 — cheap enough to run before the ~1300 GPU-hour Phase 4 campaign commits, strong enough to catch order-of-magnitude or qualitative artifacts in the production Tier-1 cfg.
+After the 2026-05-14 deferral of Sub-spike 0.6c.2 to Phase 5, the V1 gate set lost its absolute-accuracy evidence channel. Phase 4 would otherwise launch on Tier-1 evaluations with only consistency evidence on SU2's body-in-still-air response at MACH=1e-9. Spike 0.6d provides the independent Phase-0 quantitative check that prevents Phase 4 from burning ~1300 GPU-hours optimizing a Tier-1 objective we can't trust.
 
-The three checks layer evidence at increasing independence:
-1. **0.6d.1 (analytic envelope):** the production cfg's output must lie inside a closed-form physical-magnitude bound derived from the panel's mass and motion.
-2. **0.6d.2 (closed-form coefficient):** a 2D thin-plate run at the same numerics must match the Sedov/Newman added-mass moment within ±15%.
-3. **0.6d.3 (same-solver cross-check):** SU2's compressible-with-MACH=1e-9 trick must agree with SU2's native incompressible solver within ±20%.
+**The gate (post-2026-05-15) is a single normalization-invariant falsification test — Sub-spike 0.6d.2:**
 
-The strongest cross-check — OpenFOAM `pimpleFoam` as an independent codebase — is deliberately NOT in this spike; it moves to Phase 5 step 62.5 alongside PyFR (the absolute-accuracy work lives in Phase 5).
+Run the 2D thin-plate at TWO pitching frequencies (ω₁, ω₂), same plate / pivot / θ_max. Fourier-project each moment-coefficient trace onto the added-mass (sin φ) basis and recover `I_a = a_sin/(ω²·θ_max)`. `I_a = πρb⁴(1/8+a²)` is a pure geometric/fluid constant — **frequency-independent by construction**. If SU2's MACH=1e-9 + low-Mach-prec unsteady solver is physically faithful, the recovered `I_a` MUST agree between ω₁ and ω₂. The comparison is SU2-vs-SU2 so the fixed `FREESTREAM_PRESS_EQ_ONE` `q_ref` cancels in the ratio — fully normalization-invariant and parameter-free. A frequency-dependent recovered `I_a` falsifies the numerics *before* Phase 4 commits.
+
+0.6d.1 (symmetry/dimensional) and 0.6d.3 (incompressible cross-check) are **advisory** — recorded for Phase 5 step 62.5 but do NOT gate. The strongest cross-check (OpenFOAM `pimpleFoam`, independent codebase) lives in Phase 5 step 62.5.
 
 ---
 
-## Sub-spike 0.6d.1 — Symmetry + dimensional-force sanity (GATING)
+## Sub-spike 0.6d.1 — Symmetry + dimensional-force sanity (ADVISORY, demoted 2026-05-15)
+
+> Recorded for Phase 5; does NOT gate. The procedure below is retained
+> for the advisory run; ignore any "GATING"/"Pass criteria" framing —
+> per Note 3 this sub-spike's symmetry criterion is ill-posed for a
+> net-work fan and its magnitude check is confounded by the `q_ref=1`
+> nondimensionalisation. Its output is diagnostic input to Phase 5
+> step 62.5, not a Phase-4 blocker.
 
 **Inputs:**
 - Existing Cell 8 SU2 history.csv from the 2026-05-14 0.6c.2 run (already on Drive at `gdrive/fan-optimization/spike_0_6c/sub_2_run/history.csv`). NACA 0012 mesh from Cell 6 of the 0.6c notebook.
@@ -52,39 +66,33 @@ The strongest cross-check — OpenFOAM `pimpleFoam` as an independent codebase �
 
 ---
 
-## Sub-spike 0.6d.2 — 2D thin-plate added-mass analytic check (GATING)
+## Sub-spike 0.6d.2 — 2D thin-plate added-mass frequency-consistency (GATING — the sole Phase-4 gate, redesigned 2026-05-15)
 
 **Inputs:**
-- New 2D thin-plate mesh — flat plate aspect ratio ~50:1 (thin), chord 1.0 m, 2D O-grid or C-grid at the same boundary-layer resolution as production Tier-1.
-- 2D thin-plate cfg from `configs/su2/thin_plate_2d_pitching.cfg.j2`, rendered via `render_thin_plate_2d_pitching_cfg` in `src/fanopt/cfd/configs.py`.
+- One 2D thin-plate mesh — high-aspect-ratio (~50:1) flat plate, chord 1.0 m, circular farfield. Generated by `scripts/gen_benchmark_meshes.py --kind thin_plate_2d`.
+- Cfg from `configs/su2/thin_plate_2d_pitching.cfg.j2`, rendered via `render_thin_plate_2d_pitching_cfg`.
+- **TWO SU2 runs on the SAME mesh / pivot / θ_max, differing ONLY in pitching frequency** — ω₁ and ω₂ (recommend ω₂ = 2·ω₁).
 
-**Cfg requirements (production-Tier-1-mirror):**
-- `SOLVER = NAVIER_STOKES`, `KIND_TURB_MODEL = NONE` (laminar — added-mass is inviscid-dominated at low Re)
+**Cfg requirements (production-Tier-1-mirror — identical both runs except ω):**
 - `MACH_NUMBER = 1e-9` (production Tier-1 lock)
 - `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE` (production Tier-1 fallback)
-- `LOW_MACH_PREC = YES` (production Tier-1 lock)
-- `TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER` (production Tier-1 lock)
-- `dt = T/200`, 5 cycles, same INNER_ITER count as production
-- `GRID_MOVEMENT = RIGID_MOTION`, pitching about quarter-chord, ω matches the production fan kinematic frequency
+- `LOW_MACH_PREC = YES`, `TIME_MARCHING = DUAL_TIME_STEPPING-2ND_ORDER`, `GRID_MOVEMENT = RIGID_MOTION`
+- `dt = T/200`, 5 cycles; pitching about quarter-chord; C11 sign (ω_y < 0)
 
 **Procedure (`scripts/run_spike_0_6d_2.py`):**
-1. Generate 2D thin-plate mesh (1m × 0.01m, 50:1 aspect ratio, ~30k cells with structured boundary layer).
-2. Render cfg via `render_thin_plate_2d_pitching_cfg`.
-3. Run SU2 for 5 cycles (~1000 outer time steps at dt=2.5ms).
-4. Parse history.csv; extract pitching moment about the pivot (CMy or CMz depending on plate orientation).
-5. Compute the **inviscid-phase moment** — the moment value at the instant of peak angular acceleration (θ̈_peak), where viscous + circulatory terms are at their cycle minimum.
-6. Compute the closed-form **Sedov added-mass moment** for a 2D plate pitching about quarter-chord:
-   - Added-mass coefficient: `m_a = ρ_∞ π b²` per unit span where `b = chord/2 = 0.5 m`
-   - Pitching moment of inertia added-mass: `I_a = ρ_∞ π b⁴ × f(pivot_offset)` where the offset factor depends on pivot location relative to mid-chord (closed-form, tabulated in Newman, *Marine Hydrodynamics*, §4.20)
-   - For quarter-chord pivot: `M_added(t) = -I_a × θ̈(t)`
-7. Compare SU2 cycle-peak inviscid-phase moment with `M_added,peak = I_a × ω² × θ_max`.
+1. Generate the 2D thin-plate mesh once.
+2. Render + run SU2 at ω₁ → `history_f1.csv`; render + run SU2 at ω₂ → `history_f2.csv` (same plate/pivot/θ_max).
+3. For each run, Fourier-project the moment-coefficient trace onto the added-mass (`sin φ`) and damping (`cos φ`) bases over cycles 2..N (phase reconstructed from the cycle fraction).
+4. Recover `I_a(ω) = a_sin / (ω²·θ_max)` for each run — a frequency-independent geometric/fluid constant in whatever fixed nondimensionalisation SU2 emits.
+5. **Gate:** `freq_consistency_rel_diff = |I_a(ω₁) − I_a(ω₂)| / mean < 0.25`.
+6. Advisory only: compare the recovered `I_a` to the Sedov/Newman closed form `I_a = πρb⁴(1/8+a²)` nondimensionalised under the assumed FREESTREAM_PRESS_EQ_ONE convention. Reported + flagged if off by >2×; **does NOT gate**.
 
-**Pass criterion:** SU2 inviscid-phase moment within **±15%** of the Sedov/Newman closed-form prediction.
+**Pass criterion (GATING):** `freq_consistency_rel_diff < 0.25`. Normalization-invariant (SU2-vs-SU2, fixed `q_ref` cancels), parameter-free.
 
-**Fail action:** if SU2 exceeds the ±15% bound by a small margin (say 15-25%), document as a Tier-1-cfg-needs-investigation flag and consider tightening `INNER_ITER` count or refining the 2D mesh. If by a large margin (>25%), the production Tier-1 cfg has a substantive numerical-accuracy issue that must be resolved before Phase 4 launches — investigate low-Mach preconditioner coefficients, dual-time inner-iter convergence, or finer dt.
+**Fail action:** a frequency-dependent recovered `I_a` means SU2's MACH=1e-9 + low-Mach-prec unsteady solver does NOT reproduce the correct added-mass frequency signature → the Tier-1 numerics are suspect and **Phase 4 must NOT launch**. Investigate low-Mach preconditioner coefficients, dual-time inner-iter convergence, dt, and consider switching the production unsteady cfg to `INC_NAVIER_STOKES` or escalating to the Phase 5 step-62.5 cross-solver work early.
 
 **Output artifacts:**
-- `data/spike_0_6d/sub_2_result.json` — `Tier1AddedMassResult` payload
+- `data/spike_0_6d/sub_2_result.json` — `Tier1AddedMassResult` payload + both per-frequency `AddedMassProjection`s
 - `data/spike_0_6d/sub_2.PASS` or `data/spike_0_6d/sub_2.FAIL` marker
 
 ---
@@ -112,16 +120,17 @@ The strongest cross-check — OpenFOAM `pimpleFoam` as an independent codebase �
 
 ## Aggregator (`scripts/run_spike_0_6d.py`)
 
-Reads `data/spike_0_6d/sub_{1,2}_result.json` (sub_3 optional). Computes overall pass:
+Reads `data/spike_0_6d/sub_2_result.json` (REQUIRED — the gate); `--sub-1-json` and `--sub-3-json` optional + advisory. Computes overall pass (post-2026-05-15 redesign):
 
 ```
-overall_passed = sub_1.passed AND sub_2.passed
+overall_passed = sub_2.freq_consistency_passed   # ONLY
 ```
 
 Writes:
-- `data/spike_0_6d/results.json` — aggregate payload (mirrors `run_spike_0_6c.py` aggregator structure)
+- `data/spike_0_6d/results.json` — aggregate payload (sub_1/sub_3 recorded if supplied, for Phase 5)
 - `data/spike_0_6d/PASS` iff `overall_passed`, else `data/spike_0_6d/FAIL`
-- Logs sub_3's advisory result for traceability
+
+Exit codes: 0 = PASS, 1 = FAIL, 2 = sub_2 input missing/malformed.
 
 Exit codes: 0 = PASS, 1 = FAIL, 2 = inputs missing.
 
