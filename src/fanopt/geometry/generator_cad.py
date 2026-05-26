@@ -39,6 +39,7 @@ from fanopt.geometry.generator import (
     GenerationStatus,
     generate_blade,
 )
+from fanopt.geometry.manufacturability_cad import run_manufacturability_filter_cad
 from fanopt.geometry.primitives_cad import apply_primitive
 
 __all__ = ["generate_blade_cad"]
@@ -73,12 +74,23 @@ def generate_blade_cad(
     shape = apply_layer2_fields(shape, params.layer2)
     pre_layer3 = shape
 
+    layer3_failed = False
     try:
         shape = apply_primitive(shape, params.layer3)
     except Exception:
         # Plan §9.7: Layer 3 is the only step where CAD failures are
         # tolerated. Degrade status; return the pre-Layer-3 shape.
-        result = dataclasses.replace(result, status=GenerationStatus.LAYER3_FAILED)
+        layer3_failed = True
         shape = pre_layer3
 
+    mfg_cad = run_manufacturability_filter_cad(shape, params.layer4)
+
+    if layer3_failed:
+        status = GenerationStatus.LAYER3_FAILED
+    elif not mfg_cad.passed:
+        status = GenerationStatus.MFG_REJECTED
+    else:
+        status = GenerationStatus.OK
+
+    result = dataclasses.replace(result, status=status, manufacturability=mfg_cad)
     return result, shape

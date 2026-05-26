@@ -55,13 +55,23 @@ def test_returns_scaffold_result_and_shape() -> None:
     assert shape is not None
 
 
-def test_scaffold_result_unchanged_from_generate_blade() -> None:
-    """The first element of the returned tuple is exactly what the
-    scaffold's ``generate_blade`` would have returned standalone."""
+def test_wrapper_overrides_manufacturability_with_cadquery_inspection() -> None:
+    """The wrapper's result swaps the scaffold's PENDING_CADQUERY-heavy
+    filter for the real CadQuery inspection. Layer descriptions + panel
+    domain mask + params + generator_version must still match the
+    scaffold; only ``manufacturability`` (and possibly ``status``) differ.
+    """
     design = _canonical_design()
     scaffold_only = generate_blade(design)
     wrapped, _shape = generate_blade_cad(design)
-    assert wrapped == scaffold_only
+    assert wrapped.layer_descriptions == scaffold_only.layer_descriptions
+    assert wrapped.panel_domain_mask == scaffold_only.panel_domain_mask
+    assert wrapped.params == scaffold_only.params
+    assert wrapped.generator_version == scaffold_only.generator_version
+    # Manufacturability differs: scaffold returns many PENDING; wrapper
+    # returns mostly PASSED with only #1 and #8 PENDING.
+    assert set(wrapped.manufacturability.pending_cadquery) == {"1", "8"}
+    assert len(scaffold_only.manufacturability.pending_cadquery) > 2
 
 
 def test_status_ok_on_canonical_design() -> None:
