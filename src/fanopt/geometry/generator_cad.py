@@ -9,18 +9,20 @@ Consumer surface (Phase 1 onward):
 
     >>> from fanopt.geometry.generator_cad import generate_blade_cad
     >>> result, shape = generate_blade_cad(design)
-    >>> shape  # a cq.Workplane with the Layer 1 envelope + Layer 3 cut/fuse
+    >>> shape  # cq.Workplane: envelope ∘ Layer 2 fields ∘ Layer 3 primitive
+
+Pipeline order matches the scaffold (plan §9.7): Layer 1 envelope →
+Layer 2 fields (locked sub-order TPMS → noise → louver → texture →
+edge) → Layer 3 primitive. Layer 4 click chamfer + detent land in the
+V-unit assembly composition (assembly_cad).
 
 Per plan §9.7, Layer 3 is the only step where CadQuery / OpenCascade
 failures are tolerated. This wrapper runs ``apply_primitive`` in a
-try/except: on failure the returned shape is the pre-Layer-3 envelope
-and the scaffold result's status is overridden to
-:attr:`GenerationStatus.LAYER3_FAILED` (preserving the rest of the
-scaffold's metadata).
-
-Phase 1 follow-up: Layer 2 field application + the click chamfer /
-detent + the V-unit blade composition land in subsequent modules.
-This wrapper today produces envelope ∘ Layer 3.
+try/except: on failure the returned shape is the pre-Layer-3 shape
+(envelope ∘ Layer 2) and the scaffold result's status is overridden to
+:attr:`GenerationStatus.LAYER3_FAILED`. Layer 2 application is
+expected to succeed (safe-by-construction per the schema bounds) and
+is NOT wrapped.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ import dataclasses
 import cadquery as cq
 
 from fanopt.geometry.envelope_cad import make_outer_envelope
+from fanopt.geometry.fields_cad import apply_layer2_fields
 from fanopt.geometry.generator import (
     BladeDesignParams,
     GenerationResult,
@@ -51,29 +54,31 @@ def generate_blade_cad(
     (GenerationResult, cq.Workplane)
         The scaffold result (status, layer descriptions, manufacturability
         protocol, panel-domain mask, params trace) AND the CadQuery
-        Workplane holding the Layer 1 envelope with the Layer 3 primitive
-        Boolean-applied. If Layer 3 raises during CadQuery construction,
-        the returned shape is the pre-Layer-3 envelope and the result's
-        ``status`` is overridden to ``LAYER3_FAILED``.
+        Workplane holding ``envelope ∘ Layer 2 fields ∘ Layer 3 primitive``.
+        If Layer 3 raises during CadQuery construction, the returned shape
+        is the pre-Layer-3 shape and the result's ``status`` is overridden
+        to ``LAYER3_FAILED``.
 
     Notes
     -----
-    The shape returned today is envelope ∘ Layer 3. Layer 2 field
-    application (fields_cad) and Layer 4 click features (assembly_cad)
-    land in subsequent Phase-1 modules. The scaffold result still
-    records the per-layer metadata for the layers not yet applied.
+    Layer 4 click chamfer + detent are applied as part of the V-unit
+    blade composition (``assembly_cad.make_vunit_blade``), not in this
+    panel-only generator.
     """
     result = generate_blade(params)
-    envelope = make_outer_envelope(
+    shape = make_outer_envelope(
         params.layer1, print_orientation=params.layer4.print_orientation
     )
 
+    shape = apply_layer2_fields(shape, params.layer2)
+    pre_layer3 = shape
+
     try:
-        shape = apply_primitive(envelope, params.layer3)
+        shape = apply_primitive(shape, params.layer3)
     except Exception:
         # Plan §9.7: Layer 3 is the only step where CAD failures are
-        # tolerated. Degrade status; return the pre-Layer-3 envelope.
+        # tolerated. Degrade status; return the pre-Layer-3 shape.
         result = dataclasses.replace(result, status=GenerationStatus.LAYER3_FAILED)
-        shape = envelope
+        shape = pre_layer3
 
     return result, shape

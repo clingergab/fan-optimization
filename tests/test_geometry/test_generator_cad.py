@@ -109,21 +109,16 @@ def test_shape_honours_print_orientation_edge() -> None:
     assert bb.zmin < 0.0
 
 
-def test_shape_unaffected_by_layer2_activation() -> None:
-    """**Documented limitation:** generate_blade_cad currently returns only
-    the Layer 1 envelope. Activating Layer 2 fields (which would carve
-    cutouts in the panel) does NOT change the returned shape — the
-    Layer 2 / 3 / 4 application is metadata-only at this scaffold tier.
-
-    This test pins the limitation so a future commit that adds real
-    Layer 2 application MUST update this test (the equality will break
-    when louver cuts actually remove material).
+def test_layer2_louver_activation_reduces_volume() -> None:
+    """Activating a louver subtract field must reduce the returned shape's
+    volume. Replaced the prior 'Layer 2 unaffected' pin once
+    apply_layer2_fields landed (2026-05-21).
     """
     d_inactive = _canonical_design()
     d_with_louver = BladeDesignParams(
         layer1=d_inactive.layer1,
         layer2=Layer2Params(
-            louver=LouverField(active=True, count=6, width_m=0.001),
+            louver=LouverField(active=True, count=6, width_m=0.001, polarity="subtract"),
             texture=d_inactive.layer2.texture,
             edge=d_inactive.layer2.edge,
             noise=d_inactive.layer2.noise,
@@ -134,8 +129,7 @@ def test_shape_unaffected_by_layer2_activation() -> None:
     )
     _r_inactive, shape_inactive = generate_blade_cad(d_inactive)
     _r_active, shape_active = generate_blade_cad(d_with_louver)
-    # Layer 2 louver activation does NOT yet alter the geometry.
-    assert shape_inactive.val().Volume() == pytest.approx(shape_active.val().Volume(), rel=1e-12)
+    assert shape_active.val().Volume() < shape_inactive.val().Volume()
 
 
 def test_layer3_subtract_reduces_volume() -> None:
