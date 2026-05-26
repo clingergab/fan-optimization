@@ -138,9 +138,16 @@ def test_shape_unaffected_by_layer2_activation() -> None:
     assert shape_inactive.val().Volume() == pytest.approx(shape_active.val().Volume(), rel=1e-12)
 
 
-def test_shape_unaffected_by_layer3_primitive() -> None:
-    """**Documented limitation:** same as above, for Layer 3."""
-    env = (0.050, 0.050, 0.005)
+def test_layer3_subtract_reduces_volume() -> None:
+    """Layer 3 subtract primitive must reduce the returned shape's volume.
+
+    Replaced the prior "Layer 3 unaffected" pin once apply_primitive
+    landed (2026-05-21). The test now exercises the integration:
+    a subtract primitive inside the envelope must remove material.
+    """
+    # Trapezoidal envelope: at x=0.10, y_max ≈ 0.10 * INTER_BLADE_ANGLE_RAD / 2 ≈ 0.0116.
+    # Position y=0.005 with size 0.001 lives safely inside that band.
+    env = (0.200, 0.050, 0.005)
     d_inactive = _canonical_design()
     d_with_prim = BladeDesignParams(
         layer1=d_inactive.layer1,
@@ -149,11 +156,11 @@ def test_shape_unaffected_by_layer3_primitive() -> None:
             present=True,
             shape_type="ellipsoid",
             polarity="subtract",
-            position_x_m=0.025,
-            position_y_m=0.025,
+            position_x_m=0.10,
+            position_y_m=0.005,
             position_z_m=0.0025,
-            size_x_m=0.005,
-            size_y_m=0.005,
+            size_x_m=0.001,
+            size_y_m=0.001,
             size_z_m=0.001,
             local_envelope_xyz_m=env,
         ),
@@ -161,4 +168,28 @@ def test_shape_unaffected_by_layer3_primitive() -> None:
     )
     _r_inactive, shape_inactive = generate_blade_cad(d_inactive)
     _r_present, shape_present = generate_blade_cad(d_with_prim)
-    assert shape_inactive.val().Volume() == pytest.approx(shape_present.val().Volume(), rel=1e-12)
+    assert shape_present.val().Volume() < shape_inactive.val().Volume()
+
+
+def test_layer3_cad_failure_degrades_status_and_returns_envelope() -> None:
+    """If apply_primitive raises, the wrapper degrades status to
+    LAYER3_FAILED and returns the pre-Layer-3 envelope."""
+    from fanopt.geometry import generator_cad
+
+    original = generator_cad.apply_primitive
+
+    def boom(_shape, _primitive):
+        raise RuntimeError("simulated OpenCascade failure")
+
+    generator_cad.apply_primitive = boom
+    try:
+        d = _canonical_design()
+        result, shape = generate_blade_cad(d)
+        assert result.status == GenerationStatus.LAYER3_FAILED
+        # Shape volume equals the bare envelope's volume (no primitive applied).
+        from fanopt.geometry.envelope_cad import make_outer_envelope
+
+        env_only = make_outer_envelope(d.layer1, d.layer4.print_orientation)
+        assert shape.val().Volume() == pytest.approx(env_only.val().Volume(), rel=1e-9)
+    finally:
+        generator_cad.apply_primitive = original
