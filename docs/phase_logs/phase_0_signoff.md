@@ -158,12 +158,12 @@ Phase 4 gate (post-2026-05-15): `data/spike_0_6c/PASS` (0.6c.1) **AND** `data/sp
 - [x] Plan (`docs/report-final.md`) annotated with the deferral note (additive, locked decisions untouched).
 - [x] `docs/phase_checklist.md` updated to reflect new V1 scope.
 - [x] Spike 0.3 kitchen-scale appendix added (optional V2 upgrade path).
-- [ ] **Action items remaining for operator before Phase 4 launch:**
-  - [ ] Cell 7 of `notebooks/colab_spike_0_6c.ipynb` must successfully write `sub_1.PASS`. The 2026-05 run reported `outer_steps=0` even though Cell 8 confirmed SU2 launches — the runner likely isn't capturing SU2's stdout to the log file its parser scans. Small Cell 7 fix needed.
-  - [ ] Run aggregator (`scripts/run_spike_0_6c.py`) → writes `data/spike_0_6c/PASS` iff sub_1 passed.
-  - [ ] Cells 8–10 (benchmark + analyzer) are now DEFERRED-TO-PHASE-5; skip in V1.
-  - [ ] **Run Spike 0.6d.1 (symmetry + dimensional sanity)** via `scripts/run_spike_0_6d_1.py` on the existing Cell 8 history.csv + one fresh Tier-1 baseline run. Required for Phase 4 launch.
-  - [ ] **Run Spike 0.6d.2 (2D added-mass analytic check)** via `scripts/run_spike_0_6d_2.py` on the new 2D thin-plate cfg. Required for Phase 4 launch.
-  - [ ] (Optional) Run Spike 0.6d.3 (SU2 incompressible-mode advisory) via `scripts/run_spike_0_6d_3.py`. Logged, does not gate.
-  - [ ] Run 0.6d aggregator (`scripts/run_spike_0_6d.py`) → writes `data/spike_0_6d/PASS` iff sub_1 + sub_2 passed.
-  - [ ] Confirm `scripts/launch_phase4.py --check` returns 0 once **both** `data/spike_0_6c/PASS` AND `data/spike_0_6d/PASS` are present.
+- [ ] **Action items remaining for operator before Phase 4 launch** (current as of 2026-05-21, reflecting Note 3 redesign):
+  - [ ] **0.6c.1 PASS marker** — `notebooks/colab_spike_0_6d.ipynb` Cell 5b recovers this via the `--su2-history-csv` evidence path against the existing Drive history.csv (no stdout-capture issue; the runner now accepts a prior SU2 history.csv as evidence of cfg-launch sanity). Cell 5b runs the 0.6c aggregator → writes `data/spike_0_6c/PASS`.
+  - [ ] **0.6d.2 PASS marker (the gate)** — Cell 7 renders the 2D thin-plate cfg, runs SU2 at ω₁ and ω₂ on the same plate/pivot/θ_max, feeds both history.csv files to `scripts/run_spike_0_6d_2.py`. Pass criterion: `|I_a(ω₁) − I_a(ω₂)| / mean < 0.25`.
+  - [ ] **Aggregator + dual-gate check** — Cell 9 runs `scripts/run_spike_0_6d.py --sub-2-json …` → writes `data/spike_0_6d/PASS` iff sub_2 passed; then `scripts/launch_phase4.py --check` must return 0 with both `data/spike_0_6c/PASS` AND `data/spike_0_6d/PASS` present.
+  - [ ] (Optional, advisory) Cell 6 — `scripts/run_spike_0_6d_1.py` against the existing Cell-8 history.csv for the Phase-5 record. Per Note 3 this does NOT gate.
+  - [ ] (Optional, advisory) Cell 8 — `scripts/run_spike_0_6d_3.py` incompressible-mode cross-check. Per Note 3 this does NOT gate; skip in V1.
+  - [ ] (Optional) Cell 10 — PAT-push the PASS markers + `results.json` files back to `main` for traceability.
+
+  Notes on the 0.6c notebook (`notebooks/colab_spike_0_6c.ipynb`): no longer required for V1. Cells 8–10 (NACA 0012 benchmark + analyzer) are DEFERRED-TO-PHASE-5; Cell 7 is superseded by the 0.6d notebook's Cell 5b history.csv-evidence recovery path. The 0.6c notebook is retained for Phase-5 cross-solver use.
