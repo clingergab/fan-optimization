@@ -466,8 +466,8 @@ def thin_plate_render() -> str:
         mesh_filename="thin_plate_2d.su2",
         marker_plate="PLATE",
         marker_farfield="FARFIELD",
-        pitching_omega_y=-12.5664,  # C11 sign lock
-        pitching_ampl_y=0.1745,
+        pitching_omega_z=-12.5664,  # C11 analog for 2D x-y mesh (pitch about z)
+        pitching_ampl_z=0.1745,
         motion_origin_x=0.25,
         time_step=2.5e-3,
         max_time=2.5,
@@ -492,18 +492,18 @@ def test_thin_plate_2d_cfg_pitching_about_quarter_chord(
     assert "MOTION_ORIGIN= 0.25 0.0 0.0" in thin_plate_render
 
 
-def test_thin_plate_2d_cfg_omega_y_negative_per_c11(
+def test_thin_plate_2d_cfg_omega_z_negative_per_c11_analog(
     thin_plate_render: str,
 ) -> None:
-    """C11 sign lock — y-component of PITCHING_OMEGA must be negative."""
+    """C11 analog for 2D x-y mesh — z-component of PITCHING_OMEGA must be negative."""
     m = re.search(
         r"^PITCHING_OMEGA=\s*([\d.+-eE]+)\s+([\d.+-eE]+)\s+([\d.+-eE]+)",
         thin_plate_render,
         re.MULTILINE,
     )
     assert m is not None
-    _, y, _ = (float(g) for g in m.groups())
-    assert y < 0
+    _, _, z = (float(g) for g in m.groups())
+    assert z < 0
 
 
 def test_thin_plate_2d_cfg_renders_with_defaults() -> None:
@@ -512,8 +512,8 @@ def test_thin_plate_2d_cfg_renders_with_defaults() -> None:
         mesh_filename="x.su2",
         marker_plate="P",
         marker_farfield="F",
-        pitching_omega_y=-10.0,
-        pitching_ampl_y=0.1,
+        pitching_omega_z=-10.0,
+        pitching_ampl_z=0.1,
         motion_origin_x=0.25,
         time_step=1e-3,
         max_time=1.0,
@@ -523,15 +523,15 @@ def test_thin_plate_2d_cfg_renders_with_defaults() -> None:
     assert "INNER_ITER= 100" in out
 
 
-def test_thin_plate_2d_cfg_rejects_positive_omega_per_c11() -> None:
-    """C11 sign lock — the renderer refuses to flip the sign."""
+def test_thin_plate_2d_cfg_rejects_positive_omega_per_c11_analog() -> None:
+    """C11 analog — the renderer refuses to flip the z-component sign."""
     with pytest.raises(TemplateRenderError, match="C11"):
         render_thin_plate_2d_pitching_cfg(
             mesh_filename="x.su2",
             marker_plate="P",
             marker_farfield="F",
-            pitching_omega_y=+12.5664,  # wrong sign
-            pitching_ampl_y=0.1,
+            pitching_omega_z=+12.5664,  # wrong sign
+            pitching_ampl_z=0.1,
             motion_origin_x=0.25,
             time_step=1e-3,
             max_time=1.0,

@@ -21,11 +21,14 @@
 %
 % Operator-supplied template variables (rendered via
 % `fanopt.cfd.configs.render_thin_plate_2d_pitching_cfg`):
-%   {{ mesh_filename }}        - .su2 mesh path (2D thin plate, ~50:1 AR)
+%   {{ mesh_filename }}        - .su2 mesh path (2D thin plate in x-y plane, ~50:1 AR)
 %   {{ marker_plate }}         - physical-group name on the plate surface
 %   {{ marker_farfield }}      - physical-group name on the outer boundary
-%   {{ pitching_omega_y }}     - angular frequency (rad/s); negative per C11
-%   {{ pitching_ampl_y }}      - pitch amplitude (rad)
+%   {{ pitching_omega_z }}     - angular frequency (rad/s); negative per the C11
+%                                analog (2D mesh is in x-y plane → pitch axis is z;
+%                                C11 literal y-sign-lock applies only to the 3D
+%                                production cfg `fan3d_unsteady.cfg.j2`)
+%   {{ pitching_ampl_z }}      - pitch amplitude (rad)
 %   {{ motion_origin_x }}      - pitching axis x-location (quarter-chord = 0.25 c)
 %   {{ time_step }}            - dt = T/200
 %   {{ max_time }}             - 5 × T  (5 full cycles)
@@ -60,11 +63,11 @@ MAX_TIME= {{ max_time }}
 TIME_ITER= {{ time_iter }}
 INNER_ITER= {{ inner_iter | default(100) }}
 
-% --- pitching about the quarter-chord (C11 sign lock: omega_y < 0) ---
+% --- pitching about the quarter-chord (C11 analog: omega_z < 0 for 2D x-y mesh) ---
 GRID_MOVEMENT= RIGID_MOTION
 MOTION_ORIGIN= {{ motion_origin_x }} 0.0 0.0
-PITCHING_OMEGA= 0.0 {{ pitching_omega_y }} 0.0
-PITCHING_AMPL=  0.0 {{ pitching_ampl_y }} 0.0
+PITCHING_OMEGA= 0.0 0.0 {{ pitching_omega_z }}
+PITCHING_AMPL=  0.0 0.0 {{ pitching_ampl_z }}
 
 % --- boundary conditions ---
 MARKER_HEATFLUX= ( {{ marker_plate }}, 0.0 )

@@ -364,8 +364,8 @@ def render_thin_plate_2d_pitching_cfg(
     mesh_filename: str,
     marker_plate: str,
     marker_farfield: str,
-    pitching_omega_y: float,
-    pitching_ampl_y: float,
+    pitching_omega_z: float,
+    pitching_ampl_z: float,
     motion_origin_x: float,
     time_step: float,
     max_time: float,
@@ -387,12 +387,15 @@ def render_thin_plate_2d_pitching_cfg(
 
     The 2D thin-plate cfg intentionally does NOT take a ``mach_number``
     parameter — it must use the production unsteady lock to be a faithful
-    test of the production numerics. C11 sign lock applies:
-    ``pitching_omega_y`` must be negative on the productive stroke.
+    test of the production numerics. The C11 literal y-sign-lock applies to
+    the 3D production cfg (``fan3d_unsteady.cfg.j2``); on a 2D x-y mesh the
+    physically meaningful pitch axis is z, so the analog lock here is
+    ``pitching_omega_z`` must be negative on the productive stroke.
     """
-    if pitching_omega_y > 0:
+    if pitching_omega_z > 0:
         raise TemplateRenderError(
-            "pitching_omega_y must be ≤ 0 per C11 lock " "(negative y on productive stroke)"
+            "pitching_omega_z must be ≤ 0 per the C11 analog "
+            "(2D x-y mesh pitch axis is z; negative on productive stroke)"
         )
     env = _env()
     try:
@@ -406,8 +409,8 @@ def render_thin_plate_2d_pitching_cfg(
             marker_farfield=marker_farfield,
             reynolds_number=reynolds_number,
             reynolds_length=reynolds_length,
-            pitching_omega_y=pitching_omega_y,
-            pitching_ampl_y=pitching_ampl_y,
+            pitching_omega_z=pitching_omega_z,
+            pitching_ampl_z=pitching_ampl_z,
             motion_origin_x=motion_origin_x,
             time_step=time_step,
             max_time=max_time,
