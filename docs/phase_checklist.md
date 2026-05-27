@@ -270,18 +270,20 @@ These are administrative confirmations of plan-side locks the operator has alrea
 - [x] Geometry-level checks (#1, #2, #3, #4, #5, #6, #8, #12, #13, #14) marked PENDING_CADQUERY — they wait on the CadQuery helpers below
 - [x] Hard-parameter-bound checks (#7, #9, #10, #11) register as PASSED (upstream-enforced by the layer dataclasses)
 
-### CadQuery generator (Phase 1 main work, NOT YET LANDED)
-- [ ] CadQuery installed locally (`conda install -c conda-forge cadquery` per §9.1) + smoke `import cadquery as cq` succeeds
-- [ ] `src/fanopt/geometry/envelope.py::make_outer_envelope(params)` — Layer 1 plano-convex envelope solid; replaces `_apply_layer1_envelope` stub in `generator.py`
-- [ ] `src/fanopt/geometry/fields.py::apply_{louver,texture,edge,noise,tpms}_field(shape, field)` — five field-application functions
-- [ ] `src/fanopt/geometry/primitives.py::apply_primitive(shape, primitive)` — Layer 3 capped primitive; the only step wrapped in try/except per plan §9.7
-- [ ] `src/fanopt/geometry/manufacturability.py` — replace the 10 PENDING_CADQUERY check stubs with real shape-inspection logic
-- [ ] V-unit blade parameterization: 2 ribs (165 mm × 4–6 mm tapered × 2 mm) + 1 trapezoidal panel (full L_blade × tangential width per H13 formula × 2.2–3.8 mm at 3 control points; 12 mm-OD boss at pivot) + Option A click chamfer + detent at panel outer tangential edge
+### CadQuery generator (Phase 1 main work) ✅ landed 2026-05-21
+- [x] CadQuery 2.7.0 installed locally + `import cadquery as cq` smoke OK
+- [x] Layer 1 envelope — `src/fanopt/geometry/envelope_cad.py::make_outer_envelope` (the `_cad` split keeps `envelope.py` schema-only per CLAUDE.md §4.1)
+- [x] Layer 2 fields — `src/fanopt/geometry/fields_cad.py::apply_{tpms,noise,louver,texture,edge_feature}_field` + `apply_layer2_fields` dispatcher in the locked TPMS → noise → louver → texture → edge order
+- [x] Layer 3 primitive — `src/fanopt/geometry/primitives_cad.py::apply_primitive`, wrapped in try/except by `generator_cad` per plan §9.7
+- [x] Manufacturability shape inspection — `src/fanopt/geometry/manufacturability_cad.py::run_manufacturability_filter_cad`: 8 of 10 prior PENDING_CADQUERY checks now real; #1 (per-feature size) + #8 (per-feature aspect) remain PENDING with documented Phase-2 deferral
+- [x] V-unit blade composition — `src/fanopt/geometry/assembly_cad.py::make_vunit_blade`: panel (envelope ∘ Layer 2 ∘ Layer 3) + 2 ribs (H12 width taper) + pivot boss + Round-9 HIGH-8 Option A click chamfer + hemispherical detent
+- [x] Deployed-fan composition + physical properties — `src/fanopt/geometry/fan_assembly.py::deploy_fan` / `compute_mass_kg` / `compute_centre_of_mass` / `compute_i_wrist_kgm2`
+- [x] Phase 1 smoke run on representative designs — `docs/phase_logs/phase_1_smoke.md` (baseline + features_light pass; full-features 3-field-stack times out — Phase-2 implementation refinement)
 
-### Fusion + ancillary tooling
-- [ ] Fusion Python add-in `fan_addin.py`: reads `params.json` → regenerates 1 V-unit blade → 10 instances around pivot → per-blade STLs + deployed-fan STEP
-- [ ] Print-strategy decision script (`print_strategy.py`): per-blade vs. full-assembly based on bed size
-- [ ] Roundtrip smoke test (`smoke_test.py`): JSON → geometry → Gmsh mesh → SU2 steady stub → J_fan; emits `I_wrist_kgm2` for the Spike 0.2 V2 cross-check
+### Fusion + ancillary tooling ✅ landed 2026-05-21
+- [x] `scripts/fan_addin.py` — CadQuery-based replacement for the planned Fusion 360 add-in. Reads `params.json` → generates V-unit blade → N instances around pivot → per-blade STLs + deployed-fan STEP. Does NOT require Fusion 360.
+- [x] `scripts/print_strategy.py` — per-blade vs full-assembly decision against configurable bed dimensions. Default 256 × 256 mm.
+- [x] `scripts/smoke_test.py` — Phase-1 roundtrip: JSON → geometry → mass / centroid / I_wrist / manufacturability summary. Gmsh + SU2 + J_fan downstream wiring is a Phase 2/4 task; the current smoke stops at the physical-property summary.
 
 ---
 
