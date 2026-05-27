@@ -393,7 +393,7 @@ def recover_added_mass_projection(
     omega_rad_per_s: float,
     pitching_amplitude_rad: float,
     n_cycles: int,
-    moment_column_candidates: Sequence[str] = ("cmy", "cmz", "cm", "cmoment"),
+    moment_column_candidates: Sequence[str] = ("cmz", "cm", "cmoment", "cmy"),
     history_path: str = "<inline>",
 ) -> AddedMassProjection:
     """Recover the added-mass coefficient from one SU2 2D-plate run.

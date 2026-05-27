@@ -54,7 +54,11 @@ DEFAULT_DIR = REPO_ROOT / "data" / "spike_0_6d"
 DEFAULT_RESULT_JSON = DEFAULT_DIR / "sub_2_result.json"
 DEFAULT_MARKER_DIR = DEFAULT_DIR
 
-MOMENT_COLUMN_CANDIDATES = ("cmy", "cmz", "cm", "cmoment")
+# CMz is the pitching moment for the 2D thin-plate cfg (pitches about z;
+# see configs/su2/thin_plate_2d_pitching.cfg.j2). CMy is identically zero
+# for a 2D x-y mesh because forces are in-plane (no z-component, no
+# z-extent → ∫(Fz·dx − Fx·dz) = 0), so it must NOT be probed first.
+MOMENT_COLUMN_CANDIDATES = ("cmz", "cm", "cmoment", "cmy")
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
