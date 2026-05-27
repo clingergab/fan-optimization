@@ -296,3 +296,4 @@ If any of 1–4 fails, the work is not done. Fix and re-verify.
   allow-list with a justified disclaimer; do not delete the entry.
 - Don't invent values to fill in missing measurements, citations, or
   reference data. Mark the gap and surface it.
+- Don't sign or add yourself to commit messages, for example never add 'Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>' 
