@@ -31,14 +31,26 @@ htmlcov/
 .ipynb_checkpoints/
 notebooks/.ipynb_checkpoints/
 
-# Project data (large, not source-controlled)
-data/
+# Project data — large/binary artefacts NOT source-controlled.
+# NOTE: `data/*` (one-star), NOT `data/` — the latter blanket-excludes the
+# directory and silently kills every negation below; per git docs:
+# "It is not possible to re-include a file if a parent directory of that
+# file is excluded."
+data/*
 !data/.gitkeep
-# but keep the data/ subdirectory structure markers
-!data/designs/.gitkeep
-!data/results/.gitkeep
-!data/meshes/.gitkeep
-!data/physical/.gitkeep
+
+# Phase-0 spike PASS markers + small result JSONs ARE source-controlled
+# (they are the audit trail showing gates passed). The Drive caches +
+# heavy artefacts (SU2 history.csv, restart files, mesh files) in the
+# same directories remain ignored — only the sentinels and the tiny
+# JSON summaries are tracked.
+!data/spike_0_*/
+data/spike_0_*/*
+!data/spike_0_*/PASS
+!data/spike_0_*/sub_*.PASS
+!data/spike_0_*/results.json
+!data/spike_0_*/sub_*_result.json
+!data/spike_0_*/deferral.json
 
 # Local Drive sync
 gdrive/
