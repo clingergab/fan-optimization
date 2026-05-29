@@ -1,0 +1,15 @@
+{
+  "spec_reference": "docs/plan_R11.md \u00a7Phase 0 Spike 0.6c (sub-spike 0.6c.1)",
+  "lock_reference": "Round-9 HIGH-12 (= C12)",
+  "mach_unsteady_lock": 1e-09,
+  "result": {
+    "cfg_path": "/content/fan-optimization/configs/su2/fan3d_unsteady.cfg.j2",
+    "parsed_ok": true,
+    "mach_value": 1e-09,
+    "freestream_option": "",
+    "ref_dimensionalization": "FREESTREAM_PRESS_EQ_ONE",
+    "outer_time_steps_completed": 1000,
+    "error": null,
+    "passed": true
+  }
+}

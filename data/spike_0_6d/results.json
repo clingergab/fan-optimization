@@ -1,0 +1,26 @@
+{
+  "spec_reference": "docs/report-final.md \u00a7Phase 0 Spike 0.6d",
+  "lock_reference": "H10 supplement; redesigned 2026-05-15 (freq-consistency gate)",
+  "gate_note": "overall_passed = sub_2.freq_consistency_passed ONLY (the normalization-invariant added-mass frequency-consistency check). sub_1 (symmetry/dimensional) and sub_3 (incompressible) are ADVISORY \u2014 recorded for Phase 5, do NOT gate. Phase 4 launch requires BOTH data/spike_0_6c/PASS AND data/spike_0_6d/PASS.",
+  "phase5_step_62_5_pointer": "Absolute-accuracy validation (regime-appropriate published reference + OpenFOAM cross-codebase) is the Phase 5 step 62.5 deliverable; see docs/report-final.md.",
+  "result": {
+    "sub_06d_2": {
+      "omega_f1_rad_per_s": 12.5664,
+      "omega_f2_rad_per_s": 25.1327,
+      "recovered_ia_nondim_f1": 101475301397.83183,
+      "recovered_ia_nondim_f2": 98984589235.86443,
+      "freq_consistency_rel_diff": 0.024849980253842677,
+      "freq_consistency_tol": 0.25,
+      "freq_consistency_passed": true,
+      "closed_form_ia_nondim": 0.09019807032767571,
+      "closed_form_factor_f1": 1111220505635.2998,
+      "closed_form_factor_tol": 2.0,
+      "closed_form_advisory_ok": false,
+      "drag_to_added_mass_ratio_f1": 0.09326766084759532,
+      "passed": true
+    },
+    "sub_06d_1": null,
+    "sub_06d_3": null,
+    "overall_passed": true
+  }
+}

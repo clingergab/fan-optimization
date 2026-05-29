@@ -1,0 +1,19 @@
+{
+  "spec_reference": "docs/plan_R11.md \u00a7Phase 0 Spike 0.6c",
+  "lock_reference": "H10 (Tier-1 cfg sanity) + Round-9 HIGH-12 / C12 (unsteady MACH)",
+  "v1_scope_note": "V1: gates on sub_06c_1 only. Sub-spike 0.6c.2 (NACA 0012 benchmark) deferred to Phase 5 per docs/phase_logs/spike_0_6c.md (2026-05-14 diagnostic addendum).",
+  "phase4_gate_note": "Phase 4 launch (scripts/launch_phase4.py) refuses to create the `phase4-launch` tag if data/spike_0_6c/PASS is absent.",
+  "result": {
+    "sub_06c_1": {
+      "cfg_path": "/content/fan-optimization/configs/su2/fan3d_unsteady.cfg.j2",
+      "parsed_ok": true,
+      "mach_value": 1e-09,
+      "freestream_option": "",
+      "ref_dimensionalization": "FREESTREAM_PRESS_EQ_ONE",
+      "outer_time_steps_completed": 1000,
+      "error": null,
+      "passed": true
+    },
+    "overall_passed": true
+  }
+}
