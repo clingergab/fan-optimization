@@ -23,22 +23,27 @@ The 2026-05-14 regime diagnostic on Cell 8's SU2 history.csv confirmed the produ
 
 Dependencies flow forward (per plan §Phase 0 dependency table): 0.0 → 0.1 (parallel) → 0.2 → 0.3 ; 0.4 → 0.5 ; 0.6 → 0.6c ; **0.7 is independent (no upstream dep)**. Environment setup runs in parallel with the spikes.
 
-### What's still open in Phase 0 (as of 2026-05-13)
+### What's still open in Phase 0 (as of 2026-05-29 — both PASS markers landed)
+
+**Phase 0 dual gate PASSES on Colab VM as of 2026-05-29:**
+- `data/spike_0_6c/PASS` (0.6c.1 cfg sanity, recovered via Drive history.csv evidence)
+- `data/spike_0_6d/PASS` (0.6d.2 freq-consistency: rel_diff=0.0248 ≪ tol 0.25)
+- `launch_phase4.py --check` returns 0 → **Phase 4 launch is formally unblocked**
 
 | Item | Status | Unblock path |
 |---|---|---|
 | Spike 0.2 / 0.3 / 0.5 / 0.7c | `[→V2]` | V1 substitutes wired; revisit only on V2 |
 | Spike 0.4 (click cycle + V1 lock) | Operator-blocked | Code done; needs printed test articles + force gauge |
 | Spike 0.6 main + 0.6a + 0.6b (compute probes) | Operator-blocked | Calibration, not a gate per plan; one M3 run + one Colab run each |
-| Spike 0.6c.1 | `[~]` PASS recovered on Colab VM via the 0.6d notebook Cell 5b `--su2-history-csv` evidence path; awaiting push of `data/spike_0_6c/PASS` to `main` | 0 (recovery path; was: stdout-capture fix, now superseded) |
+| Spike 0.6c.1 | `[x]` PASS marker on Colab VM (2026-05-21); awaiting push of `data/spike_0_6c/PASS` to `main` (Cell 11 PAT push) | 0 — gate cleared |
 | Spike 0.6c.2 | `[→Phase 5]` DEFERRED 2026-05-14 — see plan §Phase 5 step 62.5 | Re-enters as 3-solver published-reference benchmark in Phase 5 |
-| Spike 0.6d (2026-05-14 addition, redesigned 2026-05-15; 0.6d.2 freq-consistency = sole gate; 0.6d.1 + 0.6d.3 advisory) | `[~]` code on `main`; awaiting 2× Colab SU2 runs (in flight) | ~2–4 h Colab CPU |
-| Spike 0.7a operator steps | Blocked on Phase 1 CadQuery generator | Land `make_outer_envelope` + 5 field functions + primitive function |
-| Spike 0.7b | ✅ done | — |
+| Spike 0.6d.2 | `[x]` PASS marker on Colab VM (2026-05-29); 2D thin-plate two-frequency freq-consistency gate met at dt=T/400. Awaiting push of `data/spike_0_6d/PASS` to `main` | 0 — gate cleared |
+| Spike 0.7a operator steps | `[x]` Phase 1 CadQuery generator landed 2026-05-21 (`make_outer_envelope`, 5 field functions, `apply_primitive`, V-unit `make_vunit_blade`). Operator visual-inspect + print-2-passing-designs work remains under Phase 6. | — |
+| Spike 0.7b | `[x]` done | — |
 | Environment: Mac `conda-lock.yml` | Operator action | One `conda-lock` invocation |
 | Environment: `colab_phase4_runner.ipynb` | Defer | Phase 4 prep, not Phase 0 launch |
 | Environment: PyFR install + CUDA pin | Defer | Phase 5 prep, not Phase 0 launch |
-| Phase 0 signoff items | Administrative | Operator confirmation of plan-side locks |
+| Phase 0 signoff items | `[x]` administrative | Operator confirmation of plan-side locks |
 
 ### Step 0.0 — Project scaffolding ✅
 - [x] Git repo created at `fan-optimization/`
@@ -160,11 +165,11 @@ Dependencies flow forward (per plan §Phase 0 dependency table): 0.0 → 0.1 (pa
 - `notebooks/colab_spike_0_6c.ipynb` — Colab runbook (Cells 1–11 retained; cells 8–10 marked DEFERRED-TO-PHASE-5)
 - `docs/spike_0_6c_protocol.md` + `docs/phase_logs/spike_0_6c.md` (full diagnostic addendum)
 
-**Sub-spike 0.6c.1 — Tier-1 cfg sanity check** `[~]` Awaiting Colab `sub_1.PASS`
+**Sub-spike 0.6c.1 — Tier-1 cfg sanity check** `[x]` PASS on VM (2026-05-21)
 - [x] Render locked Tier-1 cfg; run 1 inner iteration on a probe mesh
 - [x] Round-9 HIGH-12 fallback (`MACH_NUMBER = 1e-9` + `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`) shipped as the default — SU2 v8.0.1 rejects the primary `FREESTREAM_OPTION = FREESTREAM_VELOCITY` syntax at parse time
 - [x] Round-9 HIGH-12 + C11 sign locks pinned by `tests/test_cfd/test_unsteady_freestream_consistency.py`
-- [x] **0.6c.1 PASS recovered (2026-05-21)** on the Colab VM via the 0.6d notebook Cell 5b history.csv-evidence path: `python scripts/run_spike_0_6c_1.py --su2-history-csv <prior Drive history.csv>` writes `sub_1.PASS` from the existing 2026-05-14 SU2 Cell-8 run, no fresh SU2 invocation needed. The earlier `outer_steps=0` stdout-capture issue is moot under the evidence path. PASS marker still needs pushing to `main` (Cell 10 PAT push, optional).
+- [x] **0.6c.1 PASS recovered (2026-05-21)** on the Colab VM via the 0.6d notebook Cell 5b history.csv-evidence path: `python scripts/run_spike_0_6c_1.py --su2-history-csv <prior Drive history.csv>` writes `sub_1.PASS` from the existing 2026-05-14 SU2 Cell-8 run, no fresh SU2 invocation needed. The earlier `outer_steps=0` stdout-capture issue is moot under the evidence path. PASS marker still needs pushing to `main` (0.6d notebook Cell 11 PAT push, optional).
 
 **Sub-spike 0.6c.2 — NACA 0012 benchmark** `[→Phase 5]` DEFERRED 2026-05-14
 - Removed from V1 scope after the 2026-05-14 regime diagnostic confirmed the moving-body-in-still-air cfg can't be validated against any wind-tunnel reference in the same frame. Full decision record + evidence: `docs/phase_logs/spike_0_6c.md`.
@@ -175,14 +180,15 @@ Dependencies flow forward (per plan §Phase 0 dependency table): 0.0 → 0.1 (pa
 
 **Why this spike exists:** After 0.6c.2's deferral, Phase 4 would have launched with no independent quantitative check on SU2's body-in-still-air response at MACH=1e-9. The gate was **redesigned 2026-05-15** after the first live run showed the original 0.6d.1-gating design was unsound (nondimensionalisation conflation + a symmetry criterion ill-posed for a net-work fan). The gate now rests on a single normalization-invariant falsification test (0.6d.2). Authoritative: §Phase 0 Spike 0.6d + `docs/phase_logs/phase_0_signoff.md` Note 3.
 
-**Code status: DELIVERED on `main`** — implementation + tests landed (PRs #10, #13) plus the 2026-05-21 y→z pitching-axis follow-up for the 2D cfg; awaiting the Colab run.
+**Code status: DELIVERED on `main`** — implementation + tests landed (PRs #10, #13) plus three follow-on fixes that surfaced during the Colab run (2026-05-21 y→z pitching axis for the 2D mesh; 2026-05-27 moment-column priority CMz before CMy; 2026-05-29 dt = T/400 for f1 to remove (ω·dt)² truncation bias).
 
-**Sub-spike 0.6d.2 — 2D thin-plate added-mass frequency-consistency** `[~]` code done; awaiting Colab `(GATING — sole Phase-4 gate)`
+**Sub-spike 0.6d.2 — 2D thin-plate added-mass frequency-consistency** `[x]` PASS on VM (2026-05-29) `(GATING — sole Phase-4 gate)`
 - [x] `configs/su2/thin_plate_2d_pitching.cfg.j2` + `render_thin_plate_2d_pitching_cfg` (+ tests)
 - [x] `recover_added_mass_projection` + `check_added_mass_freq_consistency` in `src/fanopt/cfd/spike_0_6d.py` (+ tests)
 - [x] `scripts/run_spike_0_6d_2.py` — two-frequency CLI (`--history-csv-f1/-f2`, `--omega-f1/-f2`) (+ tests)
-- [ ] **Colab:** generate the 2D plate mesh, run SU2 at ω₁ and ω₂ (same plate/pivot/θ_max), feed both history.csv to the runner
-- [ ] **Pass (GATING):** `|I_a(ω₁) − I_a(ω₂)| / mean < 0.25` (normalization-invariant, parameter-free)
+- [x] **Colab:** generated the 2D plate mesh, ran SU2 at ω₁ and ω₂ (same plate/pivot/θ_max); cached on Drive at `spike_0_6d/thin_plate_2d/{f1,f2}/history.csv`
+- [x] **Pass (GATING):** `|I_a(ω₁) − I_a(ω₂)| / mean = 0.0248 < 0.25` (normalization-invariant, parameter-free)
+- [x] **Diagnostic finding:** at MACH=1e-9 + low-Mach-prec + dual-time-stepping the recovered I_a has a (ω·dt)² truncation bias. At the original dt = T/200 = 2.5 ms for f1 the rel_diff was 0.371 (FAIL); halving f1's dt to 1.25 ms (steps/cycle 200→400) drops rel_diff to 0.0248 (PASS). Inner-iter convergence was already saturated at INNER_ITER=100 (verified by bit-identical output at INNER_ITER=200). Closed-form magnitude advisory still fails (factor 1.11e12, expected per the gate_note — absolute nondim scale is Phase 5 step 62.5's job, NOT gating).
 
 **Sub-spike 0.6d.1 — Symmetry + dimensional-force sanity** `[~]` code done `(ADVISORY — demoted 2026-05-15, does NOT gate)`
 - [x] `check_symmetry_dimensional` + `scripts/run_spike_0_6d_1.py` (+ tests) — recorded for Phase 5; not a Phase-4 blocker
@@ -194,7 +200,7 @@ Dependencies flow forward (per plan §Phase 0 dependency table): 0.0 → 0.1 (pa
 - [x] `scripts/run_spike_0_6d.py` — `--sub-2-json` required (the gate); `--sub-1-json`/`--sub-3-json` optional advisory; writes `data/spike_0_6d/PASS` iff `sub_2.freq_consistency_passed`
 - [x] `scripts/launch_phase4.py` requires both `data/spike_0_6c/PASS` AND `data/spike_0_6d/PASS` (logic unchanged; docstring updated for the new 0.6d gate semantics)
 - [x] `tests/test_scripts/test_launch_phase4.py` dual-gate tests
-- [ ] Run on Colab Pro CPU; ~2-4 h total (2× short 2D-plate SU2 runs)
+- [x] **Colab gate PASS confirmed 2026-05-29** — `launch_phase4.py --check` returned 0; both PASS markers on VM.
 
 ### Spike 0.7 — Generative-geometry + BO-infra sanity check
 **Sub-spike 0.7a — Generative geometry sanity:**
@@ -241,8 +247,8 @@ These are administrative confirmations of plan-side locks the operator has alrea
 - [ ] J_fan metric (§9.4) — already locked in the plan; signoff = "I read it and accept"
 - [ ] Open Question #2 — already closed in the plan: Phase 2 TO loads come from Phase 2a baseline CFD-derived pressures (Phase 2a was added to break the Phase-3-circular dependency; the plan was updated)
 - [ ] Generative parametric design (§3.1.3, §9.7) — already locked in the plan as the panel-topology approach (no density-based TO on the panel)
-- [ ] **Spike 0.6c PASS marker present** (`data/spike_0_6c/PASS`; 0.6c.1 cfg sanity) — recovered on Colab VM 2026-05-21; awaiting push to `main`
-- [ ] **Spike 0.6d PASS marker present** (`data/spike_0_6d/PASS`; 0.6d.2 freq-consistency) — in flight on Colab; the dual gate `launch_phase4.py --check` requires both markers
+- [x] **Spike 0.6c PASS marker present on VM** (`data/spike_0_6c/PASS`; 0.6c.1 cfg sanity, 2026-05-21). Pending push to `main` via 0.6d notebook Cell 11.
+- [x] **Spike 0.6d PASS marker present on VM** (`data/spike_0_6d/PASS`; 0.6d.2 freq-consistency, 2026-05-29). Pending push to `main`. `launch_phase4.py --check` returns 0.
 
 ---
 
@@ -312,13 +318,14 @@ Pre-Phase-2 sequence (gating order: 1.9 → 2a → 2):
 
 ## Phase 2b / Phase 3 / Phase 4 — placeholders
 
-- [ ] **Phase 2b** — Generative parametric panel optimization (Week 5–8); consumes the Phase 1 4-layer hybrid generator (now scaffolded above) once the CadQuery helpers land
+- [ ] **Phase 2b** — Generative parametric panel optimization (Week 5–8); consumes the Phase 1 4-layer hybrid generator (CadQuery helpers landed 2026-05-21).
 - [ ] **Phase 3** — 2D CFD slice on rigid corrugated geometry (Week 6); roughness-model R²≥0.4 calibration against fully-resolved corrugation
-- [ ] **Phase 4** — Multi-fidelity BO on Colab Pro (Week 8–10); blocked on `data/spike_0_6c/PASS` per `scripts/launch_phase4.py`. Dependencies still to wire:
+- [ ] **Phase 4** — Multi-fidelity BO on Colab Pro (Week 8–10); **launch gate cleared 2026-05-29** (both `data/spike_0_6c/PASS` + `data/spike_0_6d/PASS` markers on Colab VM; `launch_phase4.py --check` returns 0). Dependencies still to wire:
   - [ ] `notebooks/colab_phase4_runner.ipynb` — full Phase 4 orchestration (currently a 1-cell stub)
   - [ ] `configs/architecture_enumeration.yaml` — 60–100 architectures after H1-locked pruning; pre-commit `+10%` growth gate
   - [ ] Per-design config-hash assertion (§9.4.1)
   - [ ] Production GP backend wired (botorch SingleTaskGP + qMFKG + qNEHVI + TuRBO); the Spike 0.7b numpy-only sanity check is V1 scope, not production
+  - [ ] **Open decision (2026-05-29):** production Tier-1 cfg dt = T/200 vs T/400. The 0.6d.2 finding showed dt = T/200 carries a (ω·dt)² truncation bias on recovered I_a. For Phase 4 sim-vs-sim ranking the bias is geometry-independent at fixed ω, so it's tolerable; for absolute J_fan reporting it matters. V1 reports relative gain so leaving production at T/200 is defensible. Phase 5 PyFR cross-solver work should use T/400.
 
 ## Phase 5 — High-fidelity verification + PyFR cross-solver (Week 11–12)
 
