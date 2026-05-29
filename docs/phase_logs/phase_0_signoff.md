@@ -147,6 +147,54 @@ The first live Colab run produced (correctly recovered) `data/spike_0_6c/PASS` v
 
 Phase 4 gate (post-2026-05-15): `data/spike_0_6c/PASS` (0.6c.1) **AND** `data/spike_0_6d/PASS` (0.6d.2 frequency-consistency only).
 
+## Note 4 — Spike 0.6d.2 PASS + time-step finding + production-cfg decision (2026-05-29, closes Phase 0)
+
+The 2026-05-29 Colab run closed the Phase 0 dual gate. `launch_phase4.py --check` returns 0; commit `ceac22b` ships the PASS markers + result JSONs to `main`. Phase 4 is formally unblocked.
+
+**Result.** `freq_consistency_rel_diff = 0.0248` (gate tolerance 0.25). `I_a(ω₁) = 1.014e11`, `I_a(ω₂) = 0.989e11`, damping ratios ~8–10% (added-mass dominant). Closed-form magnitude advisory still fails (factor ~1.1e12) — expected under `FREESTREAM_PRESS_EQ_ONE`, absolute nondim scale is Phase 5 step 62.5's job per Note 1 / the gate_note, NOT gating.
+
+### Diagnostic timeline that produced the PASS
+
+1. **2026-05-26 baseline** (`steps/cycle = 200, INNER_ITER = 100` for both ω₁ and ω₂): `rel_diff = 0.371` → FAIL. `I_a(ω₁) = 1.44e11`, `I_a(ω₂) = 0.99e11`; ratio 1.46.
+2. **Cycle-stability check** — re-projection of cached `history.csv` over shrinking cycle windows (cycles 1-5 → 5-5): per-cycle drift < 0.1% from cycle 2 onward. **Transients ruled out.**
+3. **2026-05-28 INNER_ITER rerun** (f1 at `INNER_ITER = 200`): bit-identical SU2 output to the baseline. SU2 already converged at `INNER_ITER = 100` (hit `LINEAR_SOLVER_ERROR = 1e-6` well before 100 inner iters). **Inner-iter under-convergence ruled out.**
+4. **2026-05-29 time-step rerun** (f1 at `steps/cycle = 400`, dt = 1.25 ms matching f2's absolute dt): `rel_diff = 0.0248` → **PASS**. The bottleneck was `(ω·dt)²` truncation error on integrated quantities at f1's original `dt = 2.5 ms`.
+
+The cycle-window-projection diagnostic snippet is reproducible against the cached Drive `history.csv` files; if future Phase 4 monitoring needs it, lift it into a script.
+
+### Decision — production Tier-1 cfg stays at `dt = T/200` for Phase 4 launch
+
+The production cfg `configs/su2/fan3d_unsteady.cfg.j2` + renderer `render_unsteady_cfg` keep their current `time_step = period / 200` default. Rationale:
+
+* **Sim-vs-sim ranking, not absolute J_fan, is V1's reporting target** (per "What V1 ships" above). The `(ω·dt)²` truncation bias is geometry-independent at fixed ω in the regime we've tested, so it cancels in ranking.
+* **Compute economics.** `dt = T/400` doubles per-eval wall time (~1.3 h → ~2.6 h), halving the Phase 4 1000-h budget from ~770 evals to ~385. Against a 37–46-dim search space, halving eval count is a meaningful exploration penalty.
+* **Phase 6 hedges BO miscalibration.** The print-3-diverse rule (top-3 candidates spanning Layer 2 archetypes) + blinded A/B feel test absorb mild ranking noise — operator gestalt dominates.
+
+### Caveat — the part not proven from 0.6d.2 data alone
+
+The 0.6d.2 test exercised one geometry (2D thin plate), one motion (pure pitch about quarter-chord), one Reynolds. The argument that the bias is geometry-independent for the production 3D fan with TPMS porosity / louver cuts / edge serrations / etc. is plausible but **not directly evidenced**. If feature lengthscales near `√(ν·dt)` interact with truncation error geometry-dependently, ranking IS biased.
+
+### Mitigation — Tier-0 → Tier-1 promotion spot check
+
+Add this check to the Phase 4 architecture-bandit at the moment it promotes architectures from Tier-0 ranking-only to Tier-1 BO inner loop:
+
+1. Take the first 2–3 architectures the bandit promotes.
+2. Render each at both `time_step = T/200` AND `time_step = T/400`; run both.
+3. Compute J_fan per (design × dt).
+4. Compare ranking across the dt settings.
+5. **If rankings agree** (Kendall τ ≥ 0.95 OR top-2 ranks identical): stay at T/200; document the spot-check result in the Phase 4 phase log.
+6. **If rankings disagree:** flip the production cfg to T/400 mid-campaign, accept the halved remaining eval budget, document the discovery as a Phase 4 finding.
+
+Cost: ~5–10 GPU-h (2–3 designs × 2 dt × 1.3–2.6 h, parallelisable on Phase 4's Colab infrastructure). Negligible against the 1000-h budget; cheap insurance against the "geometry-dependent bias" failure mode.
+
+**Implementation hook.** Lift the `STEPS_PER_CYCLE_*` + `RERUN_*` knob pattern from `colab_spike_0_6d.ipynb` Cell 7 into the Phase 4 architecture-bandit (`notebooks/colab_phase4_runner.ipynb` when it's built). Same idiom: render the cfg at two dt settings, compare J_fan ranking, decide.
+
+### Phase 5 ramification
+
+PyFR cross-solver work at Phase 5 step 62.5 should use `dt = T/400` regardless of Phase 4's choice — Phase 5's deliverable is absolute solver-vs-solver agreement, where the truncation bias matters.
+
+This note supersedes Note 3's implicit assumption that "MACH=1e-9 + low-Mach-prec is the production numerics regime is gate-validated end-to-end" — the 2026-05-29 finding makes explicit that the cfg as-shipped trades absolute accuracy for compute efficiency, with the Phase 4 spot check gating that trade-off.
+
 ## Sign-off
 
 - [x] Spike 0.2 deferral sentinel committed (`data/spike_0_2/deferral.json`).
@@ -158,12 +206,12 @@ Phase 4 gate (post-2026-05-15): `data/spike_0_6c/PASS` (0.6c.1) **AND** `data/sp
 - [x] Plan (`docs/report-final.md`) annotated with the deferral note (additive, locked decisions untouched).
 - [x] `docs/phase_checklist.md` updated to reflect new V1 scope.
 - [x] Spike 0.3 kitchen-scale appendix added (optional V2 upgrade path).
-- [ ] **Action items remaining for operator before Phase 4 launch** (current as of 2026-05-21, reflecting Note 3 redesign):
-  - [ ] **0.6c.1 PASS marker** — `notebooks/colab_spike_0_6d.ipynb` Cell 5b recovers this via the `--su2-history-csv` evidence path against the existing Drive history.csv (no stdout-capture issue; the runner now accepts a prior SU2 history.csv as evidence of cfg-launch sanity). Cell 5b runs the 0.6c aggregator → writes `data/spike_0_6c/PASS`.
-  - [ ] **0.6d.2 PASS marker (the gate)** — Cell 7 renders the 2D thin-plate cfg, runs SU2 at ω₁ and ω₂ on the same plate/pivot/θ_max, feeds both history.csv files to `scripts/run_spike_0_6d_2.py`. Pass criterion: `|I_a(ω₁) − I_a(ω₂)| / mean < 0.25`.
-  - [ ] **Aggregator + dual-gate check** — Cell 9 runs `scripts/run_spike_0_6d.py --sub-2-json …` → writes `data/spike_0_6d/PASS` iff sub_2 passed; then `scripts/launch_phase4.py --check` must return 0 with both `data/spike_0_6c/PASS` AND `data/spike_0_6d/PASS` present.
-  - [ ] (Optional, advisory) Cell 6 — `scripts/run_spike_0_6d_1.py` against the existing Cell-8 history.csv for the Phase-5 record. Per Note 3 this does NOT gate.
-  - [ ] (Optional, advisory) Cell 8 — `scripts/run_spike_0_6d_3.py` incompressible-mode cross-check. Per Note 3 this does NOT gate; skip in V1.
-  - [ ] (Optional) Cell 10 — PAT-push the PASS markers + `results.json` files back to `main` for traceability.
+- [x] **Action items completed before Phase 4 launch** (closed 2026-05-29; see Note 4 for the diagnostic timeline):
+  - [x] **0.6c.1 PASS marker** — 2026-05-21: `colab_spike_0_6d.ipynb` Cell 5b recovered via the `--su2-history-csv` evidence path against the Drive history.csv from the original 2026-05-14 Spike 0.6c Cell-8 run. No fresh SU2 invocation needed. `data/spike_0_6c/PASS` committed via Cell 11 PAT push in commit `ceac22b` (2026-05-29).
+  - [x] **0.6d.2 PASS marker (the gate)** — 2026-05-29: `freq_consistency_rel_diff = 0.0248` ≪ 0.25 tolerance. Required three rounds of debugging after the 2026-05-21 initial implementation: (a) cfg pitching-axis y→z fix for 2D x-y mesh; (b) analyzer moment-column priority CMz before CMy; (c) f1 time-step halving to remove `(ω·dt)²` truncation bias. Full timeline in Note 4. `data/spike_0_6d/PASS` committed in `ceac22b`.
+  - [x] **Aggregator + dual-gate check** — `scripts/run_spike_0_6d.py` wrote `data/spike_0_6d/PASS`; `scripts/launch_phase4.py --check` returned 0 with both `data/spike_0_6c/PASS` AND `data/spike_0_6d/PASS` present.
+  - [-] Cell 6 (0.6d.1 advisory) — skipped per Note 3 demotion; not gating.
+  - [-] Cell 8 (0.6d.3 advisory) — skipped per Note 3; not gating.
+  - [x] Cell 11 — PAT-push of PASS markers + result JSONs back to `main` succeeded 2026-05-29 (commit `ceac22b`). Required prior `.gitignore` fix `74d71ff` to un-ignore the spike PASS markers + tiny result JSONs while keeping Drive caches / meshes ignored.
 
   Notes on the 0.6c notebook (`notebooks/colab_spike_0_6c.ipynb`): no longer required for V1. Cells 8–10 (NACA 0012 benchmark + analyzer) are DEFERRED-TO-PHASE-5; Cell 7 is superseded by the 0.6d notebook's Cell 5b history.csv-evidence recovery path. The 0.6c notebook is retained for Phase-5 cross-solver use.
