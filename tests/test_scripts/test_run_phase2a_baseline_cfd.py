@@ -21,8 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import run_phase2a_baseline_cfd as p2a  # noqa: E402
 
 
-def _history(path: Path, cfz: float) -> Path:
-    path.write_text(f"Inner_Iter,CD,CFz\n0,0.1,0.0\n1,0.1,{cfz}\n", encoding="utf-8")
+def _history(path: Path, cd: float) -> Path:
+    # 2D slice: the streamwise force is CD (drag along the freestream).
+    path.write_text(f"Inner_Iter,CL,CD\n0,0.2,0.0\n1,0.2,{cd}\n", encoding="utf-8")
     return path
 
 

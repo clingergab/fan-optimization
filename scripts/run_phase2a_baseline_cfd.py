@@ -69,13 +69,23 @@ def prepare_baseline_case(
     }
 
 
+# The 2D-slice streamwise force is the drag along the freestream (CD). NOT the
+# out-of-plane z-force (CFz) — that is the 3D t̂=+z thrust and is identically 0
+# in a 2D slice, which zeroed the whole load.
+_STREAMWISE_2D_CANDIDATES = ("CD", "CDrag", "C_D", "Aero_CD")
+
+
 def extract_baseline_load(
     productive_history: Path, return_history: Path, *, panel_chord_m: float = 0.045
 ) -> dict[str, object]:
     """Parse the two SU2 histories → steady drag-asymmetry proxy + a suggested
     distributed pressure (proxy force per unit chord) for the rib TO."""
-    prod = steady_run_from_history(productive_history, stroke="productive")
-    ret = steady_run_from_history(return_history, stroke="return")
+    prod = steady_run_from_history(
+        productive_history, stroke="productive", thrust_candidates=_STREAMWISE_2D_CANDIDATES
+    )
+    ret = steady_run_from_history(
+        return_history, stroke="return", thrust_candidates=_STREAMWISE_2D_CANDIDATES
+    )
     proxy = compute_j_fan_steady([prod, ret])
     # 2D forces are per unit span; a crude effective pressure = force / chord.
     suggested_pa = abs(prod.thrust) / panel_chord_m
