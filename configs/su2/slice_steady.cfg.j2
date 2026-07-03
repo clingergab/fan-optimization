@@ -52,7 +52,8 @@ TIME_DOMAIN= NO
 % --- boundary conditions ---
 MARKER_HEATFLUX= ( {{ marker_fan }}, 0.0 )
 MARKER_FAR= ( {{ marker_farfield }} )
-MARKER_MONITORING= ( {{ marker_fan }} )
+{% if marker_cascade %}MARKER_SYM= ( {{ marker_cascade }} )
+{% endif %}MARKER_MONITORING= ( {{ marker_fan }} )
 MARKER_PLOTTING= ( {{ marker_fan }} )
 
 % --- output ---
