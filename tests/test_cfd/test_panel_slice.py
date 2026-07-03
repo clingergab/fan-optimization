@@ -118,6 +118,31 @@ def test_rejects_bad_n_samples():
         panel_slice_polygons(ThicknessGridField.uniform(), n_samples=1)
 
 
+def test_camber_none_matches_default():
+    field = ThicknessGridField.uniform(0.003)
+    a = panel_slice_polygons(field, n_samples=8)[0]
+    b = panel_slice_polygons(field, n_samples=8, camber_knots_m=None)[0]
+    assert np.allclose(a, b)
+
+
+def test_camber_raises_top_face():
+    field = ThicknessGridField.uniform(0.003)
+    flat = panel_slice_polygons(field, n_samples=9)[0]
+    cambered = panel_slice_polygons(field, n_samples=9, camber_knots_m=(0.0, 0.003, 0.0))[0]
+    flat_top = flat[2:, 0]
+    camb_top = cambered[2:, 0]
+    assert np.all(camb_top >= flat_top - 1e-12)  # camber only adds material
+    assert camb_top.max() > flat_top.max() + 1e-6  # mid-chord peak is raised
+
+
+def test_camber_bows_middle_more_than_edges():
+    field = ThicknessGridField.uniform(0.003)
+    poly = panel_slice_polygons(field, n_samples=9, camber_knots_m=(0.0, 0.004, 0.0))[0]
+    top = poly[2:, 0]  # top face, tangential order (edge → mid → edge)
+    assert top[len(top) // 2] > top[0] + 1e-6
+    assert top[len(top) // 2] > top[-1] + 1e-6
+
+
 def test_layout_rejects_non_positive_width():
     with pytest.raises(ValueError, match="panel_width_m must be > 0"):
         PanelSliceLayout(panel_width_m=0.0, panel_gap_m=0.004, radius_m=0.1)

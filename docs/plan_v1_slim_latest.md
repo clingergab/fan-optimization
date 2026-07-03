@@ -166,6 +166,22 @@ faithful.
 > cancels in the relative ranking V1 reports, so T/200 is chosen; T/400 is reserved
 > for Phase-5 PyFR cross-solver work. Resolves the checklist's open dt decision.
 
+> **Note added 2026-07-03 (Phase 4 search-space finalization + parallel/analysis).**
+> The BO codec (`fanopt.bo.codec`) is finalized at **35 vars**: 18 thickness-grid
+> + 4 corrugation + 3 camber + 2 twist + 6 Fourier LE/TE + edge_profile +
+> blade_count. **Camber is now folded into the 2D slice** (`panel_slice`,
+> `envelope.camber_height_at`) — the airfoil chord maps to the tangential span, so
+> camber bows the slice top face faithfully to the CadQuery blade; it is the
+> smooth directed-thrust lever alongside corrugation asymmetry. **Deferred by
+> decision:** Layer-2 **louvers → V2** (their worth is a 2D-slice drag-asymmetry
+> model that needs reference validation; corrugation + camber already break
+> symmetry), and **print_orientation fixed at 'flat'** (V1 plano-convex baseline),
+> which leaves `twist` geometrically inert (reserved for a future 'edge'
+> orientation). Also landed: campaign **results/analysis** (`fanopt.bo.results` +
+> `scripts/analyze_phase4.py` — Pareto + top-k structurally-diverse print picks)
+> and **parallel CFD evaluation** (thread-pool over the DoE/batch, `--workers` /
+> `N_WORKERS`). Changes no locked decision.
+
 ---
 
 ## 5. Re-scoped phases (delta vs `report-final.md` §8)

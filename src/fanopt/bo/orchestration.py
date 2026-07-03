@@ -18,11 +18,13 @@ import datetime as _dt
 import time
 from collections import deque
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from scipy.stats.qmc import Sobol
+from tqdm.auto import tqdm
 
 from fanopt.bo.backbone import (
     TrustRegionState,
@@ -67,6 +69,7 @@ class CampaignConfig:
     num_restarts: int = 8
     raw_samples: int = 128
     mc_samples: int = 128
+    n_workers: int = 1  # parallel CFD threads (DoE + each batch); ≈ n_cores on Colab
 
 
 # Frozen shared default so it can sit in an argument default (ruff B008-safe).
@@ -205,19 +208,42 @@ def pareto_designs(state: CampaignState) -> list[dict[str, object]]:
 
 
 def _evaluate_batch(
-    objective_fn: ObjectiveFn, ledger_path: Path, batch: np.ndarray, *, iteration: int, source: str
+    objective_fn: ObjectiveFn,
+    ledger_path: Path,
+    batch: np.ndarray,
+    *,
+    iteration: int,
+    source: str,
+    n_workers: int = 1,
+    on_eval: Callable[[], None] | None = None,
 ) -> np.ndarray:
-    ys: list[tuple[float, float, float]] = []
-    for v in batch:
+    """Evaluate a batch (optionally across ``n_workers`` threads) and log each.
+
+    Threads — not processes — because the dominant cost is the SU2 subprocess,
+    which releases the GIL during its run, and the closure objective isn't
+    picklable. Results are collected in batch order, then appended to the ledger
+    serially (deterministic order, no file lock). ``on_eval`` (if given) fires once
+    per completed evaluation — thread-safe for a live progress bar.
+    """
+
+    def _timed(v: np.ndarray) -> tuple[tuple[float, float, float], float]:
         t0 = time.perf_counter()
         y = objective_fn(v)
+        dt = time.perf_counter() - t0
+        if on_eval is not None:
+            on_eval()  # tqdm.update is thread-safe → live progress under parallelism
+        return y, dt
+
+    if n_workers > 1 and len(batch) > 1:
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            evaluated = list(pool.map(_timed, batch))
+    else:
+        evaluated = [_timed(v) for v in batch]
+
+    ys: list[tuple[float, float, float]] = []
+    for v, (y, wall_time_s) in zip(batch, evaluated, strict=True):
         _persist_eval(
-            ledger_path,
-            v,
-            y,
-            iteration=iteration,
-            wall_time_s=time.perf_counter() - t0,
-            source=source,
+            ledger_path, v, y, iteration=iteration, wall_time_s=wall_time_s, source=source
         )
         ys.append(y)
     return np.atleast_2d(np.asarray(ys, dtype=float))
@@ -229,69 +255,92 @@ def run_campaign(
     cfg: CampaignConfig = _DEFAULT_CAMPAIGN_CFG,
     *,
     resume: bool = True,
+    progress: bool = False,
 ) -> CampaignState:
     """Run (or resume) the BO campaign, persisting to ``out_dir``.
 
-    Returns the final :class:`CampaignState`; the Pareto set is
-    :func:`pareto_designs` of it.
+    ``progress`` shows a live ``tqdm`` bar (notebook widget or terminal text) over
+    the total evaluations, with the best ``J_fan`` so far. Returns the final
+    :class:`CampaignState`; the Pareto set is :func:`pareto_designs` of it.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     ledger_path = out_dir / LEDGER_NAME
     ckpt = out_dir / CHECKPOINT_NAME
     low, high = bounds()
 
-    if resume and ckpt.exists():
-        state = _load_checkpoint(ckpt)
-    else:
-        x0 = sobol_doe(cfg.n_init, cfg.seed)
-        y0 = _evaluate_batch(objective_fn, ledger_path, x0, iteration=0, source="sobol")
-        state = CampaignState(
-            x=x0, y_raw=y0, tr=TrustRegionState(dim=N_DIMS, batch_size=cfg.batch_size)
-        )
-        _save_checkpoint(ckpt, state)
-
-    fallback = deque(diverse_fallback_designs())
-
-    while state.iteration < cfg.n_iterations:
-        y_max = to_maximization(state.y_raw)
-        ref = infer_reference_point(y_max)
-        hv_before = hypervolume(y_max, ref)
-
-        stalled = cfg.stall_patience > 0 and state.stall_counter >= cfg.stall_patience
-        if stalled and fallback:
-            batch = np.atleast_2d(clip_to_bounds(fallback.popleft()))
-            source = "fallback"
-            state.used_fallback += 1
+    total_evals = cfg.n_init + cfg.n_iterations * cfg.batch_size
+    bar = tqdm(total=total_evals, disable=not progress, desc="Phase 4 BO", unit="eval")
+    try:
+        if resume and ckpt.exists():
+            state = _load_checkpoint(ckpt)
+            bar.update(int(state.x.shape[0]))  # already-completed evals
         else:
-            model = fit_gp(state.x, y_max, low, high)
-            proposed = propose_candidates(
-                model,
-                state.x,
-                y_max,
-                low,
-                high,
-                ref,
-                batch_size=cfg.batch_size,
-                tr_state=state.tr if cfg.use_trust_region else None,
-                num_restarts=cfg.num_restarts,
-                raw_samples=cfg.raw_samples,
-                mc_samples=cfg.mc_samples,
+            x0 = sobol_doe(cfg.n_init, cfg.seed)
+            y0 = _evaluate_batch(
+                objective_fn,
+                ledger_path,
+                x0,
+                iteration=0,
+                source="sobol",
+                n_workers=cfg.n_workers,
+                on_eval=lambda: bar.update(1),
             )
-            batch = np.array([clip_to_bounds(c) for c in proposed])
-            source = "bo"
+            state = CampaignState(
+                x=x0, y_raw=y0, tr=TrustRegionState(dim=N_DIMS, batch_size=cfg.batch_size)
+            )
+            _save_checkpoint(ckpt, state)
 
-        state.iteration += 1
-        y_new = _evaluate_batch(
-            objective_fn, ledger_path, batch, iteration=state.iteration, source=source
-        )
-        state.x = np.vstack([state.x, batch])
-        state.y_raw = np.vstack([state.y_raw, y_new])
+        fallback = deque(diverse_fallback_designs())
 
-        hv_after = hypervolume(to_maximization(state.y_raw), ref)
-        improved = hv_after > hv_before + 1e-12
-        if cfg.use_trust_region:
-            state.tr.update(improved)
-        state.stall_counter = 0 if improved else state.stall_counter + 1
-        _save_checkpoint(ckpt, state)
+        while state.iteration < cfg.n_iterations:
+            y_max = to_maximization(state.y_raw)
+            ref = infer_reference_point(y_max)
+            hv_before = hypervolume(y_max, ref)
+
+            stalled = cfg.stall_patience > 0 and state.stall_counter >= cfg.stall_patience
+            if stalled and fallback:
+                batch = np.atleast_2d(clip_to_bounds(fallback.popleft()))
+                source = "fallback"
+                state.used_fallback += 1
+            else:
+                model = fit_gp(state.x, y_max, low, high)
+                proposed = propose_candidates(
+                    model,
+                    state.x,
+                    y_max,
+                    low,
+                    high,
+                    ref,
+                    batch_size=cfg.batch_size,
+                    tr_state=state.tr if cfg.use_trust_region else None,
+                    num_restarts=cfg.num_restarts,
+                    raw_samples=cfg.raw_samples,
+                    mc_samples=cfg.mc_samples,
+                )
+                batch = np.array([clip_to_bounds(c) for c in proposed])
+                source = "bo"
+
+            state.iteration += 1
+            y_new = _evaluate_batch(
+                objective_fn,
+                ledger_path,
+                batch,
+                iteration=state.iteration,
+                source=source,
+                n_workers=cfg.n_workers,
+                on_eval=lambda: bar.update(1),
+            )
+            state.x = np.vstack([state.x, batch])
+            state.y_raw = np.vstack([state.y_raw, y_new])
+
+            hv_after = hypervolume(to_maximization(state.y_raw), ref)
+            improved = hv_after > hv_before + 1e-12
+            if cfg.use_trust_region:
+                state.tr.update(improved)
+            state.stall_counter = 0 if improved else state.stall_counter + 1
+            _save_checkpoint(ckpt, state)
+            bar.set_postfix(iter=state.iteration, best_J_fan=f"{state.y_raw[:, 0].max():.2e}")
+    finally:
+        bar.close()
 
     return state

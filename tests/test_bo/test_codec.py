@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from fanopt.bo import codec
-from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
+from fanopt.geometry.envelope import EDGE_PROFILES, Layer1Params, ThicknessGridField
 from fanopt.geometry.schema import (
     BLADE_COUNTS,
     PANEL_THICKNESS_MAX_M,
@@ -33,16 +33,17 @@ def _sample_params(blade_count: int = 10) -> Layer1Params:
         camber_knots_m=(0.001, 0.002, 0.001),
         twist_knots_rad=(0.05, -0.05),
         thickness_field=field,
-        edge_profile="rounded",
-        fourier_le_amplitudes=(0.0, 0.0, 0.0),
-        fourier_te_amplitudes=(0.0, 0.0, 0.0),
+        edge_profile="mildly-serrated",
+        fourier_le_amplitudes=(0.1, -0.05, 0.12),
+        fourier_te_amplitudes=(-0.03, 0.08, -0.11),
     )
 
 
 def test_n_dims_matches_search_space():
     assert len(codec.SEARCH_SPACE) == codec.N_DIMS
-    # 18 thickness + 4 corrugation + 3 camber + 2 twist + 1 blade_count = 28.
-    assert codec.N_DIMS == 28
+    # 18 thickness + 4 corrugation + 3 camber + 2 twist + 6 fourier(LE/TE)
+    # + 1 edge_profile + 1 blade_count = 35.
+    assert codec.N_DIMS == 35
 
 
 def test_bounds_shapes_and_ordering():
@@ -61,12 +62,30 @@ def test_encode_decode_round_trips_searched_dims():
     )
     assert p2.camber_knots_m == pytest.approx(p.camber_knots_m)
     assert p2.twist_knots_rad == pytest.approx(p.twist_knots_rad)
+    assert p2.edge_profile == p.edge_profile
+    assert p2.fourier_le_amplitudes == pytest.approx(p.fourier_le_amplitudes)
+    assert p2.fourier_te_amplitudes == pytest.approx(p.fourier_te_amplitudes)
 
 
 def test_round_trip_preserves_each_blade_count():
     for bc in BLADE_COUNTS:
         p2 = codec.decode(codec.encode(_sample_params(bc)))
         assert p2.blade_count == bc
+
+
+def test_round_trip_preserves_each_edge_profile():
+    p = _sample_params()
+    for ep in EDGE_PROFILES:
+        variant = Layer1Params(
+            blade_count=p.blade_count,
+            camber_knots_m=p.camber_knots_m,
+            twist_knots_rad=p.twist_knots_rad,
+            thickness_field=p.thickness_field,
+            edge_profile=ep,
+            fourier_le_amplitudes=p.fourier_le_amplitudes,
+            fourier_te_amplitudes=p.fourier_te_amplitudes,
+        )
+        assert codec.decode(codec.encode(variant)).edge_profile == ep
 
 
 def test_decode_wrong_shape_raises():

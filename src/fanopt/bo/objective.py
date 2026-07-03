@@ -102,6 +102,7 @@ def prepare_slice_case(
         radial_u=cfg.radial_u,
         n_panels=cfg.n_panels,
         n_samples=cfg.n_samples,
+        camber_knots_m=layer1.camber_knots_m,
     )
     mesh = build_cascade_slice_mesh(polygons, SliceMeshParams(), workdir / MESH_NAME)
     unsteady = render_slice_unsteady_cfg(
