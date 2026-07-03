@@ -21,6 +21,7 @@ Spec reference: docs/plan_R11.md §9.4.1.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -293,8 +294,7 @@ def render_slice_steady_cfg(
             marker_cascade=marker_cascade,
             reynolds_number=reynolds_number,
             reynolds_length=reynolds_length,
-            freestream_direction_x=freestream_direction[0],
-            freestream_direction_y=freestream_direction[1],
+            aoa_deg=math.degrees(math.atan2(freestream_direction[1], freestream_direction[0])),
             cfl_number=cfl_number,
             mach_number=MACH_STEADY,
         )
