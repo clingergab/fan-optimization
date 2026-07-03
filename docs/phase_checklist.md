@@ -3,6 +3,14 @@
 Working tracker for project execution. Pulls from `docs/report-final.md` §Phase 0–6 and §13.
 The plan is the spec; this is the to-do list. When in doubt, the plan wins.
 
+> **⚠ 2026-07-02 — V1-Slim revision in effect.** The optimization/CFD/compute
+> machinery is being slimmed per **`docs/plan_v1_slim_latest.md`** (single-fidelity
+> CFD + verify; porosity fields cut; zoned rib-TO + panel-ASO; BO backbone with
+> optional adjoint polish; 3-objective Pareto; ≈⅓ the Phase-4 compute). Physical/
+> geometry/material locks unchanged. Phase 2–6 rows below are being re-scoped; see
+> `plan_v1_slim_latest.md` §5 for the phase delta and §7–§8 for lock disposition +
+> rationale. Phase 0 status is unaffected.
+
 Legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` skipped/N/A · `[→V2]` deferred to V2 · `[→Phase 5]` deferred to Phase 5
 
 ## V1 / V2 scope pivot (2026-05-13)
