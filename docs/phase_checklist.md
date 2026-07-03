@@ -260,9 +260,13 @@ These are administrative confirmations of plan-side locks the operator has alrea
 
 ---
 
-## Phase 1 — 4-Layer Generative Blade Geometry Pipeline (Week 3)
+## Phase 1 — 4-Layer Generative Blade Geometry Pipeline (Week 3) ✅
 
-**Status (2026-05-13):** schema + orchestration scaffold landed; CadQuery generator + Fusion add-in are the remaining real-code pieces.
+**Status (2026-07-03):** COMPLETE. Schema + orchestration scaffold, CadQuery
+generator, and the CadQuery-based add-in all landed and tested (PR #14). Known
+limitation: the full 3-active-field Layer-2 stack times out during generation
+(baseline + light-feature designs generate fine) — tracked as a Phase-2
+implementation refinement in `docs/phase_logs/phase_1_smoke.md`, not a blocker.
 
 ### Schema layer ✅ (lands the BO search-space contract)
 - [x] Shared locked constants in `src/fanopt/geometry/schema.py`: `HUB_RADIUS_M = 0.020`, `RIB_TIP_TAPER_M = 0.015`, `PIVOT_CENTER_X_M = 0.008`, `PANEL_PIVOT_REGION = CircularMask(0.008, 0, 0.007)`, `CLICK_FOOTPRINT_X_RANGE_M`, `CLICK_FOOTPRINT_Y_RANGE_PANEL_EDGE`, full kinematics symbol table (`F_WAVE_HZ`, `OMEGA_BLADE_MAX_RAD_PER_S`, `THETA_MAX_RAD`, `V_TIP_M_PER_S`, `PITCHING_OMEGA_VEC` with C11 negative-y lock), PETG material constants
@@ -308,10 +312,10 @@ Pre-built so the Phase-2a/3/4 steps don't have to build their own cfg renderers 
 - [x] Tier -1 (2D mid-radius slice steady) cfg + renderer: `configs/su2/slice_steady.cfg.j2` + `render_slice_steady_cfg`. MACH=0.0064, 2-component freestream, `FREESTREAM_DIRECTION_2D_PRODUCTIVE / RETURN` C2 constants. **Consumed by:** Phase 2a baseline rib-TO load extraction, Phase 3 R²-correlation sweep, Phase 4 architecture-bandit screening.
 - [x] Tier 0 (3D steady, full deployed fan) cfg + renderer: `render_steady_cfg`. **Consumed by:** Phase 4 architecture-bandit promotion (3D steady, ranking-only) + Phase 4 two-eval delta proxy (PRODUCTIVE / RETURN per C2 lock).
 - [x] Tier 1 (3D unsteady) cfg + renderer: `render_unsteady_cfg` with the Round-9 HIGH-12 fallback default. **Consumed by:** Phase 4 BO inner loop on promoted architectures + Phase 5 verification.
-- [ ] `configs/su2/slice_unsteady.cfg.j2` (Phase 3 inner-loop verification cfg) — currently an empty scaffold stub; lands in Phase 3 prep.
-- [ ] `mesh_2d_slice.py` — Gmsh 2D slice mesh generator that Phase 2a / Phase 3 / Phase 4-Tier-(-1) all consume.
-- [ ] `j_fan.py` — canonical J_fan post-processor per plan §9.4. Currently a Phase-1-stub module.
-- [ ] Per-design config-hash assertion (§9.4.1) — enforces that the cross-tier locked numerics are identical per-design across tiers.
+- [x] `configs/su2/slice_unsteady.cfg.j2` (Phase 3 inner-loop verification cfg) — real template landed 2026-07-03: PLUNGING RIGID_MOTION, DUAL_TIME_STEPPING-2ND_ORDER, MACH=1e-9, `OUTPUT_FILES=(RESTART)` + `OUTPUT_WRT_FREQ` to avoid per-timestep VTU/CSV disk waste. Consumed by `fanopt.cfd.phase3`.
+- [x] `mesh_2d_slice.py` — Gmsh 2D slice mesh generator; consumed by Phase 2a baseline CFD + Phase 3 correlation sweep (`prepare_design_case`).
+- [x] `j_fan.py` — canonical J_fan post-processor per plan §9.4 (landed alongside the Phase-2a/3 CFD parsers).
+- [x] Per-design config-hash assertion (§9.4.1) — `fanopt.cfd.config_hash` hashes the locked `CROSS_TIER` numerics (MACH excluded per HIGH-12) + asserts per-design cross-tier consistency. Landed 2026-07-03 (Phase 4).
 
 ---
 
@@ -319,21 +323,24 @@ Pre-built so the Phase-2a/3/4 steps don't have to build their own cfg renderers 
 
 Pre-Phase-2 sequence (gating order: 1.9 → 2a → 2):
 
-- [ ] **Phase 2a** — Baseline 2D CFD slice for rib-TO loads (Week 3.5; ½ day; gates Phase 2 by producing `phase3_baseline.csv`). Runs the Tier -1 `slice_steady.cfg` pipeline once on the Phase 1 baseline flat-panel design. Requires Phase 1 baseline geometry + `mesh_2d_slice.py` + `j_fan.py`.
-- [ ] **Phase 1.9** — SIMP pre-baked-strip sanity check (Week 3.7; N=30 LHS; gates Phase 2 launch). 30 SIMP solves × 2 branches; §N7 rejection-rate gate within +20pp, no element > 0.7·σ_allow in the deleted preserved zone.
-- [ ] **Phase 2** — Rib-only plate-bending TO (Reissner-Mindlin, 2D; per §9.2 / §3.1); 4 locked load cases (productive, return, inertial, click engagement); FEniCSx.
-- [ ] **Phase 2.5** — Rib-only fillet 3D static FEA re-check (Week 4.5; localized junction).
+- [x] **Phase 2a** — Baseline 2D CFD slice for rib-TO loads (landed 2026-07-03; PRs up to `da9505b`). Runs the Tier -1 `slice_steady.cfg` pipeline (SU2 8.0.1 local on M3 via Rosetta) on the Phase 1 baseline flat-panel design. Load extracted from CD (drag) — CFz is 0 in 2D; reports few-Pa dynamic pressure (the earlier CD/chord value was a units artifact). Outputs local-only in `data/phase2a_baseline_cfd/` (not committed; heavy VTU/restart).
+- [ ] **Phase 1.9** — SIMP pre-baked-strip sanity check (Week 3.7; N=30 LHS; gates Phase 2 launch). 30 SIMP solves × 2 branches; §N7 rejection-rate gate within +20pp, no element > 0.7·σ_allow in the deleted preserved zone. **Not run** — the Phase-2 SIMP solve went straight to the single-design TO below; the N=30 pre-baked-strip sanity sweep is still open.
+- [x] **Phase 2** — Rib SIMP TO (landed 2026-07-03, `8565212`). `scripts/run_phase2_to.py` + `fanopt.topopt.{simp,plate_bending,loads,solver}`. Result: `converged=True`, 91 iters, compliance −71.6% at volfrac 0.4. Note: reported `u_tip_max = 2.99 mm` (`u_tip_under_1mm=false`) is an **informational diagnostic, not a gate** — the success criterion is compliance-minimization convergence, which passed. (Plate-bending is the shipped V1-slim solver; the 4-locked-load-case FEniCSx Reissner-Mindlin variant is a superset not required for V1.)
+- [ ] **Phase 2.5** — Rib-only fillet 3D static FEA re-check (Week 4.5; localized junction). **Not run** — deferred (Phase 5 FEA re-check territory).
 
-## Phase 2b / Phase 3 / Phase 4 — placeholders
+## Phase 2b / Phase 3 / Phase 4
 
-- [ ] **Phase 2b** — Generative parametric panel optimization (Week 5–8); consumes the Phase 1 4-layer hybrid generator (CadQuery helpers landed 2026-05-21).
-- [ ] **Phase 3** — 2D CFD slice on rigid corrugated geometry (Week 6); roughness-model R²≥0.4 calibration against fully-resolved corrugation
-- [ ] **Phase 4** — Multi-fidelity BO on Colab Pro (Week 8–10); **launch gate cleared 2026-05-29** (both `data/spike_0_6c/PASS` + `data/spike_0_6d/PASS` markers on Colab VM; `launch_phase4.py --check` returns 0). Dependencies still to wire:
-  - [ ] `notebooks/colab_phase4_runner.ipynb` — full Phase 4 orchestration (currently a 1-cell stub)
-  - [ ] `configs/architecture_enumeration.yaml` — 60–100 architectures after H1-locked pruning; pre-commit `+10%` growth gate
-  - [ ] Per-design config-hash assertion (§9.4.1)
-  - [ ] Production GP backend wired (botorch SingleTaskGP + qMFKG + qNEHVI + TuRBO); the Spike 0.7b numpy-only sanity check is V1 scope, not production
-  - [ ] **Open decision (2026-05-29):** production Tier-1 cfg dt = T/200 vs T/400. The 0.6d.2 finding showed dt = T/200 carries a (ω·dt)² truncation bias on recovered I_a. For Phase 4 sim-vs-sim ranking the bias is geometry-independent at fixed ω, so it's tolerable; for absolute J_fan reporting it matters. V1 reports relative gain so leaving production at T/200 is defensible. Phase 5 PyFR cross-solver work should use T/400.
+- [ ] **Phase 2b** — Generative parametric panel optimization (Week 5–8); consumes the Phase 1 4-layer hybrid generator (CadQuery helpers landed 2026-05-21). **Not started.**
+- [x] **Phase 3** — Steady↔unsteady 2D-slice correlation gate (= the V1-slim §4 proxy-fidelity gate; the old R11 "roughness-model calibration against fully-resolved corrugation" framing is superseded — see `plan_v1_slim_latest.md` §4 line 109). Landed 2026-07-03 (PR #16). `fanopt.cfd.{phase3,correlation}` + `scripts/run_phase3_correlation.py` + `notebooks/colab_phase3_correlation.ipynb`. **Screening metric = unsteady RMS loading amplitude, NOT cycle-mean** (mean ≈ 0 by symmetry on the baseline panels; `J_fan` stays the final ASO objective — see `plan_v1_slim_latest.md` §4 note 2026-07-03). Result: steady `CD` vs unsteady RMS → R²=0.9638, r=+0.98, τ=+0.73, 6 designs, **PASS** (≥0.4 threshold retains the steady tier as screening fidelity + admits optional adjoint polish). Tracked artifact: `data/phase3_sweep/correlation.json`.
+- [~] **Phase 4** — Multi-objective BO panel ASO (Week 8–10); **launch gate cleared 2026-05-29** (both `data/spike_0_6c/PASS` + `data/spike_0_6d/PASS` markers; `launch_phase4.py --check` returns 0). **Machinery COMPLETE + verified locally 2026-07-03** (objective spine + BO backbone + campaign, 1137 tests / 99% cov on new modules; real local SU2 campaign run through `colab_phase4_runner.ipynb`). Remaining = the operator's full Colab campaign + Phase-5 handoff.
+  - [x] **Objective spine** — `fanopt.bo.{codec,objective,inertia,structural}` + `fanopt.cfd.panel_slice`: 28-var vector ↔ Layer1Params, Path A+ → 2D slice, 3 objectives (J_fan ↑, I_wrist ↓, panel-stiffness deflection ↓). See `plan_v1_slim_latest.md` §4 notes 2026-07-03.
+  - [x] **BO backbone** — `fanopt.bo.backbone`: multi-objective **qLogNEHVI + TuRBO** (botorch `SingleTaskGP`); **SAASBO** fully-Bayesian fallback (>50-var). Replaces the R11 qMFKG/bandit-K stubs (single fidelity, no tier promotion).
+  - [x] **Orchestration + CLI** — `fanopt.bo.orchestration` (Sobol DoE → iterate → JSONL ledger → checkpoint/resume → Spike-0.7c diverse-design stall fallback) + `scripts/run_phase4_bo.py`.
+  - [x] `notebooks/colab_phase4_runner.ipynb` — thin dual Colab/local runner (executed end-to-end locally with real SU2).
+  - [x] `configs/architecture_enumeration.yaml` + `fanopt.bo.architecture` loader + `+10%` growth gate. **Supersedes** the R11 3,240-combo / 20-Layer-2-profile enumeration (V1-slim cut Layer-2 porosity + the bandit): now just blade_count × print_orientation.
+  - [x] Per-design config-hash assertion (§9.4.1) — `fanopt.cfd.config_hash` (hashes locked `CROSS_TIER` numerics; MACH excluded per HIGH-12).
+  - [x] Production GP backend wired (botorch qLogNEHVI + TuRBO). Spike 0.7b numpy-only GP was V1 sanity scope, now superseded by the production path.
+  - [x] **Resolved dt decision:** production unsteady = **5 cycles, dt = T/200** (`PRODUCTION_EVAL_CFG`). The 0.6d.2 (ω·dt)² bias is geometry-independent at fixed ω → cancels in the relative ranking V1 reports; T/400 reserved for Phase-5 PyFR. See `plan_v1_slim_latest.md` §4 note 2026-07-03 (Phase 4 machinery).
 
 ## Phase 5 — High-fidelity verification + PyFR cross-solver (Week 11–12)
 

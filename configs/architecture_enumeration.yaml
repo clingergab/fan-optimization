@@ -1,0 +1,23 @@
+# Phase 4 Stage-2 categorical architecture space (V1-slim).
+#
+# SUPERSEDES the R11 enumeration in report-final.md §9.4.1 (3,240 raw combos →
+# 60-100 after pruning, 20 Layer-2 activation profiles). V1-slim S1 cut the
+# Layer-2 porosity fields and S3 dropped the architecture bandit: categoricals
+# are now searched *directly* by the BO (codec continuous-relaxation), so the
+# "architecture space" is just the discrete design axes, not a bandit arm list.
+#
+# `blade_count` is searched by the codec. `print_orientation` is a manufacturing
+# categorical held at the codec's neutral default ('flat') in the current spine;
+# it is enumerated here as the intended axis and folds into the search when the
+# codec adds it. The growth gate caps how fast this file may expand.
+version: 1
+
+axes:
+  blade_count: [8, 10, 12]          # MED-10 lock: 14 removed (ergonomic infeasibility)
+  print_orientation: [flat, edge]   # Layer-4 categorical; 'custom-angle' excluded from V1
+
+# Growth gate (report-final.md §9.4.1): a new enumeration count must satisfy
+#   count <= max(prev_count * factor, min_ceiling)
+growth_gate:
+  factor: 1.1
+  min_ceiling: 50
