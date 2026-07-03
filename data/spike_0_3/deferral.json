@@ -1,0 +1,9 @@
+{
+  "spec_reference": "docs/plan_R11.md §Phase 0 Spike 0.3",
+  "deferred_to_v2": true,
+  "reason": "Personal-project V1 scope. Anemometer + IMU baseline measurement is deliberately out-of-scope for V1. V1 substitutes a sim-only baseline + qualitative Phase 6 comparison.",
+  "v1_substitute": "Two co-baselines: (a) Phase 2a CFD on the flat-panel 10-blade baseline geometry — emits the simulated J_fan number that every optimized design's simulated J_fan is compared against (sim-vs-sim relative gain); (b) qualitative Phase 6 blinded A/B feel test of printed top-3 designs vs. the printed baseline.",
+  "revisit_trigger": "V2 scope, after V1 ships a fan that feels meaningfully better than baseline. Options for V2 quantification (in order of cheapness): (1) kitchen-scale + cardboard target — see docs/spike_0_3_protocol.md Appendix A; (2) Phyphox phone IMU + the analytic I_wrist; (3) the original anemometer + IMU rig.",
+  "deferred_date": "2026-05-13",
+  "deferred_by": "Phase-0 scope decision; see docs/phase_logs/phase_0_signoff.md"
+}

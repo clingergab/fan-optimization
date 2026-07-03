@@ -1,0 +1,9 @@
+{
+  "spec_reference": "docs/plan_R11.md §Phase 0 Spike 0.5",
+  "deferred_to_v2": true,
+  "reason": "Personal-project V1 scope. The 3-copy single-blade fabrication-noise CV measurement is deferred. V1 substitutes a cheaper one-design duplicate-print sanity check at Phase 6 time.",
+  "v1_substitute": "Print one V1 top-candidate twice (same design, same printer, same settings) as a same-design sanity check at Phase 6. If the two prints feel meaningfully different, the print-noise floor is wider than the V1 design gain target and the comparison is contaminated. No formal CV computation; pass/fail by feel.",
+  "revisit_trigger": "V2 scope. When V1 quantitative metrics matter (kitchen scale or anemometer), the 3-copy CV gates whether sub-15% deltas are real. Re-run with the original protocol once a quantitative baseline exists.",
+  "deferred_date": "2026-05-13",
+  "deferred_by": "Phase-0 scope decision; see docs/phase_logs/phase_0_signoff.md"
+}

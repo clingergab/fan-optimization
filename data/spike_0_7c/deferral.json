@@ -1,0 +1,9 @@
+{
+  "spec_reference": "docs/plan_R11.md §Phase 0 Spike 0.7c",
+  "deferred_to_v2": true,
+  "reason": "Personal-project V1 scope. The iso-compute Sobol-vs-BO baseline (430 h Phase-0 budget per H7) is deferred. V1 trusts the BO machinery without the formal head-to-head validation.",
+  "v1_substitute": "BO-stall fallback: if Phase 4 Tier-0 best-J_fan does not improve over 20 consecutive acquisitions, switch to hand-picked diverse candidates rather than burn more compute. Diverse-candidate rule: pick from structurally-different Layer-2 archetypes (one louver-heavy, one TPMS-heavy, one near-baseline) rather than 5 small variations of one shape.",
+  "revisit_trigger": "V2 scope, OR if V1 BO stalls and the operator wants to know whether BO is fundamentally outperforming Sobol on this objective.",
+  "deferred_date": "2026-05-13",
+  "deferred_by": "Phase-0 scope decision; see docs/phase_logs/phase_0_signoff.md"
+}

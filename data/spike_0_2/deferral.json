@@ -1,0 +1,9 @@
+{
+  "spec_reference": "docs/plan_R11.md §Phase 0 Spike 0.2",
+  "deferred_to_v2": true,
+  "reason": "Personal-project V1 scope. Hardware-based rotational-inertia measurement (torsion-pendulum rig, calibrated reference rod) is deliberately out-of-scope for V1. Phase 4-6 use the generator-emitted analytic I_wrist_kgm2 from §6.4 instead of the bench-measured value.",
+  "v1_substitute": "Analytic I_wrist_kgm2 from src/fanopt/geometry/schema.py + the §9.7 generator's i_wrist_assembly pass. Spike 0.4 force-balance uses this analytic value with a bumped 3x safety factor (was 2x) to absorb unverified-inertia uncertainty per docs/phase_logs/phase_0_signoff.md.",
+  "revisit_trigger": "V2 scope, after V1 ships a fan that feels meaningfully better than the printed baseline. Re-run with the torsional pendulum rig per docs/spike_0_2_protocol.md to validate the analytic I_wrist against a measured one.",
+  "deferred_date": "2026-05-13",
+  "deferred_by": "Phase-0 scope decision; see docs/phase_logs/phase_0_signoff.md"
+}
