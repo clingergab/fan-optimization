@@ -1,19 +1,118 @@
 #!/usr/bin/env python
-"""Phase 4 — full multi-fidelity BO loop — scaffolded per docs/plan_R11.md §Phase 4.
+"""Phase 4 — multi-objective BO panel shape optimization (V1-slim Stage 2).
 
-CLI entry point; real logic lands when the corresponding phase is implemented.
-Run with `python scripts/run_phase4_bo.py --help` once flags land.
+Thin CLI over ``fanopt.bo.orchestration.run_campaign``: wires the real CFD
+objective (decode → Path A+ slice → unsteady SU2 → J_fan, plus CadQuery I_wrist
+and plate-bending panel stiffness) and drives the qLogNEHVI + TuRBO campaign,
+persisting a JSONL ledger + checkpoints and writing the final Pareto set.
+
+    export SU2_RUN="$HOME/su2-local/extracted/bin"
+    python scripts/run_phase4_bo.py --out-dir data/phase4_bo --n-init 8 --n-iterations 20
+
+The CFD objective is expensive (~minutes/eval); a full campaign runs on Colab. Use
+small --n-init/--n-iterations for a local smoke.
 """
+
 from __future__ import annotations
 
 import argparse
-import sys
+import json
+from pathlib import Path
+
+import numpy as np
+
+from fanopt.bo.codec import decode
+from fanopt.bo.inertia import fan_i_wrist_kgm2
+from fanopt.bo.objective import PRODUCTION_EVAL_CFG, SliceEvalConfig, evaluate_design
+from fanopt.bo.orchestration import CampaignConfig, ObjectiveFn, pareto_designs, run_campaign
+from fanopt.bo.structural import panel_tip_deflection_m
+from fanopt.utils.ledger import design_hash
+
+
+def make_cfd_objective(
+    out_dir: Path, *, su2_bin: str | None = None, eval_cfg: SliceEvalConfig | None = None
+) -> ObjectiveFn:
+    """Build the real 3-objective CFD evaluation callable for the campaign.
+
+    Each design gets a stable per-hash workdir under ``out_dir/designs`` so a
+    resumed campaign reuses prior CFD output rather than recomputing it.
+    """
+    cfg = eval_cfg or SliceEvalConfig()
+    designs_dir = out_dir / "designs"
+
+    def objective_fn(vector: np.ndarray) -> tuple[float, float, float]:
+        layer1 = decode(vector)
+        workdir = designs_dir / design_hash(layer1.to_dict())
+        res = evaluate_design(
+            vector,
+            workdir,
+            su2_bin=su2_bin,
+            cfg=cfg,
+            inertia_fn=fan_i_wrist_kgm2,
+            structural_fn=panel_tip_deflection_m,
+        )
+        if res.i_wrist_kgm2 is None or res.structural is None:  # pragma: no cover - both injected
+            raise RuntimeError("CFD objective expects inertia + structural evaluators")
+        return (float(res.j_fan), float(res.i_wrist_kgm2), float(res.structural))
+
+    return objective_fn
+
+
+def run(
+    *,
+    out_dir: Path,
+    cfg: CampaignConfig,
+    su2_bin: str | None = None,
+    eval_cfg: SliceEvalConfig | None = None,
+) -> dict[str, object]:
+    """Run the campaign and write ``pareto.json``; return the summary."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    objective_fn = make_cfd_objective(out_dir, su2_bin=su2_bin, eval_cfg=eval_cfg)
+    state = run_campaign(objective_fn, out_dir, cfg)
+    pareto = pareto_designs(state)
+    summary: dict[str, object] = {
+        "n_evaluations": int(state.x.shape[0]),
+        "n_iterations": int(state.iteration),
+        "used_fallback": int(state.used_fallback),
+        "n_pareto": len(pareto),
+        "pareto": pareto,
+    }
+    (out_dir / "pareto.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    return summary
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args(argv)
-    print("Phase 0 scaffold: run_phase4_bo.py is not yet implemented.", file=sys.stderr)
+    parser.add_argument("--out-dir", type=Path, default=Path("data/phase4_bo"))
+    parser.add_argument("--n-init", type=int, default=8)
+    parser.add_argument("--n-iterations", type=int, default=20)
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--stall-patience", type=int, default=5)
+    parser.add_argument("--no-trust-region", action="store_true")
+    parser.add_argument(
+        "--production",
+        action="store_true",
+        help="Use the locked 5-cycle / dt=T/200 unsteady resolution (else the fast demo).",
+    )
+    parser.add_argument("--su2-bin", default=None, help="Path to SU2_CFD (default: $SU2_RUN/PATH)")
+    args = parser.parse_args(argv)
+
+    cfg = CampaignConfig(
+        n_init=args.n_init,
+        n_iterations=args.n_iterations,
+        batch_size=args.batch_size,
+        seed=args.seed,
+        stall_patience=args.stall_patience,
+        use_trust_region=not args.no_trust_region,
+    )
+    eval_cfg = PRODUCTION_EVAL_CFG if args.production else None
+    summary = run(out_dir=args.out_dir, cfg=cfg, su2_bin=args.su2_bin, eval_cfg=eval_cfg)
+    print(json.dumps({k: v for k, v in summary.items() if k != "pareto"}, indent=2))
+    print(
+        f"[phase4] {summary['n_pareto']} Pareto designs from "
+        f"{summary['n_evaluations']} evals → {args.out_dir}"
+    )
     return 0
 
 

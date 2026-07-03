@@ -132,6 +132,40 @@ faithful.
 > nonzero. This note documents the screening-metric choice only; it changes no
 > locked decision. Implemented in `fanopt.cfd.phase3.extract_unsteady_rms`.
 
+> **Note added 2026-07-03 (Phase 4 objective spine — objective realizations).**
+> The Stage-2 objective evaluator (`fanopt.bo.objective.evaluate_design`, one
+> design vector → three objectives) realizes the S6 Pareto axes as: **(1)**
+> airflow = `J_fan`, the unsteady 2D-slice cycle-**mean** net momentum flux (the
+> ASO objective — the RMS above is only Phase-3 screening); **(2)** inertia =
+> total `I_wrist` of the deployed fan (`fanopt.bo.inertia`, CadQuery mass
+> properties); **(3)** the structural axis = **panel-stiffness tip deflection**
+> under a fixed nominal pressure (`fanopt.bo.structural`), *not* rib-`u_tip`
+> under the design's CFD pressure. Reason: under compliance-min the rib topology
+> is pressure-scale-invariant and `u_tip ∝ pressure`, so the CFD-pressure variant
+> collapses to ≈linear in the aero load — nearly collinear with axis (1), giving a
+> degenerate front. The panel-stiffness deflection instead depends on the design's
+> Path A+ thickness field (thicker/corrugated → stiffer), an axis independent of
+> airflow. It carries thickness-grid stiffening exactly and corrugation stiffening
+> partially (via the `t³` bending convexity); the full corrugated-shell geometric
+> stiffening is a documented V1 approximation (shell model = later upgrade). This
+> is a V1 realization of the S6 "minimize peak stress" intent as a stiffness
+> proxy; it changes no locked decision.
+
+> **Note added 2026-07-03 (Phase 4 BO machinery + production dt).** The Stage-2
+> optimizer landed: multi-objective **qLogNEHVI + TuRBO** trust-region BO
+> (`fanopt.bo.backbone`), a Sobol-DoE → iterate → JSONL-ledger → checkpoint/resume
+> campaign loop with the Spike-0.7c **diverse-design stall fallback**
+> (`fanopt.bo.orchestration`), and `scripts/run_phase4_bo.py`. Categoricals are
+> searched directly by the codec relaxation (no bandit); **SAASBO** is the
+> high-D (>50-var) fallback. `configs/architecture_enumeration.yaml` **supersedes**
+> the R11 §9.4.1 enumeration (3,240 combos / 20 Layer-2 profiles): V1-slim cut
+> Layer-2 porosity and the bandit, so the space is just the discrete axes
+> (blade_count × print_orientation) with the +10% growth gate retained. **Production
+> unsteady resolution = 5 cycles, dt = T/200** (`PRODUCTION_EVAL_CFG`): the
+> Spike-0.6d.2 (ω·dt)² added-mass bias is geometry-independent at fixed ω and
+> cancels in the relative ranking V1 reports, so T/200 is chosen; T/400 is reserved
+> for Phase-5 PyFR cross-solver work. Resolves the checklist's open dt decision.
+
 ---
 
 ## 5. Re-scoped phases (delta vs `report-final.md` §8)
