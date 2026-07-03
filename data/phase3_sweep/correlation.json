@@ -1,0 +1,65 @@
+{
+  "metric": "steady_cd_vs_unsteady_rms",
+  "r2": 0.9638,
+  "pearson_r": 0.9817,
+  "kendall_tau": 0.7333,
+  "n_designs": 6,
+  "threshold": 0.4,
+  "passed": true,
+  "designs": [
+    {
+      "name": "b3_t22",
+      "steady_cd": 1.072200875,
+      "unsteady_mean": -190892109112.5,
+      "unsteady_rms": 40356220346973.125,
+      "meta": {
+        "n_blades": 3.0
+      }
+    },
+    {
+      "name": "b3_t38",
+      "steady_cd": 0.9127316937,
+      "unsteady_mean": 2233972993137.5,
+      "unsteady_rms": 46099031719156.77,
+      "meta": {
+        "n_blades": 3.0
+      }
+    },
+    {
+      "name": "b4_t30",
+      "steady_cd": 1.711512226,
+      "unsteady_mean": -651572008574.625,
+      "unsteady_rms": 77188803906981.48,
+      "meta": {
+        "n_blades": 4.0
+      }
+    },
+    {
+      "name": "b5_t22",
+      "steady_cd": 8.004262313,
+      "unsteady_mean": -320799954567.5,
+      "unsteady_rms": 157855086122424.16,
+      "meta": {
+        "n_blades": 5.0
+      }
+    },
+    {
+      "name": "b5_t38",
+      "steady_cd": 8.535345748,
+      "unsteady_mean": -235303784401.25,
+      "unsteady_rms": 175222625143090.0,
+      "meta": {
+        "n_blades": 5.0
+      }
+    },
+    {
+      "name": "b4_t30_wide",
+      "steady_cd": 2.503099093,
+      "unsteady_mean": -126000057750.0,
+      "unsteady_rms": 57862204242103.66,
+      "meta": {
+        "n_blades": 4.0
+      }
+    }
+  ]
+}

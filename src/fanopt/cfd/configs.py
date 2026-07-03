@@ -30,6 +30,7 @@ import jinja2
 from fanopt.geometry.schema import (
     F_WAVE_HZ,
     L_WRIST_TO_TIP_M,
+    OMEGA_SHM_RAD_PER_S,
     PITCHING_AMPL_VEC,
     PITCHING_OMEGA_VEC,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "FREESTREAM_DIRECTION_2D_RETURN",
     "render_unsteady_cfg",
     "render_steady_cfg",
+    "render_slice_unsteady_cfg",
     "render_slice_steady_cfg",
     "render_benchmark_cfg",
     "render_thin_plate_2d_pitching_cfg",
@@ -125,20 +127,22 @@ def _env() -> jinja2.Environment:
     )
 
 
-def _unsteady_defaults(*, n_cycles: int = 5, inner_iter: int = 100) -> dict[str, Any]:
+def _unsteady_defaults(
+    *, n_cycles: int = 5, inner_iter: int = 100, steps_per_cycle: int = 200
+) -> dict[str, Any]:
     """Compute the Tier-1 time-stepping defaults from locked kinematics.
 
-    Plan §0 + §3.2.3 lock:
-      - dt = T_cycle / 200 = 2.5 ms
-      - max_time = n_cycles * T_cycle
-      - time_iter = n_cycles * 200
+    Plan §0 + §3.2.3 lock: ``dt = T_cycle / 200`` (steps_per_cycle=200),
+    ``max_time = n_cycles · T_cycle``, ``time_iter = n_cycles · steps_per_cycle``.
+    ``steps_per_cycle`` may be reduced below 200 only for the Phase 3 demo sweep
+    (faster, coarser dt) — production ranking uses 200.
     """
     T = 1.0 / F_WAVE_HZ
-    dt = T / 200.0
+    dt = T / steps_per_cycle
     return {
         "time_step": dt,
         "max_time": n_cycles * T,
-        "time_iter": n_cycles * 200,
+        "time_iter": n_cycles * steps_per_cycle,
         "inner_iter": inner_iter,
     }
 
@@ -419,6 +423,60 @@ def render_thin_plate_2d_pitching_cfg(
             time_iter=time_iter,
             inner_iter=inner_iter,
             cfl_number=cfl_number,
+        )
+    except jinja2.UndefinedError as e:
+        raise TemplateRenderError(f"missing template variable: {e}") from e
+
+
+# Default mid-radius tangential-sweep plunge amplitude. Physical value at
+# r_mid ≈ 0.15 m is r_mid·θ_max ≈ 0.105 m; reduced here to keep the body in the
+# resolved near-field on a uniform mesh (numerical-vs-physical trade; tunable).
+SLICE_PLUNGE_AMPL_M: float = 0.05
+
+
+def render_slice_unsteady_cfg(
+    *,
+    mesh_filename: str,
+    marker_fan: str = "FAN",
+    marker_farfield: str = "FARFIELD",
+    marker_cascade: str | None = None,
+    reynolds_number: float = REYNOLDS_NUMBER_GLOBAL,
+    reynolds_length: float = L_WRIST_TO_TIP_M,
+    plunging_omega: float = OMEGA_SHM_RAD_PER_S,
+    plunging_ampl: float = SLICE_PLUNGE_AMPL_M,
+    n_cycles: int = 5,
+    inner_iter: int = 50,
+    steps_per_cycle: int = 200,
+    cfl_number: float = 1.0,
+) -> str:
+    """Render `slice_unsteady.cfg.j2` — 2D unsteady mid-radius slice.
+
+    Rigid PLUNGING oscillation in x (the tangential sweep) in still air
+    (MACH=1e-9), dual-time-stepping, low-Mach preconditioning — the unsteady
+    counterpart of ``render_slice_steady_cfg`` for the Phase 3 correlation gate.
+    """
+    if plunging_ampl <= 0:
+        raise TemplateRenderError(f"plunging_ampl must be > 0; got {plunging_ampl}")
+    timestep_defaults = _unsteady_defaults(
+        n_cycles=n_cycles, inner_iter=inner_iter, steps_per_cycle=steps_per_cycle
+    )
+    env = _env()
+    try:
+        tpl = env.get_template("slice_unsteady.cfg.j2")
+    except jinja2.TemplateNotFound as e:
+        raise TemplateRenderError(f"template not found: {e}") from e
+    try:
+        return tpl.render(
+            mesh_filename=mesh_filename,
+            marker_fan=marker_fan,
+            marker_farfield=marker_farfield,
+            marker_cascade=marker_cascade,
+            reynolds_number=reynolds_number,
+            reynolds_length=reynolds_length,
+            plunging_omega=plunging_omega,
+            plunging_ampl=plunging_ampl,
+            cfl_number=cfl_number,
+            **timestep_defaults,
         )
     except jinja2.UndefinedError as e:
         raise TemplateRenderError(f"missing template variable: {e}") from e
