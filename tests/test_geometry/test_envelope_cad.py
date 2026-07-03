@@ -17,7 +17,7 @@ if importlib.util.find_spec("cadquery") is None:
 
 import cadquery as cq
 
-from fanopt.geometry.envelope import Layer1Params
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
 from fanopt.geometry.envelope_cad import (
     FOURIER_PHASES_RAD,
     LOFT_START_EPS_M,
@@ -49,7 +49,7 @@ def _canonical_layer1(
         blade_count=10,
         camber_knots_m=camber_knots_m,
         twist_knots_rad=twist_knots_rad,
-        thickness_knots_m=thickness_knots_m,
+        thickness_field=ThicknessGridField.from_radial_knots(thickness_knots_m),
         edge_profile="rounded",
         fourier_le_amplitudes=fourier_le_amplitudes,
         fourier_te_amplitudes=fourier_te_amplitudes,
@@ -453,7 +453,7 @@ def test_edge_profile_currently_ignored() -> None:
         blade_count=10,
         camber_knots_m=(0.0, 0.002, 0.001),
         twist_knots_rad=(0.0, 0.0),
-        thickness_knots_m=(0.0030, 0.0028, 0.0026),
+        thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
         fourier_le_amplitudes=(0.0, 0.0, 0.0),
         fourier_te_amplitudes=(0.0, 0.0, 0.0),
     )

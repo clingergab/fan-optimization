@@ -11,7 +11,7 @@ if importlib.util.find_spec("cadquery") is None:
 
 import cadquery as cq
 
-from fanopt.geometry.envelope import Layer1Params
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
 from fanopt.geometry.fields import Layer2Params, LouverField
 from fanopt.geometry.generator import (
     BladeDesignParams,
@@ -29,7 +29,7 @@ def _canonical_design() -> BladeDesignParams:
             blade_count=10,
             camber_knots_m=(0.0, 0.002, 0.001),
             twist_knots_rad=(0.0, 0.0),
-            thickness_knots_m=(0.0030, 0.0028, 0.0026),
+            thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
             edge_profile="rounded",
             fourier_le_amplitudes=(0.05, 0.0, 0.0),
             fourier_te_amplitudes=(0.0, 0.05, 0.0),
@@ -131,8 +131,6 @@ def test_layer2_louver_activation_reduces_volume() -> None:
             louver=LouverField(active=True, count=6, width_m=0.001, polarity="subtract"),
             texture=d_inactive.layer2.texture,
             edge=d_inactive.layer2.edge,
-            noise=d_inactive.layer2.noise,
-            tpms=d_inactive.layer2.tpms,
         ),
         layer3=d_inactive.layer3,
         layer4=d_inactive.layer4,

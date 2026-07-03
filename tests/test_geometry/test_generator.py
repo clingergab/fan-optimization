@@ -13,8 +13,8 @@ from __future__ import annotations
 import json
 
 from fanopt.geometry import generator as gen
-from fanopt.geometry.envelope import Layer1Params
-from fanopt.geometry.fields import Layer2Params, LouverField, NoiseField
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
+from fanopt.geometry.fields import EdgeFeatureField, Layer2Params, LouverField
 from fanopt.geometry.generator import (
     BladeDesignParams,
     GenerationStatus,
@@ -32,7 +32,7 @@ def _canonical_layer1(camber_knots_m: tuple[float, ...] = (0.001, 0.002, 0.001))
         blade_count=10,
         camber_knots_m=camber_knots_m,
         twist_knots_rad=(0.0, 0.0),
-        thickness_knots_m=(0.0030, 0.0028, 0.0026),
+        thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
         edge_profile="rounded",
         fourier_le_amplitudes=(0.05, 0.0, 0.0),
         fourier_te_amplitudes=(0.0, 0.05, 0.0),
@@ -107,9 +107,7 @@ def test_round_trip_with_active_layer2_and_layer3() -> None:
             polarity="subtract",
         ),
         texture=Layer2Params.all_inactive().texture,
-        edge=Layer2Params.all_inactive().edge,
-        noise=NoiseField(active=True, threshold_retention=0.6),
-        tpms=Layer2Params.all_inactive().tpms,
+        edge=EdgeFeatureField(active=True, count=5, depth_m=0.001),
     )
     l3 = Layer3Primitive(
         present=True,
@@ -247,11 +245,11 @@ def test_generate_blade_layer3_records_when_present() -> None:
 
 
 def test_generate_blade_layer2_fixed_application_order() -> None:
-    """Plan §9.7: Layer 2 fields apply in fixed order TPMS → noise →
-    louver → texture → edge."""
+    """Layer 2 fields apply in fixed order louver → texture → edge
+    (porosity fields cut per V1-Slim S1)."""
     result = generate_blade(_canonical_design())
     l2 = next(ld for ld in result.layer_descriptions if ld.layer_index == 2)
-    assert l2.description["application_order"] == ["tpms", "noise", "louver", "texture", "edge"]
+    assert l2.description["application_order"] == ["louver", "texture", "edge"]
 
 
 def test_generate_blade_layer2_applied_fields_match_active() -> None:
@@ -261,17 +259,15 @@ def test_generate_blade_layer2_applied_fields_match_active() -> None:
         layer2=Layer2Params(
             louver=LouverField(active=True, count=6, width_m=0.001),
             texture=Layer2Params.all_inactive().texture,
-            edge=Layer2Params.all_inactive().edge,
-            noise=NoiseField(active=True, threshold_retention=0.6),
-            tpms=Layer2Params.all_inactive().tpms,
+            edge=EdgeFeatureField(active=True, count=5, depth_m=0.001),
         ),
         layer3=Layer3Primitive.absent(),
         layer4=_canonical_layer4(),
     )
     result = generate_blade(design)
     l2 = next(ld for ld in result.layer_descriptions if ld.layer_index == 2)
-    # Application order: tpms (off) → noise (on) → louver (on) → texture/edge (off)
-    assert l2.description["applied_fields"] == ["noise", "louver"]
+    # Application order: louver (on) → texture (off) → edge (on)
+    assert l2.description["applied_fields"] == ["louver", "edge"]
 
 
 def test_generate_blade_returns_panel_domain_mask() -> None:

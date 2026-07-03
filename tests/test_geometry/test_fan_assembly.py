@@ -13,7 +13,7 @@ if importlib.util.find_spec("cadquery") is None:
 import cadquery as cq
 
 from fanopt.geometry.assembly_cad import make_vunit_blade
-from fanopt.geometry.envelope import Layer1Params
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
 from fanopt.geometry.fan_assembly import (
     compute_centre_of_mass,
     compute_i_wrist_kgm2,
@@ -25,7 +25,6 @@ from fanopt.geometry.generator import BladeDesignParams
 from fanopt.geometry.manufacturability import Layer4Params
 from fanopt.geometry.primitives import Layer3Primitive
 from fanopt.geometry.schema import (
-    D_HANDLE_M,
     INTER_BLADE_ANGLE_RAD,
     MAX_TOTAL_MASS_KG,
     RHO_PETG_KG_PER_M3,
@@ -38,7 +37,7 @@ def _canonical_design(blade_count: int = 10) -> BladeDesignParams:
             blade_count=blade_count,
             camber_knots_m=(0.0, 0.002, 0.001),
             twist_knots_rad=(0.0, 0.0),
-            thickness_knots_m=(0.0030, 0.0028, 0.0026),
+            thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
             edge_profile="rounded",
             fourier_le_amplitudes=(0.0, 0.0, 0.0),
             fourier_te_amplitudes=(0.0, 0.0, 0.0),

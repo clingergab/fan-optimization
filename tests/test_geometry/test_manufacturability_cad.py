@@ -14,7 +14,7 @@ if importlib.util.find_spec("cadquery") is None:
 
 import cadquery as cq
 
-from fanopt.geometry.envelope import Layer1Params
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
 from fanopt.geometry.envelope_cad import make_outer_envelope
 from fanopt.geometry.manufacturability import (
     CheckSeverity,
@@ -25,7 +25,6 @@ from fanopt.geometry.manufacturability_cad import (
     run_manufacturability_filter_cad,
 )
 
-
 # ---- fixtures -------------------------------------------------------------
 
 
@@ -34,7 +33,7 @@ def _layer1() -> Layer1Params:
         blade_count=10,
         camber_knots_m=(0.0, 0.002, 0.001),
         twist_knots_rad=(0.0, 0.0),
-        thickness_knots_m=(0.0030, 0.0028, 0.0026),
+        thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
         edge_profile="rounded",
         fourier_le_amplitudes=(0.0, 0.0, 0.0),
         fourier_te_amplitudes=(0.0, 0.0, 0.0),
@@ -70,7 +69,8 @@ def test_filter_returns_all_14_checks() -> None:
     and #6 schema-enforced, which still register as rows)."""
     result = run_manufacturability_filter_cad(_canonical_envelope(), _layer4())
     ids = {c.check_id for c in result.checks}
-    expected = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"}
+    # #9 (noise) / #10 (TPMS) removed with the porosity fields per V1-Slim S1.
+    expected = {"1", "2", "3", "4", "5", "6", "7", "8", "11", "12", "13", "14"}
     assert ids == expected
 
 
@@ -166,12 +166,12 @@ def test_check_8_aspect_ratio_pending() -> None:
     assert "8" in result.pending_cadquery
 
 
-def test_check_9_10_11_hard_bounds_passed() -> None:
+def test_check_11_hard_bound_passed() -> None:
+    """#11 hard bound records PASSED (#9/#10 porosity bounds cut per S1)."""
     result = run_manufacturability_filter_cad(_canonical_envelope(), _layer4())
-    for cid in ("9", "10", "11"):
-        c = _check_by_id(result, cid)
-        assert c.status == CheckStatus.PASSED
-        assert c.severity == CheckSeverity.HARD_BOUND
+    c = _check_by_id(result, "11")
+    assert c.status == CheckStatus.PASSED
+    assert c.severity == CheckSeverity.HARD_BOUND
 
 
 def test_check_12_z_thin_section_passes_on_canonical() -> None:
@@ -235,7 +235,7 @@ def test_result_serializes_to_dict() -> None:
     assert "score" in d
     assert "passed" in d
     assert "checks" in d
-    assert len(d["checks"]) == 14
+    assert len(d["checks"]) == 12  # 14 rows − #9/#10 porosity checks (S1)
 
 
 def test_pending_cadquery_lists_phase2_followups() -> None:

@@ -15,7 +15,7 @@ if importlib.util.find_spec("cadquery") is None:
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import smoke_test
-from fanopt.geometry.envelope import Layer1Params
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
 from fanopt.geometry.fields import Layer2Params
 from fanopt.geometry.generator import BladeDesignParams
 from fanopt.geometry.manufacturability import Layer4Params
@@ -28,7 +28,7 @@ def _design() -> BladeDesignParams:
             blade_count=8,
             camber_knots_m=(0.0, 0.002, 0.001),
             twist_knots_rad=(0.0, 0.0),
-            thickness_knots_m=(0.0030, 0.0028, 0.0026),
+            thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
             edge_profile="rounded",
             fourier_le_amplitudes=(0.0, 0.0, 0.0),
             fourier_te_amplitudes=(0.0, 0.0, 0.0),

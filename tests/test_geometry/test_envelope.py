@@ -12,11 +12,10 @@ from fanopt.geometry.envelope import (
     FOURIER_AMPLITUDE_RELATIVE_MAX,
     TWIST_RANGE_RAD,
     Layer1Params,
+    ThicknessGridField,
 )
 from fanopt.geometry.schema import (
     BLADE_COUNTS,
-    PANEL_THICKNESS_MAX_M,
-    PANEL_THICKNESS_MIN_M,
 )
 
 
@@ -26,7 +25,7 @@ def _canonical_kwargs() -> dict:
         blade_count=10,
         camber_knots_m=(0.001, 0.002, 0.001),
         twist_knots_rad=(0.0, 0.0),
-        thickness_knots_m=(0.0030, 0.0028, 0.0026),
+        thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
         edge_profile="rounded",
         fourier_le_amplitudes=(0.05, 0.0, 0.0),
         fourier_te_amplitudes=(0.0, 0.05, 0.0),
@@ -99,36 +98,12 @@ def test_twist_rejects_1_knot() -> None:
         Layer1Params(**kw)
 
 
-def test_thickness_below_min_fails() -> None:
-    kw = _canonical_kwargs()
-    kw["thickness_knots_m"] = (0.001, 0.003, 0.003)  # 1 mm < 2.2 mm floor
-    with pytest.raises(ValueError, match="thickness_knots_m"):
-        Layer1Params(**kw)
-
-
-def test_thickness_above_max_fails() -> None:
-    kw = _canonical_kwargs()
-    kw["thickness_knots_m"] = (0.003, 0.005, 0.003)  # 5 mm > 3.8 mm cap
-    with pytest.raises(ValueError, match="thickness_knots_m"):
-        Layer1Params(**kw)
-
-
-def test_thickness_requires_exactly_three_knots() -> None:
-    kw = _canonical_kwargs()
-    kw["thickness_knots_m"] = (0.003, 0.003)  # 2 knots, not 3
-    with pytest.raises(ValueError, match="thickness_knots_m"):
-        Layer1Params(**kw)
-
-
-def test_thickness_at_locked_bounds_passes() -> None:
-    """The locked PANEL_THICKNESS_MIN/MAX_M are inclusive bounds."""
-    kw = _canonical_kwargs()
-    kw["thickness_knots_m"] = (
-        PANEL_THICKNESS_MIN_M,
-        PANEL_THICKNESS_MAX_M,
-        PANEL_THICKNESS_MIN_M,
-    )
-    Layer1Params(**kw)
+def test_thickness_validation_delegated_to_field() -> None:
+    """Thickness bounds are enforced by ThicknessGridField (Path A+), which
+    raises at its own construction — before Layer1Params sees it. Full field
+    validation lives in test_thickness_grid_field.py."""
+    with pytest.raises(ValueError, match="outside"):
+        ThicknessGridField.from_radial_knots((0.001, 0.003, 0.003))  # 1 mm < 2.2 mm floor
 
 
 def test_edge_profile_unknown_fails() -> None:

@@ -20,6 +20,16 @@ Sectioning below: **Architectural locks** (Section A) → **Material locks**
 TIER_SPECIFIC) → **BO + campaign locks** (Section D). Sections B-D are
 scaffolding only; Phase 0 Step 0.0 extends them to full coverage.
 
+> **⚠ 2026-07-02 — V1-Slim machinery supersession.** Sections **C (CFD
+> constants)** and **D (BO + campaign)** below describe optimization machinery
+> that is superseded for V1 by `docs/plan_v1_slim_latest.md`: the 3-tier CFD
+> stack collapses to a single search fidelity + verify; K-promotion, 4D
+> hypervolume, cost-tuple, and multi-fidelity-GP locks are retired for V1. The
+> HIGH-12 MACH tier-specific *physics* lock is retained for whatever tiers
+> remain. **Sections A (Architectural) and B (Material) are entirely KEPT** —
+> the slim plan does not touch the physical fan. Full disposition:
+> `plan_v1_slim_latest.md` §7.
+
 ---
 
 ## A. Architectural locks

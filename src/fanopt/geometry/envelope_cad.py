@@ -8,8 +8,9 @@ exercise this module gate themselves on ``importlib.util.find_spec("cadquery")``
 Construction (full Layer 1 — plan §6.2.1):
 
 - **Trapezoidal half-pitch panel** in ``(x, y)``: ``y_max(x) = x · INTER_BLADE_ANGLE_RAD / 2``.
-- **Thickness profile**: 3 spline knots at ``thickness_knots_m`` interpolated
-  along the radial direction (``x / L_BLADE_M``).
+- **Thickness field (Path A+)**: ``params.thickness_field`` — a control-point
+  grid + corrugation evaluated per ``(u=x/L_BLADE_M, v=y/y_max(x))`` on the top
+  face; bilinear over the grid, clamped to the thickness lock (§10 slim plan).
 - **Chordwise camber**: 3-4 spline knots at ``camber_knots_m``, linearly
   interpolated along the chordwise direction (``y / y_max(x)`` ∈ [-1, +1]).
 - **Spanwise twist**: 2-3 spline knots at ``twist_knots_rad``, rotated about
@@ -264,7 +265,10 @@ def make_outer_envelope(
         y_max_base = (x * INTER_BLADE_ANGLE_RAD) / 2.0
         y_le_neg = -y_max_base * _fourier_modulation(x, params.fourier_le_amplitudes)
         y_te_pos = +y_max_base * _fourier_modulation(x, params.fourier_te_amplitudes)
-        thickness = _linear_spline(params.thickness_knots_m, t_x_full)
+        # Path A+ thickness is a 2D field t(u, v) over (radial u = t_x_full,
+        # tangential v = y_norm); evaluate per-y inside the z-functions. The
+        # representative scalar (tangential centre) is kept for the bbox tuple.
+        thickness = params.thickness_field.thickness_at(t_x_full, 0.0)
         twist_rad = _linear_spline(params.twist_knots_rad, t_x_full)
         if flat:
             # Plano-convex constraint: planar bottom face. Whole-cross-section
@@ -272,27 +276,37 @@ def make_outer_envelope(
             # Suppress twist here; Phase 1 followup may add top-face-only twist.
             twist_rad = 0.0
 
+        def _y_norm(y: float) -> float:
+            yn = y / y_max_base if y_max_base > 1e-12 else 0.0
+            return max(-1.0, min(1.0, yn))
+
+        def _thickness_local(y_norm: float) -> float:
+            return params.thickness_field.thickness_at(t_x_full, y_norm)
+
         if flat:
 
             def z_bottom(_y: float) -> float:
                 return 0.0
 
             def z_top(y: float) -> float:
-                y_norm = y / y_max_base if y_max_base > 1e-12 else 0.0
-                y_norm = max(-1.0, min(1.0, y_norm))
-                return thickness + _camber_height(y_norm, params.camber_knots_m)
+                y_norm = _y_norm(y)
+                return _thickness_local(y_norm) + _camber_height(y_norm, params.camber_knots_m)
 
         else:
 
             def z_bottom(y: float) -> float:
-                y_norm = y / y_max_base if y_max_base > 1e-12 else 0.0
-                y_norm = max(-1.0, min(1.0, y_norm))
-                return -thickness / 2.0 - _camber_height(y_norm, params.camber_knots_m) / 2.0
+                y_norm = _y_norm(y)
+                return (
+                    -_thickness_local(y_norm) / 2.0
+                    - _camber_height(y_norm, params.camber_knots_m) / 2.0
+                )
 
             def z_top(y: float) -> float:
-                y_norm = y / y_max_base if y_max_base > 1e-12 else 0.0
-                y_norm = max(-1.0, min(1.0, y_norm))
-                return +thickness / 2.0 + _camber_height(y_norm, params.camber_knots_m) / 2.0
+                y_norm = _y_norm(y)
+                return (
+                    +_thickness_local(y_norm) / 2.0
+                    + _camber_height(y_norm, params.camber_knots_m) / 2.0
+                )
 
         return y_le_neg, y_te_pos, thickness, twist_rad, z_bottom, z_top
 

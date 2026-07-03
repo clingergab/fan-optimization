@@ -336,16 +336,6 @@ def run_manufacturability_filter(
             "bounding-box aspect measurement on each feature solid.",
         ),
         _bound_check(
-            "9",
-            "Noise field threshold retains ≥ 40% material",
-            "Hard parameter bound — schema enforces " "NOISE_THRESHOLD_RETENTION_MIN floor.",
-        ),
-        _bound_check(
-            "10",
-            "TPMS cell size ≥ 3× min feature size",
-            "Hard parameter bound — schema enforces TPMS_CELL_SIZE_MIN_M " "(2.4 mm) floor.",
-        ),
-        _bound_check(
             "11",
             "Fourier envelope amplitude ≤ ±15%",
             "Hard parameter bound — schema enforces "

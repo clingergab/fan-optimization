@@ -16,7 +16,7 @@ if importlib.util.find_spec("cadquery") is None:
 
 import cadquery as cq
 
-from fanopt.geometry.envelope import Layer1Params
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
 from fanopt.geometry.envelope_cad import make_outer_envelope
 from fanopt.geometry.primitives import (
     PRIMITIVE_MARGIN_FROM_EDGE_M,
@@ -30,7 +30,6 @@ from fanopt.geometry.primitives_cad import (
     apply_primitive,
 )
 
-
 # ---- helpers --------------------------------------------------------------
 
 
@@ -40,7 +39,7 @@ def _canonical_envelope() -> cq.Workplane:
         blade_count=10,
         camber_knots_m=(0.0, 0.002, 0.001),
         twist_knots_rad=(0.0, 0.0),
-        thickness_knots_m=(0.0030, 0.0028, 0.0026),
+        thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
         edge_profile="rounded",
         fourier_le_amplitudes=(0.0, 0.0, 0.0),
         fourier_te_amplitudes=(0.0, 0.0, 0.0),
