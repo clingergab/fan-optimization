@@ -26,6 +26,7 @@ from fanopt.cfd.configs import (
     TemplateRenderError,
     render_benchmark_cfg,
     render_slice_steady_cfg,
+    render_slice_unsteady_cfg,
     render_steady_cfg,
     render_thin_plate_2d_pitching_cfg,
     render_unsteady_cfg,
@@ -544,3 +545,45 @@ def test_thin_plate_2d_template_file_exists() -> None:
 
 def test_slice_steady_template_file_exists() -> None:
     assert (CFD_TEMPLATES_DIR / "slice_steady.cfg.j2").exists()
+
+
+# ---- render_slice_unsteady (Tier 1, 2D plunging slice) --------------------
+
+
+def test_slice_unsteady_renders_mach_1e_minus_9() -> None:
+    out = render_slice_unsteady_cfg(mesh_filename="slice.su2")
+    m = re.search(r"^MACH_NUMBER=\s*([\dEe.+-]+)", out, re.MULTILINE)
+    assert m and float(m.group(1)) == pytest.approx(1e-9)
+
+
+def test_slice_unsteady_is_dual_time_stepping() -> None:
+    out = render_slice_unsteady_cfg(mesh_filename="slice.su2")
+    assert "DUAL_TIME_STEPPING-2ND_ORDER" in out
+    assert re.search(r"^TIME_DOMAIN=\s*YES", out, re.MULTILINE)
+
+
+def test_slice_unsteady_plunging_omega_propagates() -> None:
+    out = render_slice_unsteady_cfg(mesh_filename="slice.su2", plunging_omega=7.5)
+    assert re.search(r"^PLUNGING_OMEGA=\s*7\.5\b", out, re.MULTILINE)
+
+
+def test_slice_unsteady_rigid_motion() -> None:
+    out = render_slice_unsteady_cfg(mesh_filename="slice.su2")
+    assert re.search(r"^GRID_MOVEMENT=\s*RIGID_MOTION", out, re.MULTILINE)
+
+
+def test_slice_unsteady_marker_propagation() -> None:
+    out = render_slice_unsteady_cfg(
+        mesh_filename="slice.su2", marker_fan="fan_surface", marker_cascade="cascade_wall"
+    )
+    assert "fan_surface" in out
+    assert re.search(r"^MARKER_SYM=\s*\(\s*cascade_wall", out, re.MULTILINE)
+
+
+def test_slice_unsteady_rejects_nonpositive_amplitude() -> None:
+    with pytest.raises(TemplateRenderError, match="plunging_ampl must be > 0"):
+        render_slice_unsteady_cfg(mesh_filename="slice.su2", plunging_ampl=0.0)
+
+
+def test_slice_unsteady_template_file_exists() -> None:
+    assert (CFD_TEMPLATES_DIR / "slice_unsteady.cfg.j2").exists()

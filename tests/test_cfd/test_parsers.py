@@ -11,6 +11,7 @@ from fanopt.cfd.j_fan import SteadyRun, plane_flux_from_velocity
 from fanopt.cfd.parsers import (
     parse_su2_history_thrust,
     parse_su2_plane_flow_csv,
+    parse_su2_unsteady_force_series,
     plane_flux_series_from_csvs,
     steady_run_from_history,
 )
@@ -143,3 +144,40 @@ def test_plane_flux_series_from_csvs(tmp_path):
 def test_plane_flux_series_requires_paths():
     with pytest.raises(ValueError, match="at least one path"):
         plane_flux_series_from_csvs([])
+
+
+# --- parse_su2_unsteady_force_series ------------------------------------------
+
+
+def test_unsteady_series_keeps_last_inner_iter_per_step(tmp_path):
+    # 2 outer steps, 2 inner iters each; last inner-iter value wins per step.
+    h = _write(
+        tmp_path / "u.csv",
+        "Time_Iter,Inner_Iter,CFx\n0,0,1.0\n0,1,2.0\n1,0,3.0\n1,1,4.0\n",
+    )
+    series = parse_su2_unsteady_force_series(h)
+    assert np.allclose(series, [2.0, 4.0])
+
+
+def test_unsteady_series_length_is_number_of_outer_steps(tmp_path):
+    rows = "\n".join(f"{t},0,{t * 1.5}" for t in range(5))
+    h = _write(tmp_path / "u.csv", "Time_Iter,Inner_Iter,CFx\n" + rows + "\n")
+    assert parse_su2_unsteady_force_series(h).size == 5
+
+
+def test_unsteady_series_missing_force_column_raises(tmp_path):
+    h = _write(tmp_path / "u.csv", "Time_Iter,Inner_Iter,CL\n0,0,1.0\n")
+    with pytest.raises(ValueError, match="no recognized unsteady force column"):
+        parse_su2_unsteady_force_series(h)
+
+
+def test_unsteady_series_missing_time_iter_raises(tmp_path):
+    h = _write(tmp_path / "u.csv", "Inner_Iter,CFx\n0,1.0\n")
+    with pytest.raises(ValueError, match="no Time_Iter column"):
+        parse_su2_unsteady_force_series(h)
+
+
+def test_unsteady_series_no_data_rows_raises(tmp_path):
+    h = _write(tmp_path / "u.csv", "Time_Iter,Inner_Iter,CFx\n")
+    with pytest.raises(ValueError, match="no data rows"):
+        parse_su2_unsteady_force_series(h)

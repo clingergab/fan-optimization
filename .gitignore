@@ -52,6 +52,12 @@ data/spike_0_*/*
 !data/spike_0_*/sub_*_result.json
 !data/spike_0_*/deferral.json
 
+# Phase 3 correlation sweep — track only the tiny result JSON; the per-design
+# SU2 dumps (history/restart/vtu) stay ignored.
+!data/phase3_sweep/
+data/phase3_sweep/*
+!data/phase3_sweep/correlation.json
+
 # Local Drive sync
 gdrive/
 *.bak

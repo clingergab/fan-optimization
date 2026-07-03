@@ -1,11 +1,82 @@
-% SU2 config template — Phase 3 inner-loop verification slice
-% Renderer: src/fanopt/cfd/configs.py
-% Source-of-truth: docs/plan_R11.md §9.4.1 + §Phase 3
+% SU2 config — Phase 3 2D-unsteady mid-radius slice (steady↔unsteady correlation).
+% Renderer: src/fanopt/cfd/configs.py — render_slice_unsteady_cfg().
 %
-% Phase 0 scaffold. Real .cfg.j2 content (key/value pairs + Jinja2 substitutions
-% for the locked constants in §9.4.1 CROSS_TIER / TIER_SPECIFIC dicts) lands
-% when Phase 0 step 0.0 + Spike 0.6c (.1 / .2) complete.
+% Models the mid-radius panel sweeping tangentially in STILL AIR: a rigid
+% PLUNGING oscillation in the streamwise (x) direction, MACH=1e-9 (body-in-
+% still-air, matching the Tier-1 lock), low-Mach preconditioning, dual-time.
+% This is the unsteady counterpart of slice_steady.cfg; the two are compared
+% across designs in the Phase 3 correlation gate.
 %
-% Locks the rendered .cfg must satisfy (tested by tests/test_cfd/):
-%   - test_unsteady_freestream_consistency.py (HIGH-12 Round-9)
-%   - test_su2_config_generation.py (§9.4.1 §12 CI gate)
+% Motion: x(t) = plunging_ampl · sin(plunging_omega · t). Unlike the 3D pitch,
+% the mid-radius local motion is a tangential translation, so we PLUNGE in x
+% rather than PITCH about y.
+% --------------------------------------------------------------------------
+
+SOLVER= NAVIER_STOKES
+KIND_TURB_MODEL= NONE
+MATH_PROBLEM= DIRECT
+RESTART_SOL= NO
+
+% --- MACH=1e-9 body-in-still-air (Tier-1 lock; SU2 v8.0.1 fallback path) ---
+MACH_NUMBER= 1e-9
+REF_DIMENSIONALIZATION= FREESTREAM_PRESS_EQ_ONE
+FREESTREAM_TEMPERATURE= 300.0
+FREESTREAM_PRESSURE= 101325.0
+REYNOLDS_NUMBER= {{ reynolds_number }}
+REYNOLDS_LENGTH= {{ reynolds_length }}
+
+% --- low-Mach preconditioning ---
+LOW_MACH_PREC= YES
+MIN_ROE_TURKEL_PREC= 0.01
+MAX_ROE_TURKEL_PREC= 0.2
+
+% --- dual-time-stepping over the cycles ---
+TIME_DOMAIN= YES
+TIME_MARCHING= DUAL_TIME_STEPPING-2ND_ORDER
+TIME_STEP= {{ time_step }}
+MAX_TIME= {{ max_time }}
+TIME_ITER= {{ time_iter }}
+INNER_ITER= {{ inner_iter | default(50) }}
+
+% --- rigid plunging in x (mid-radius tangential sweep in still air) ---
+GRID_MOVEMENT= RIGID_MOTION
+MOTION_ORIGIN= 0.0 0.0 0.0
+PLUNGING_OMEGA= {{ plunging_omega }} 0.0 0.0
+PLUNGING_AMPL=  {{ plunging_ampl }} 0.0 0.0
+
+% --- boundary conditions ---
+MARKER_HEATFLUX= ( {{ marker_fan }}, 0.0 )
+MARKER_FAR= ( {{ marker_farfield }} )
+{% if marker_cascade %}MARKER_SYM= ( {{ marker_cascade }} )
+{% endif %}MARKER_MONITORING= ( {{ marker_fan }} )
+MARKER_PLOTTING= ( {{ marker_fan }} )
+
+% --- output ---
+MESH_FILENAME= {{ mesh_filename }}
+MESH_FORMAT= SU2
+TABULAR_FORMAT= CSV
+CONV_FILENAME= history
+SURFACE_FILENAME= surface_flow
+VOLUME_FILENAME= flow
+% Correlation reads history.csv only — write the volume field rarely (a
+% full .vtu + restart per time step is ~1 GB/design of dead weight).
+OUTPUT_FILES= ( RESTART )
+OUTPUT_WRT_FREQ= 100000
+HISTORY_OUTPUT= ( ITER, RMS_RES, AERO_COEFF, FLOW_COEFF )
+
+% --- numerics ---
+NUM_METHOD_GRAD= WEIGHTED_LEAST_SQUARES
+CFL_NUMBER= {{ cfl_number | default(1.0) }}
+CONV_NUM_METHOD_FLOW= ROE
+MUSCL_FLOW= YES
+SLOPE_LIMITER_FLOW= VENKATAKRISHNAN
+TIME_DISCRE_FLOW= EULER_IMPLICIT
+LINEAR_SOLVER= FGMRES
+LINEAR_SOLVER_PREC= LU_SGS
+LINEAR_SOLVER_ERROR= 1E-6
+LINEAR_SOLVER_ITER= 25
+
+% --- convergence ---
+CONV_RESIDUAL_MINVAL= -8
+CONV_STARTITER= 10
+SCREEN_WRT_FREQ_INNER= 10

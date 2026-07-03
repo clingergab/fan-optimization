@@ -157,3 +157,39 @@ def plane_flux_series_from_csvs(
         velocity, area = parse_su2_plane_flow_csv(p)
         series.append(plane_flux_from_velocity(velocity, area, n_hat=n_hat, t_hat=t_hat))
     return np.asarray(series, dtype=float)
+
+
+_UNSTEADY_FORCE_CANDIDATES = ("CFx", "CD", "CFz")
+_TIME_ITER_CANDIDATES = ("Time_Iter", "Time_Iter ", "TimeIter", "Cur_Time")
+
+
+def parse_su2_unsteady_force_series(
+    path: str | Path, *, force_candidates: Iterable[str] = _UNSTEADY_FORCE_CANDIDATES
+) -> np.ndarray:
+    """Per-outer-time-step force from an unsteady SU2 history.csv.
+
+    SU2 writes one row per (Time_Iter, Inner_Iter); we keep the LAST inner-iter
+    value at each outer step (the converged sub-iteration). Returns a 1D array
+    of length = number of outer time steps — feed it to
+    :func:`fanopt.cfd.j_fan.reduce_cycles` to get the cycle-averaged J_fan.
+    """
+    header, rows = _read_csv(Path(path))
+    fcol = _detect_column(header, force_candidates)
+    if fcol is None:
+        raise ValueError(
+            f"{path}: no recognized unsteady force column; looked for "
+            f"{tuple(force_candidates)}; found {header}"
+        )
+    tcol = _detect_column(header, _TIME_ITER_CANDIDATES)
+    if tcol is None:
+        raise ValueError(f"{path}: no Time_Iter column; found {header}")
+    if not rows:
+        raise ValueError(f"{path}: unsteady history has no data rows")
+    fi, ti = header.index(fcol), header.index(tcol)
+    by_step: dict[int, float] = {}
+    try:
+        for r in rows:
+            by_step[int(float(r[ti]))] = float(r[fi])  # last write per outer step wins
+    except (ValueError, IndexError) as exc:
+        raise ValueError(f"{path}: malformed unsteady row: {exc}") from exc
+    return np.array([by_step[k] for k in sorted(by_step)], dtype=float)

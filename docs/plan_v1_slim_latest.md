@@ -118,6 +118,20 @@ switch for Stage 3:
 We do not commit the backbone to a proxy before measuring whether the proxy is
 faithful.
 
+> **Note added 2026-07-03 (Phase 3 first run — metric choice).** The correlation
+> discriminator is the unsteady **RMS loading amplitude**, *not* the cycle-mean
+> momentum flux. Empirically (6-design local SU2 sweep): steady `CD` vs unsteady
+> **RMS** → R²=0.96, r=+0.98, τ=+0.73 (**PASS**); steady `CD` vs unsteady
+> **mean** → R²=0.14, r=−0.37 (fail, noise). Reason: the mean net momentum flux
+> (= `J_fan`, the fan's true objective) is ~0 for the *symmetric* baseline
+> panels — up-stroke and down-stroke forces cancel — so it neither converges
+> (206% cycle-to-cycle spread) nor discriminates designs; the RMS amplitude is
+> nonzero, converges within ~1 cycle (<1.4% spread), and is what steady `CD`
+> actually predicts. **`J_fan` remains the final ASO objective** (mean net
+> airflow); the optimizer's job is to find asymmetric shapes that rectify it
+> nonzero. This note documents the screening-metric choice only; it changes no
+> locked decision. Implemented in `fanopt.cfd.phase3.extract_unsteady_rms`.
+
 ---
 
 ## 5. Re-scoped phases (delta vs `report-final.md` §8)
