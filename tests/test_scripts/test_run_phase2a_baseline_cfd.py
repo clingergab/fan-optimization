@@ -31,9 +31,14 @@ def test_extract_baseline_load_delta(tmp_path):
     prod = _history(tmp_path / "prod.csv", 2.0)
     ret = _history(tmp_path / "ret.csv", 0.5)
     load = p2a.extract_baseline_load(prod, ret)
-    assert load["j_fan_steady_proxy"] == pytest.approx(1.5)
-    assert load["drag_productive"] == pytest.approx(2.0)
-    assert load["suggested_pressure_pa"] > 0.0
+    assert load["j_fan_steady_proxy"] == pytest.approx(1.5)  # CD delta 2.0 - 0.5
+    assert load["cd_productive"] == pytest.approx(2.0)
+    assert load["dynamic_pressure_pa"] > 0.0
+
+
+def test_dynamic_pressure_is_a_few_pascals(tmp_path):
+    # V = 0.0064·c(300K) ≈ 2.2 m/s → q ≈ 3 Pa (sanity: physical load scale).
+    assert 1.0 < p2a._dynamic_pressure_pa() < 10.0
 
 
 def test_prepare_baseline_case_writes_mesh_and_cfgs(tmp_path):

@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 from fanopt.cfd.configs import (
     FREESTREAM_DIRECTION_2D_PRODUCTIVE,
     FREESTREAM_DIRECTION_2D_RETURN,
+    MACH_STEADY,
     render_slice_steady_cfg,
 )
 from fanopt.cfd.j_fan import compute_j_fan_steady
@@ -87,14 +89,28 @@ def extract_baseline_load(
         return_history, stroke="return", thrust_candidates=_STREAMWISE_2D_CANDIDATES
     )
     proxy = compute_j_fan_steady([prod, ret])
-    # 2D forces are per unit span; a crude effective pressure = force / chord.
-    suggested_pa = abs(prod.thrust) / panel_chord_m
+    # drag_* are the DIMENSIONLESS CD; the physical load scale is the dynamic
+    # pressure q = ½ρV² at the slice (V = MACH·c). The panel sees ~Cp·q with
+    # Cp ~ O(1), i.e. a few Pa — the analytic rib-TO load is already in range.
+    q_dyn_pa = _dynamic_pressure_pa()
     return {
         "j_fan_steady_proxy": proxy.j_fan_steady_proxy,
-        "drag_productive": proxy.drag_productive,
-        "drag_return": proxy.drag_return,
-        "suggested_pressure_pa": suggested_pa,
+        "cd_productive": proxy.drag_productive,
+        "cd_return": proxy.drag_return,
+        "dynamic_pressure_pa": q_dyn_pa,
+        "suggested_pressure_pa": q_dyn_pa,  # load scale ~q; panel load ~Cp·q
     }
+
+
+def _dynamic_pressure_pa(
+    mach: float = MACH_STEADY, temp_k: float = 300.0, pressure_pa: float = 101325.0
+) -> float:
+    """q = ½ρV² at the steady slice (V = MACH·c, c=√(γRT), ρ=P/RT), standard air."""
+    gamma, r_air = 1.4, 287.05
+    c = math.sqrt(gamma * r_air * temp_k)
+    v = mach * c
+    rho = pressure_pa / (r_air * temp_k)
+    return 0.5 * rho * v**2
 
 
 def main(argv: list[str] | None = None) -> int:
