@@ -58,6 +58,10 @@ __all__ = [
     "PANEL_THICKNESS_MIN_M",
     "PANEL_THICKNESS_MAX_M",
     "PANEL_THICKNESS_KNOT_COUNT",
+    "THICKNESS_GRID_RADIAL_COUNT",
+    "THICKNESS_GRID_TANGENTIAL_COUNT",
+    "CORRUGATION_AMPLITUDE_MAX_M",
+    "CORRUGATION_WAVELENGTH_RANGE",
     # geometry — blade-count + pitch
     "BLADE_COUNT_DEFAULT",
     "BLADE_COUNTS",
@@ -185,7 +189,25 @@ PANEL_THICKNESS_MAX_M: float = 0.0038
 """3.8 mm — folded-stack collision ceiling (2·rib_thickness − folded_clearance)."""
 
 PANEL_THICKNESS_KNOT_COUNT: int = 3
-"""3 spline knots at (t0, t1, t2)."""
+"""3 spline knots at (t0, t1, t2). Superseded by the Path A+ thickness grid
+(see THICKNESS_GRID_* below); retained for the legacy Layer-1 spline until the
+grid integration lands."""
+
+# Path A+ panel thickness field (plan_v1_slim_latest.md §10): a control-point
+# thickness grid + a corrugation family replaces the 3-knot spline. Each grid
+# point is independently bounded to [PANEL_THICKNESS_MIN_M, PANEL_THICKNESS_MAX_M]
+# so the thickness lock + folded-collision floor hold by construction.
+THICKNESS_GRID_RADIAL_COUNT: int = 3
+"""Radial control-point count (hub→tip) of the Path A+ thickness grid."""
+
+THICKNESS_GRID_TANGENTIAL_COUNT: int = 6
+"""Tangential control-point count (across local panel width) of the grid."""
+
+CORRUGATION_AMPLITUDE_MAX_M: float = 0.0008
+"""0.8 mm — max corrugation half-amplitude added onto the grid before clamping."""
+
+CORRUGATION_WAVELENGTH_RANGE: tuple[float, float] = (0.2, 1.0)
+"""Normalized corrugation wavelength range (fraction of the parametric domain)."""
 
 
 # ---------------------------------------------------------------------------

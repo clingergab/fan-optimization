@@ -16,7 +16,7 @@ if importlib.util.find_spec("cadquery") is None:
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import fan_addin
-from fanopt.geometry.envelope import Layer1Params
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
 from fanopt.geometry.fields import Layer2Params
 from fanopt.geometry.generator import BladeDesignParams
 from fanopt.geometry.manufacturability import Layer4Params
@@ -31,7 +31,7 @@ def _canonical_design_dict(blade_count: int = 8) -> dict:
             blade_count=blade_count,
             camber_knots_m=(0.0, 0.002, 0.001),
             twist_knots_rad=(0.0, 0.0),
-            thickness_knots_m=(0.0030, 0.0028, 0.0026),
+            thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
             edge_profile="rounded",
             fourier_le_amplitudes=(0.0, 0.0, 0.0),
             fourier_te_amplitudes=(0.0, 0.0, 0.0),
@@ -69,7 +69,9 @@ def test_main_exports_per_blade_stl_and_assembly_step(tmp_path: Path) -> None:
 
 
 def test_main_returns_2_on_missing_params_file(tmp_path: Path) -> None:
-    rc = fan_addin.main(["--params", str(tmp_path / "nope.json"), "--out-dir", str(tmp_path / "out")])
+    rc = fan_addin.main(
+        ["--params", str(tmp_path / "nope.json"), "--out-dir", str(tmp_path / "out")]
+    )
     assert rc == 2
 
 

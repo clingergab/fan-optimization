@@ -15,30 +15,25 @@ if importlib.util.find_spec("cadquery") is None:
 
 import cadquery as cq
 
-from fanopt.geometry.envelope import Layer1Params
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
 from fanopt.geometry.envelope_cad import make_outer_envelope
 from fanopt.geometry.fields import (
     EdgeFeatureField,
     Layer2Params,
     LouverField,
-    NoiseField,
     TextureField,
-    TpmsField,
 )
 from fanopt.geometry.fields_cad import (
     PANEL_X_CARVE_RANGE_M,
     apply_edge_feature_field,
     apply_layer2_fields,
     apply_louver_field,
-    apply_noise_field,
     apply_texture_field,
-    apply_tpms_field,
 )
 from fanopt.geometry.schema import (
     CLICK_FOOTPRINT_X_RANGE_M,
     HUB_RADIUS_M,
 )
-
 
 # ---- fixtures -------------------------------------------------------------
 
@@ -49,7 +44,7 @@ def _envelope() -> cq.Workplane:
         blade_count=10,
         camber_knots_m=(0.0, 0.002, 0.001),
         twist_knots_rad=(0.0, 0.0),
-        thickness_knots_m=(0.0030, 0.0030, 0.0030),
+        thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0030, 0.0030)),
         edge_profile="rounded",
         fourier_le_amplitudes=(0.0, 0.0, 0.0),
         fourier_te_amplitudes=(0.0, 0.0, 0.0),
@@ -68,82 +63,6 @@ def test_panel_carve_range_outboard_clears_click_footprint() -> None:
     assert PANEL_X_CARVE_RANGE_M[1] < CLICK_FOOTPRINT_X_RANGE_M[0]
     # ≥ 5 mm safety margin
     assert CLICK_FOOTPRINT_X_RANGE_M[0] - PANEL_X_CARVE_RANGE_M[1] >= 0.005 - 1e-9
-
-
-# ---- TPMS field -----------------------------------------------------------
-
-
-def test_tpms_inactive_returns_input_unchanged() -> None:
-    env = _envelope()
-    vol_before = env.val().Volume()
-    out = apply_tpms_field(env, TpmsField(active=False))
-    assert out is env
-    assert out.val().Volume() == pytest.approx(vol_before)
-
-
-def test_tpms_off_lattice_returns_input_unchanged() -> None:
-    """``lattice_type="off"`` is the explicit no-op state per the schema."""
-    env = _envelope()
-    out = apply_tpms_field(
-        env,
-        TpmsField(active=True, lattice_type="off", cell_size_m=0.005),
-    )
-    assert out.val().Volume() == pytest.approx(env.val().Volume())
-
-
-def test_tpms_gyroid_reduces_volume() -> None:
-    env = _envelope()
-    vol_before = env.val().Volume()
-    out = apply_tpms_field(
-        env,
-        TpmsField(active=True, lattice_type="gyroid", cell_size_m=0.005),
-    )
-    assert out.val().Volume() < vol_before
-
-
-def test_tpms_thickness_gradient_affects_volume() -> None:
-    """Non-zero thickness_gradient changes the per-cell radius scaling,
-    so it must produce a different volume than gradient=0."""
-    env = _envelope()
-    f0 = TpmsField(active=True, lattice_type="gyroid", cell_size_m=0.005, thickness_gradient=0.0)
-    f1 = TpmsField(active=True, lattice_type="gyroid", cell_size_m=0.005, thickness_gradient=0.4)
-    vol_0 = apply_tpms_field(env, f0).val().Volume()
-    vol_1 = apply_tpms_field(env, f1).val().Volume()
-    assert vol_0 != pytest.approx(vol_1, rel=1e-4)
-
-
-# ---- Noise field ----------------------------------------------------------
-
-
-def test_noise_inactive_returns_input_unchanged() -> None:
-    env = _envelope()
-    out = apply_noise_field(env, NoiseField(active=False))
-    assert out is env
-
-
-def test_noise_reduces_volume_under_60_percent_retention() -> None:
-    env = _envelope()
-    vol_before = env.val().Volume()
-    out = apply_noise_field(
-        env,
-        NoiseField(active=True, x_scale=10.0, y_scale=10.0, threshold_retention=0.60),
-    )
-    assert out.val().Volume() < vol_before
-
-
-def test_noise_higher_retention_removes_less_volume() -> None:
-    """retention=0.95 cuts 5%; retention=0.45 cuts 55%. So the
-    95%-retained shape must be heavier than the 45%-retained shape."""
-    env = _envelope()
-    high = apply_noise_field(
-        env,
-        NoiseField(active=True, x_scale=10.0, y_scale=10.0, threshold_retention=0.95),
-    )
-    low = apply_noise_field(
-        env,
-        NoiseField(active=True, x_scale=10.0, y_scale=10.0, threshold_retention=0.45),
-    )
-    assert high.val().Volume() > low.val().Volume()
 
 
 # ---- Louver field ---------------------------------------------------------
@@ -236,7 +155,11 @@ def test_texture_dimple_reduces_volume() -> None:
     out = apply_texture_field(
         env,
         TextureField(
-            active=True, feature_type="dimple", density_per_cm2=5.0, size_m=0.001, polarity="subtract"
+            active=True,
+            feature_type="dimple",
+            density_per_cm2=5.0,
+            size_m=0.001,
+            polarity="subtract",
         ),
     )
     assert out.val().Volume() < vol_before
@@ -247,7 +170,11 @@ def test_texture_higher_density_removes_more_volume() -> None:
     low = apply_texture_field(
         env,
         TextureField(
-            active=True, feature_type="dimple", density_per_cm2=1.0, size_m=0.001, polarity="subtract"
+            active=True,
+            feature_type="dimple",
+            density_per_cm2=1.0,
+            size_m=0.001,
+            polarity="subtract",
         ),
     )
     high = apply_texture_field(
@@ -390,8 +317,6 @@ def test_apply_layer2_fields_single_active_field_modifies_shape() -> None:
         louver=LouverField(active=True, count=4, width_m=0.001),
         texture=TextureField(active=False),
         edge=EdgeFeatureField(active=False),
-        noise=NoiseField(active=False),
-        tpms=TpmsField(active=False),
     )
     out = apply_layer2_fields(env, params)
     assert out.val().Volume() < vol_before
@@ -405,8 +330,6 @@ def test_apply_layer2_fields_max_three_active_applied_in_order() -> None:
         louver=LouverField(active=True, count=4, width_m=0.001),
         texture=TextureField(active=True, density_per_cm2=2.0, size_m=0.001),
         edge=EdgeFeatureField(active=True, count=6, depth_m=0.001, application="LE"),
-        noise=NoiseField(active=False),
-        tpms=TpmsField(active=False),
     )
     out = apply_layer2_fields(env, params)
     # All three subtract; result must be lighter than any single one alone.
@@ -416,8 +339,6 @@ def test_apply_layer2_fields_max_three_active_applied_in_order() -> None:
             louver=params.louver,
             texture=TextureField(active=False),
             edge=EdgeFeatureField(active=False),
-            noise=NoiseField(active=False),
-            tpms=TpmsField(active=False),
         ),
     )
     assert out.val().Volume() < only_louver.val().Volume()
@@ -431,8 +352,6 @@ def test_apply_layer2_fields_preserves_solid_shape() -> None:
         louver=LouverField(active=True, count=3, width_m=0.001),
         texture=TextureField(active=False),
         edge=EdgeFeatureField(active=False),
-        noise=NoiseField(active=False),
-        tpms=TpmsField(active=False),
     )
     out = apply_layer2_fields(env, params)
     assert out.val().Volume() > 0.0

@@ -21,7 +21,7 @@ from fanopt.geometry.assembly_cad import (
     make_rib,
     make_vunit_blade,
 )
-from fanopt.geometry.envelope import Layer1Params
+from fanopt.geometry.envelope import Layer1Params, ThicknessGridField
 from fanopt.geometry.envelope_cad import LOFT_START_EPS_M
 from fanopt.geometry.fields import Layer2Params
 from fanopt.geometry.generator import BladeDesignParams
@@ -48,7 +48,7 @@ def _canonical_design() -> BladeDesignParams:
             blade_count=10,
             camber_knots_m=(0.0, 0.002, 0.001),
             twist_knots_rad=(0.0, 0.0),
-            thickness_knots_m=(0.0030, 0.0028, 0.0026),
+            thickness_field=ThicknessGridField.from_radial_knots((0.0030, 0.0028, 0.0026)),
             edge_profile="rounded",
             fourier_le_amplitudes=(0.0, 0.0, 0.0),
             fourier_te_amplitudes=(0.0, 0.0, 0.0),
@@ -70,7 +70,7 @@ def _canonical_design() -> BladeDesignParams:
 
 def test_chamfer_bevel_at_midpoint_of_locked_range() -> None:
     expected = sum(CLICK_CHAMFER_BEVEL_RANGE_M) / 2.0
-    assert CHAMFER_BEVEL_M == pytest.approx(expected)
+    assert pytest.approx(expected) == CHAMFER_BEVEL_M
 
 
 def test_chamfer_bevel_within_locked_range() -> None:

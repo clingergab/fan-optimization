@@ -221,7 +221,8 @@ def _apply_layer1_envelope(params: Layer1Params) -> dict[str, Any]:
         "edge_profile": params.edge_profile,
         "camber_knot_count": len(params.camber_knots_m),
         "twist_knot_count": len(params.twist_knots_rad),
-        "thickness_knot_count": len(params.thickness_knots_m),
+        "thickness_grid_points": sum(len(row) for row in params.thickness_field.grid_m),
+        "corrugation_amplitude_m": params.thickness_field.corrugation_amplitude_m,
         "fourier_le_amplitude_max_abs": max(abs(a) for a in params.fourier_le_amplitudes),
         "fourier_te_amplitude_max_abs": max(abs(a) for a in params.fourier_te_amplitudes),
     }
@@ -230,13 +231,10 @@ def _apply_layer1_envelope(params: Layer1Params) -> dict[str, Any]:
 def _apply_layer2_fields(params: Layer2Params) -> dict[str, Any]:
     """Stub for Layer 2 field application.
 
-    Plan §9.7: fields are applied in a fixed order to avoid order-
-    dependent CAD edge cases: TPMS → noise → louver → texture → edge.
-    Today the scaffold records the active fields in that order.
+    Fields are applied in a fixed order to avoid order-dependent CAD edge
+    cases: louver → texture → edge (porosity fields cut per V1-Slim S1).
     """
     fixed_order: tuple[tuple[str, Any], ...] = (
-        ("tpms", params.tpms),
-        ("noise", params.noise),
         ("louver", params.louver),
         ("texture", params.texture),
         ("edge", params.edge),

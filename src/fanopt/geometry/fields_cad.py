@@ -1,39 +1,18 @@
 """Geometry Layer 2 — CadQuery field-application functions.
 
-Implements plan §9.7's Layer 2 step: apply 0–3 of the five field
-families (TPMS, noise, louver, texture, edge) to the Layer 1 envelope
-in the locked sub-order ``TPMS → noise → louver → texture → edge``.
+Applies 0–3 of the three non-porous field families (louver, texture, edge)
+to the Layer 1 envelope in the locked sub-order ``louver → texture → edge``.
+Porosity fields (noise-threshold + TPMS) are cut per V1-Slim S1 — through-blade
+porosity leaks a max-airflow fan's push; emergent 3D form comes from the Path A+
+thickness grid + corrugation instead.
 
-Per plan §9.7 / §6.2.1 Layer 2 is **safe by construction** — the
-schema's bounds guarantee features stay within the envelope (≥ 1 mm
-margin, ≥ 0.8 mm minimum feature). Unlike Layer 3, Layer 2 application
-is expected to succeed and is NOT wrapped in try/except by the
-orchestrator.
+Layer 2 is **safe by construction** — the schema's bounds guarantee features
+stay within the envelope (≥ 1 mm margin, ≥ 0.8 mm minimum feature). Unlike
+Layer 3, Layer 2 application is expected to succeed and is NOT wrapped in
+try/except by the orchestrator.
 
-Phase-1 status and simplifications
-----------------------------------
-
-* ``apply_tpms_field`` is a Phase-1 placeholder: it cuts a regular
-  through-blade grid of cylindrical holes at the gyroid cell pitch.
-  Real triply-periodic minimal surfaces (gyroid, schwarz-diamond) need
-  marching-cubes evaluation of an implicit function, which is out of
-  scope for this CadQuery-only Phase-1 landing. The placeholder
-  honours ``cell_size_m`` (grid pitch) and ``thickness_gradient`` (hole
-  radius varies linearly with x); ``lattice_type`` does not yet alter
-  the cut pattern. The Phase-2 refinement replaces this with a true
-  isosurface.
-
-* ``apply_noise_field`` is a Phase-1 placeholder: instead of a real
-  Perlin/Simplex noise sample it uses a deterministic sum-of-sines
-  field ``S(x', y') = sin(x'·x_scale) + sin(y'·y_scale)`` with
-  ``(x', y')`` rotated by ``rotation_rad`` and offset by ``x_offset``.
-  The field is thresholded at the value that retains
-  ``threshold_retention`` of material under uniform distribution
-  approximation. Real Perlin replaces this in a later refinement.
-
-* ``apply_louver_field``, ``apply_texture_field``, and
-  ``apply_edge_feature_field`` use real CadQuery cuts that exactly
-  honour the schema parameters.
+``apply_louver_field``, ``apply_texture_field``, and ``apply_edge_feature_field``
+use real CadQuery cuts that exactly honour the schema parameters.
 
 Panel-domain mask
 -----------------
@@ -55,9 +34,7 @@ from fanopt.geometry.fields import (
     EdgeFeatureField,
     Layer2Params,
     LouverField,
-    NoiseField,
     TextureField,
-    TpmsField,
 )
 from fanopt.geometry.schema import (
     CLICK_FOOTPRINT_X_RANGE_M,
@@ -68,8 +45,6 @@ from fanopt.geometry.schema import (
 __all__ = [
     "PANEL_X_CARVE_RANGE_M",
     "LAYER2_CARVE_SAFETY_MARGIN_M",
-    "apply_tpms_field",
-    "apply_noise_field",
     "apply_louver_field",
     "apply_texture_field",
     "apply_edge_feature_field",
@@ -110,120 +85,6 @@ def _carve_y_extent_at(x: float) -> float:
     """Conservative half-pitch — 90% of geometric y_max to stay inside
     the envelope under worst-case Fourier modulation."""
     return 0.90 * _panel_y_max_at(x)
-
-
-# ---------------------------------------------------------------------------
-# Layer 2 — TPMS field (Phase-1 placeholder)
-# ---------------------------------------------------------------------------
-
-
-def apply_tpms_field(shape: cq.Workplane, field: TpmsField) -> cq.Workplane:
-    """Cut a through-blade TPMS-like porosity grid into ``shape``.
-
-    Phase-1 placeholder: regular grid of cylindrical holes at the
-    gyroid cell pitch. Honors ``cell_size_m`` (grid pitch) and
-    ``thickness_gradient`` (hole radius varies linearly with x).
-
-    Returns ``shape`` unchanged when ``field.active`` is False or when
-    ``field.lattice_type == "off"``.
-    """
-    if not field.active or field.lattice_type == "off":
-        return shape
-
-    x_lo, x_hi = PANEL_X_CARVE_RANGE_M
-    cs = field.cell_size_m
-    base_r = cs / 6.0  # ~17% of cell size — minimum-feature-respecting
-
-    # Lay out a regular x × y grid; cell pitch = cs. Cylinders along z
-    # span ±2 cell sizes to guarantee through-cutting regardless of
-    # envelope thickness (any extra falls outside the envelope and is
-    # absorbed by the cut).
-    height = 4.0 * cs
-    cutters: list = []
-    x = x_lo + cs / 2.0
-    while x < x_hi:
-        y_extent = _carve_y_extent_at(x)
-        # Local thickness-gradient scaling: + → larger holes at the tip,
-        # − → larger holes at the root. Linear in radial fraction.
-        rad_frac = (x - x_lo) / (x_hi - x_lo)
-        radius_scale = 1.0 + field.thickness_gradient * (rad_frac - 0.5)
-        r = max(base_r * radius_scale, base_r * 0.5)
-        y = -y_extent + cs / 2.0
-        while y < y_extent:
-            cyl = cq.Workplane("XY").circle(r).extrude(height, both=True).translate((x, y, 0))
-            cutters.append(cyl.val())
-            y += cs
-        x += cs
-
-    if not cutters:
-        return shape
-    union = cutters[0]
-    for c in cutters[1:]:
-        union = union.fuse(c)
-    return shape.cut(cq.Workplane("XY").newObject([union]))
-
-
-# ---------------------------------------------------------------------------
-# Layer 2 — Noise field (Phase-1 placeholder)
-# ---------------------------------------------------------------------------
-
-
-def apply_noise_field(shape: cq.Workplane, field: NoiseField) -> cq.Workplane:
-    """Cut a deterministic noise-thresholded pattern into ``shape``.
-
-    Phase-1 placeholder: ``S(x', y') = sin(x'·x_scale) + sin(y'·y_scale)``
-    with ``(x', y')`` rotated by ``rotation_rad`` and offset by
-    ``x_offset``. The field is sampled on a regular grid spanning the
-    panel; cells where ``S`` exceeds the retention-derived threshold are
-    cut. ``threshold_retention`` is honored statistically: the threshold
-    is set so that ``(1 − retention)`` of cells are cut.
-
-    Returns ``shape`` unchanged when ``field.active`` is False.
-    """
-    if not field.active:
-        return shape
-
-    x_lo, x_hi = PANEL_X_CARVE_RANGE_M
-    # Sample grid resolution: roughly 1 sample per mm (panel ~165 mm long).
-    nx = 60
-    ny = 12
-    samples: list[tuple[float, float, float]] = []
-    cos_r = math.cos(field.rotation_rad)
-    sin_r = math.sin(field.rotation_rad)
-    for i in range(nx):
-        t_x = (i + 0.5) / nx
-        x = x_lo + t_x * (x_hi - x_lo)
-        y_extent = _carve_y_extent_at(x)
-        for j in range(ny):
-            t_y = (j + 0.5) / ny
-            y = -y_extent + t_y * (2.0 * y_extent)
-            # Rotated, scaled, offset noise coordinates.
-            xp = (x + field.x_offset) * cos_r - y * sin_r
-            yp = (x + field.x_offset) * sin_r + y * cos_r
-            value = math.sin(xp * field.x_scale * 10.0) + math.sin(yp * field.y_scale * 10.0)
-            samples.append((x, y, value))
-
-    # Threshold: cut the (1 - retention) highest-value cells.
-    samples.sort(key=lambda s: s[2])
-    n_cut = int(len(samples) * (1.0 - field.threshold_retention))
-    cuts = samples[len(samples) - n_cut :] if n_cut > 0 else []
-
-    cutters: list = []
-    cell_dx = (x_hi - x_lo) / nx
-    cell_dy_at = lambda x: 2.0 * _carve_y_extent_at(x) / ny  # noqa: E731
-    height = 0.020  # 20 mm, well past any panel thickness
-    for x, y, _ in cuts:
-        dx = cell_dx
-        dy = cell_dy_at(x)
-        cutter = cq.Workplane("XY").box(dx, dy, height).translate((x, y, 0))
-        cutters.append(cutter.val())
-
-    if not cutters:
-        return shape
-    union = cutters[0]
-    for c in cutters[1:]:
-        union = union.fuse(c)
-    return shape.cut(cq.Workplane("XY").newObject([union]))
 
 
 # ---------------------------------------------------------------------------
@@ -355,9 +216,7 @@ def apply_texture_field(shape: cq.Workplane, field: TextureField) -> cq.Workplan
         while y < y_extent:
             feat = _build_texture_feature(field.feature_type, field.size_m)
             if field.feature_type == "ridge" and abs(field.orientation_rad) > 1e-12:
-                feat = feat.rotate(
-                    (0, 0, 0), (0, 0, 1), math.degrees(field.orientation_rad)
-                )
+                feat = feat.rotate((0, 0, 0), (0, 0, 1), math.degrees(field.orientation_rad))
             feat = feat.translate((x, y, z_centre))
             cutters.append(feat.val())
             y += pitch
@@ -409,12 +268,7 @@ def _build_edge_notch(
         pts = [(-half_x, 0.0), (+half_x, 0.0), (+half_x, depth)]
     else:  # pragma: no cover -- schema rejects
         raise ValueError(f"unknown edge feature_type: {feature_type!r}")
-    return (
-        cq.Workplane("XY")
-        .polyline(pts)
-        .close()
-        .extrude(0.020, both=True)
-    )
+    return cq.Workplane("XY").polyline(pts).close().extrude(0.020, both=True)
 
 
 def apply_edge_feature_field(
@@ -480,14 +334,10 @@ def apply_layer2_fields(
 ) -> cq.Workplane:
     """Apply all active Layer 2 fields in the locked sub-order.
 
-    Order per plan §9.7 + ``generator._apply_layer2_fields``:
-    TPMS → noise → louver → texture → edge. Inactive fields are
-    skipped without modifying the shape.
+    Order per ``generator._apply_layer2_fields``: louver → texture → edge
+    (porosity fields cut per V1-Slim S1). Inactive fields are skipped
+    without modifying the shape.
     """
-    if params.tpms.active:
-        shape = apply_tpms_field(shape, params.tpms)
-    if params.noise.active:
-        shape = apply_noise_field(shape, params.noise)
     if params.louver.active:
         shape = apply_louver_field(shape, params.louver)
     if params.texture.active:

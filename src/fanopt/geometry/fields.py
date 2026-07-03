@@ -1,19 +1,21 @@
-"""Geometry Layer 2 — macro-pattern + procedural-math fields.
+"""Geometry Layer 2 — macro-pattern + surface-feature fields.
 
-Implements the Layer 2 BO design-parameter schema per plan §6.2.1
-(`docs/report-final.md` §6.2.1 + §3.2). Layer 2 covers the 5-field
-library {louver, texture, edge, noise, TPMS}; 0-3 active per design.
+Implements the Layer 2 BO design-parameter schema. Layer 2 covers the
+3-field library {louver, texture, edge}; 0-3 active per design.
+
+**V1-Slim (plan_v1_slim_latest.md §1 S1):** the porosity fields (noise-threshold
++ TPMS) are CUT — through-blade porosity leaks the air a max-airflow fan is
+trying to push. Only non-porous surface-shape families remain; emergent 3D form
+comes from the Path A+ thickness grid + corrugation (see envelope.py), not from
+perforation.
 
 Per the plan: *all Layer 2 fields are safe-by-construction* — parameter
 ranges mathematically guarantee features stay within the envelope
 (≥1 mm margin, ≥0.8 mm minimum feature) and produce coherent CadQuery
-geometry. The schema's bounds reflect those guarantees; the actual
-CadQuery field functions land in Phase 1.
+geometry.
 
-Architecture-bandit constraint (plan §6.2.2 + H1 lock): at most 3 fields
-active at once. The H1 lock further restricts {noise, TPMS} to not
-co-active — enforced at the architecture-enumeration level, not at this
-dataclass level. This module enforces only the cardinality bound.
+Architecture-bandit constraint (plan §6.2.2): at most 3 fields active at once.
+This module enforces the cardinality bound.
 """
 
 from __future__ import annotations
@@ -38,17 +40,9 @@ __all__ = [
     "EDGE_FEATURE_DEPTH_RANGE_M",
     "EDGE_APPLICATION_OPTIONS",
     "EDGE_FEATURE_COUNT_RANGE",
-    "NOISE_SCALE_RANGE",
-    "NOISE_ROTATION_RANGE_RAD",
-    "NOISE_THRESHOLD_RETENTION_MIN",
-    "TPMS_LATTICE_TYPES",
-    "TPMS_CELL_SIZE_MIN_M",
-    "TPMS_THICKNESS_GRADIENT_RANGE",
     "LouverField",
     "TextureField",
     "EdgeFeatureField",
-    "NoiseField",
-    "TpmsField",
     "Layer2Params",
 ]
 
@@ -85,19 +79,6 @@ EDGE_FEATURE_TYPES: tuple[str, ...] = ("serration", "scallop", "smooth-fade")
 EDGE_FEATURE_COUNT_RANGE: tuple[int, int] = (3, 24)
 EDGE_FEATURE_DEPTH_RANGE_M: tuple[float, float] = (0.0005, 0.003)
 EDGE_APPLICATION_OPTIONS: tuple[str, ...] = ("LE", "TE", "both")
-
-NOISE_SCALE_RANGE: tuple[float, float] = (1.0, 50.0)
-NOISE_ROTATION_RANGE_RAD: tuple[float, float] = (
-    -math.radians(90.0),
-    math.radians(90.0),
-)
-NOISE_THRESHOLD_RETENTION_MIN: float = 0.40
-"""Plan: 'threshold value (constrained to retain ≥40% material)'."""
-
-TPMS_LATTICE_TYPES: tuple[str, ...] = ("gyroid", "schwarz-diamond", "off")
-TPMS_CELL_SIZE_MIN_M: float = 3.0 * MIN_FEATURE_SIZE_M
-"""Plan §6.2.1: 'cell size (≥3× min feature size)' → ≥ 2.4 mm."""
-TPMS_THICKNESS_GRADIENT_RANGE: tuple[float, float] = (-0.5, 0.5)
 
 
 def _check_range(name: str, value: float, lo: float, hi: float) -> None:
@@ -194,103 +175,36 @@ class EdgeFeatureField:
 
 
 @dataclass(frozen=True)
-class NoiseField:
-    """Perlin/Simplex noise-threshold field for organic topology."""
-
-    active: bool
-    x_scale: float = 10.0
-    y_scale: float = 10.0
-    rotation_rad: float = 0.0
-    x_offset: float = 0.0
-    threshold_retention: float = 0.6
-
-    def __post_init__(self) -> None:
-        if not self.active:
-            return
-        _check_range("NoiseField.x_scale", self.x_scale, *NOISE_SCALE_RANGE)
-        _check_range("NoiseField.y_scale", self.y_scale, *NOISE_SCALE_RANGE)
-        _check_range("NoiseField.rotation_rad", self.rotation_rad, *NOISE_ROTATION_RANGE_RAD)
-        if self.threshold_retention < NOISE_THRESHOLD_RETENTION_MIN:
-            raise ValueError(
-                f"NoiseField.threshold_retention = {self.threshold_retention} "
-                f"below floor {NOISE_THRESHOLD_RETENTION_MIN} (plan: "
-                f"'≥40% material retained')"
-            )
-        if self.threshold_retention > 1.0:
-            raise ValueError(
-                f"NoiseField.threshold_retention = {self.threshold_retention} "
-                f"above 1.0 (must be a fraction)"
-            )
-
-
-@dataclass(frozen=True)
-class TpmsField:
-    """Triply Periodic Minimal Surface — directional through-blade porosity."""
-
-    active: bool
-    lattice_type: str = "gyroid"
-    cell_size_m: float = TPMS_CELL_SIZE_MIN_M
-    rotation_x_rad: float = 0.0
-    rotation_y_rad: float = 0.0
-    rotation_z_rad: float = 0.0
-    thickness_gradient: float = 0.0
-
-    def __post_init__(self) -> None:
-        if not self.active:
-            return
-        _check_choice("TpmsField.lattice_type", self.lattice_type, TPMS_LATTICE_TYPES)
-        if self.cell_size_m < TPMS_CELL_SIZE_MIN_M:
-            raise ValueError(
-                f"TpmsField.cell_size_m = {self.cell_size_m} below floor "
-                f"{TPMS_CELL_SIZE_MIN_M} (plan: ≥3× min feature size)"
-            )
-        _check_range(
-            "TpmsField.thickness_gradient",
-            self.thickness_gradient,
-            *TPMS_THICKNESS_GRADIENT_RANGE,
-        )
-
-
-@dataclass(frozen=True)
 class Layer2Params:
-    """Layer 2 design parameters — the 5-field library aggregator.
+    """Layer 2 design parameters — the 3-field library aggregator.
 
-    Holds one instance of each of the 5 field types. The ≤3-active
-    cardinality bound is enforced at construction. Other cross-field
-    constraints (e.g., the H1 lock forbidding noise+TPMS co-activation
-    at the architecture-enumeration level) are NOT enforced here.
+    Holds one instance of each of the 3 non-porous field types
+    {louver, texture, edge}. The ≤3-active cardinality bound is enforced at
+    construction. Porosity fields (noise/TPMS) are cut per V1-Slim S1.
     """
 
     louver: LouverField
     texture: TextureField
     edge: EdgeFeatureField
-    noise: NoiseField
-    tpms: TpmsField
 
     def __post_init__(self) -> None:
         active_count = self.active_count()
-        if active_count > MAX_ACTIVE_FIELDS:
+        if active_count > MAX_ACTIVE_FIELDS:  # pragma: no cover - unreachable: 3 fields, cap 3
+            # Defensive: retained so the ≤3 rule still binds if a 4th field is
+            # ever added. With the 3 non-porous fields it cannot currently fire.
             raise ValueError(
                 f"Layer 2 has {active_count} active fields, exceeds "
                 f"MAX_ACTIVE_FIELDS = {MAX_ACTIVE_FIELDS} (plan §6.2.1)"
             )
 
     def active_count(self) -> int:
-        return (
-            int(self.louver.active)
-            + int(self.texture.active)
-            + int(self.edge.active)
-            + int(self.noise.active)
-            + int(self.tpms.active)
-        )
+        return int(self.louver.active) + int(self.texture.active) + int(self.edge.active)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "louver": asdict(self.louver),
             "texture": asdict(self.texture),
             "edge": asdict(self.edge),
-            "noise": asdict(self.noise),
-            "tpms": asdict(self.tpms),
         }
 
     @classmethod
@@ -299,8 +213,6 @@ class Layer2Params:
             louver=LouverField(**d["louver"]),
             texture=TextureField(**d["texture"]),
             edge=EdgeFeatureField(**d["edge"]),
-            noise=NoiseField(**d["noise"]),
-            tpms=TpmsField(**d["tpms"]),
         )
 
     @classmethod
@@ -310,6 +222,4 @@ class Layer2Params:
             louver=LouverField(active=False),
             texture=TextureField(active=False),
             edge=EdgeFeatureField(active=False),
-            noise=NoiseField(active=False),
-            tpms=TpmsField(active=False),
         )

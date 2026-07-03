@@ -137,12 +137,11 @@ def test_round_trip_to_from_dict() -> None:
 
 
 def test_filter_returns_all_protocol_checks() -> None:
-    """The filter emits one CheckResult per §N7 row (currently 14 stubbed)."""
+    """The filter emits one CheckResult per §N7 row. Checks #9 (noise) and #10
+    (TPMS) are removed with the porosity fields per V1-Slim S1."""
     result = run_manufacturability_filter({})
     check_ids = [c.check_id for c in result.checks]
-    # The 14 rows from plan §9.7.3 (excluding the 1b-extension which is a
-    # cross-section pointer to §59.5, not a separate check).
-    expected = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"}
+    expected = {"1", "2", "3", "4", "5", "6", "7", "8", "11", "12", "13", "14"}
     assert set(check_ids) == expected
 
 
@@ -156,13 +155,13 @@ def test_filter_canonical_design_passes() -> None:
 
 def test_filter_severity_assignments_match_plan() -> None:
     """Plan §9.7.3 penalty mapping: critical={3,5,6,14}, moderate={1,2,12},
-    soft={4,8,13}, hard_bound={7,9,10,11}."""
+    soft={4,8,13}, hard_bound={7,11} (#9/#10 porosity checks cut per S1)."""
     result = run_manufacturability_filter({})
     by_id = {c.check_id: c for c in result.checks}
     critical_ids = {"3", "5", "6", "14"}
     moderate_ids = {"1", "2", "12"}
     soft_ids = {"4", "8", "13"}
-    hard_bound_ids = {"7", "9", "10", "11"}
+    hard_bound_ids = {"7", "11"}
     for cid in critical_ids:
         assert by_id[cid].severity == CheckSeverity.CRITICAL
     for cid in moderate_ids:
@@ -174,11 +173,12 @@ def test_filter_severity_assignments_match_plan() -> None:
 
 
 def test_filter_hard_bounds_register_as_passed() -> None:
-    """Plan §9.7.3: hard parameter bounds (#7, #9, #10, #11) are upstream-
-    enforced and never reach the filter as failures — they record PASSED."""
+    """Plan §9.7.3: hard parameter bounds (#7, #11) are upstream-enforced and
+    never reach the filter as failures — they record PASSED. (#9/#10 porosity
+    bounds cut per S1.)"""
     result = run_manufacturability_filter({})
     by_id = {c.check_id: c for c in result.checks}
-    for cid in ("7", "9", "10", "11"):
+    for cid in ("7", "11"):
         assert by_id[cid].status == CheckStatus.PASSED
 
 

@@ -181,8 +181,7 @@ def _check_bridging(shape: cq.Workplane) -> CheckResult:
             severity=CheckSeverity.SOFT,
             status=CheckStatus.FAILED,
             message=(
-                f"{long_horizontal} horizontal edge(s) > 8 mm "
-                f"(longest {longest * 1000:.1f} mm)"
+                f"{long_horizontal} horizontal edge(s) > 8 mm " f"(longest {longest * 1000:.1f} mm)"
             ),
         )
     return CheckResult(
@@ -411,16 +410,6 @@ def run_manufacturability_filter_cad(
             "upstream-enforced.",
         ),
         _check_aspect_ratio(),
-        _bound_check(
-            "9",
-            "Noise field threshold retains ≥ 40% material",
-            "Hard parameter bound — schema enforces NOISE_THRESHOLD_RETENTION_MIN floor.",
-        ),
-        _bound_check(
-            "10",
-            "TPMS cell size ≥ 3× min feature size",
-            "Hard parameter bound — schema enforces TPMS_CELL_SIZE_MIN_M (2.4 mm) floor.",
-        ),
         _bound_check(
             "11",
             "Fourier envelope amplitude ≤ ±15%",
