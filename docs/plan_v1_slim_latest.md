@@ -179,8 +179,12 @@ faithful.
 > which leaves `twist` geometrically inert (reserved for a future 'edge'
 > orientation). Also landed: campaign **results/analysis** (`fanopt.bo.results` +
 > `scripts/analyze_phase4.py` — Pareto + top-k structurally-diverse print picks)
-> and **parallel CFD evaluation** (thread-pool over the DoE/batch, `--workers` /
-> `N_WORKERS`). Changes no locked decision.
+> and **parallel CFD evaluation** — a **process** pool over the DoE/batch
+> (`--workers` / `N_WORKERS`); threads are impossible because gmsh installs a
+> main-thread-only signal handler + keeps a global model, so the objective is a
+> picklable `CfdObjective` shipped to worker processes. Verified with real SU2
+> (2 evals / 2 procs at 186% CPU). Set `BATCH_SIZE = N_WORKERS` to parallelize the
+> BO loop (q-batch qNEHVI), not just the DoE. Changes no locked decision.
 
 ---
 

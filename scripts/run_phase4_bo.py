@@ -19,14 +19,9 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
-
-from fanopt.bo.codec import decode
-from fanopt.bo.inertia import fan_i_wrist_kgm2
-from fanopt.bo.objective import PRODUCTION_EVAL_CFG, SliceEvalConfig, evaluate_design
+from fanopt.bo.cfd_objective import CfdObjective
+from fanopt.bo.objective import PRODUCTION_EVAL_CFG, SliceEvalConfig
 from fanopt.bo.orchestration import CampaignConfig, ObjectiveFn, pareto_designs, run_campaign
-from fanopt.bo.structural import panel_tip_deflection_m
-from fanopt.utils.ledger import design_hash
 
 
 def make_cfd_objective(
@@ -34,28 +29,12 @@ def make_cfd_objective(
 ) -> ObjectiveFn:
     """Build the real 3-objective CFD evaluation callable for the campaign.
 
-    Each design gets a stable per-hash workdir under ``out_dir/designs`` so a
-    resumed campaign reuses prior CFD output rather than recomputing it.
+    Returns a picklable :class:`CfdObjective` (not a closure) so the campaign's
+    process pool can ship it to worker processes. Each design gets a stable
+    per-hash workdir under ``out_dir/designs`` so a resumed campaign reuses prior
+    CFD output rather than recomputing it.
     """
-    cfg = eval_cfg or SliceEvalConfig()
-    designs_dir = out_dir / "designs"
-
-    def objective_fn(vector: np.ndarray) -> tuple[float, float, float]:
-        layer1 = decode(vector)
-        workdir = designs_dir / design_hash(layer1.to_dict())
-        res = evaluate_design(
-            vector,
-            workdir,
-            su2_bin=su2_bin,
-            cfg=cfg,
-            inertia_fn=fan_i_wrist_kgm2,
-            structural_fn=panel_tip_deflection_m,
-        )
-        if res.i_wrist_kgm2 is None or res.structural is None:  # pragma: no cover - both injected
-            raise RuntimeError("CFD objective expects inertia + structural evaluators")
-        return (float(res.j_fan), float(res.i_wrist_kgm2), float(res.structural))
-
-    return objective_fn
+    return CfdObjective(out_dir=out_dir, su2_bin=su2_bin, eval_cfg=eval_cfg or SliceEvalConfig())
 
 
 def run(
@@ -91,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--stall-patience", type=int, default=5)
     parser.add_argument(
-        "--workers", type=int, default=1, help="Parallel CFD threads (DoE + batch); ≈ n_cores."
+        "--workers", type=int, default=1, help="Parallel CFD processes (DoE + batch); ≈ n_cores."
     )
     parser.add_argument("--no-trust-region", action="store_true")
     parser.add_argument(

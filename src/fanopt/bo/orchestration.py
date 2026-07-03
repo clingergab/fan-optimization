@@ -18,7 +18,7 @@ import datetime as _dt
 import time
 from collections import deque
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,7 +69,7 @@ class CampaignConfig:
     num_restarts: int = 8
     raw_samples: int = 128
     mc_samples: int = 128
-    n_workers: int = 1  # parallel CFD threads (DoE + each batch); ≈ n_cores on Colab
+    n_workers: int = 1  # parallel CFD processes (DoE + each batch); ≈ n_cores on Colab
 
 
 # Frozen shared default so it can sit in an argument default (ruff B008-safe).
@@ -217,36 +217,43 @@ def _evaluate_batch(
     n_workers: int = 1,
     on_eval: Callable[[], None] | None = None,
 ) -> np.ndarray:
-    """Evaluate a batch (optionally across ``n_workers`` threads) and log each.
+    """Evaluate a batch (optionally across ``n_workers`` processes) and log each.
 
-    Threads — not processes — because the dominant cost is the SU2 subprocess,
-    which releases the GIL during its run, and the closure objective isn't
-    picklable. Results are collected in batch order, then appended to the ledger
-    serially (deterministic order, no file lock). ``on_eval`` (if given) fires once
-    per completed evaluation — thread-safe for a live progress bar.
+    **Processes, not threads:** gmsh installs a main-thread-only signal handler
+    and keeps a single global model, so the CFD objective cannot run in threads.
+    A process pool isolates each worker; the objective must therefore be picklable
+    (:class:`fanopt.bo.cfd_objective.CfdObjective`). Results are written to the
+    ledger in batch order; ``on_eval`` fires per completed eval (in the main
+    process, via ``as_completed``) for a live progress bar.
     """
+    n = len(batch)
+    ys: list[tuple[float, float, float] | None] = [None] * n
+    times: list[float] = [0.0] * n
 
-    def _timed(v: np.ndarray) -> tuple[tuple[float, float, float], float]:
-        t0 = time.perf_counter()
-        y = objective_fn(v)
-        dt = time.perf_counter() - t0
-        if on_eval is not None:
-            on_eval()  # tqdm.update is thread-safe → live progress under parallelism
-        return y, dt
-
-    if n_workers > 1 and len(batch) > 1:
-        with ThreadPoolExecutor(max_workers=n_workers) as pool:
-            evaluated = list(pool.map(_timed, batch))
+    if n_workers > 1 and n > 1:
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            fut_to_i = {pool.submit(objective_fn, batch[i]): i for i in range(n)}
+            for fut in as_completed(fut_to_i):
+                ys[fut_to_i[fut]] = fut.result()
+                if on_eval is not None:
+                    on_eval()
     else:
-        evaluated = [_timed(v) for v in batch]
+        for i in range(n):
+            t0 = time.perf_counter()
+            ys[i] = objective_fn(batch[i])
+            times[i] = time.perf_counter() - t0
+            if on_eval is not None:
+                on_eval()
 
-    ys: list[tuple[float, float, float]] = []
-    for v, (y, wall_time_s) in zip(batch, evaluated, strict=True):
+    out: list[tuple[float, float, float]] = []
+    for i in range(n):
+        y = ys[i]
+        assert y is not None  # every slot filled by the loop above
         _persist_eval(
-            ledger_path, v, y, iteration=iteration, wall_time_s=wall_time_s, source=source
+            ledger_path, batch[i], y, iteration=iteration, wall_time_s=times[i], source=source
         )
-        ys.append(y)
-    return np.atleast_2d(np.asarray(ys, dtype=float))
+        out.append(y)
+    return np.atleast_2d(np.asarray(out, dtype=float))
 
 
 def run_campaign(

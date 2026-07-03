@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import threading
-import time
 
 import numpy as np
 import pytest
@@ -137,30 +135,16 @@ def test_progress_bar_runs_to_completion(tmp_path):
     assert state.x.shape[0] == 9
 
 
-def test_parallel_doe_uses_multiple_threads(tmp_path):
-    seen: set[str] = set()
-    lock = threading.Lock()
-
-    def obj(v: np.ndarray) -> tuple[float, float, float]:
-        with lock:
-            seen.add(threading.current_thread().name)
-        time.sleep(0.02)  # encourage overlap so the pool dispatches across threads
-        return _smooth_objective(v)
-
-    orch.run_campaign(obj, tmp_path, _fast_cfg(n_init=4, n_iterations=0, n_workers=4))
-    assert len(seen) > 1  # the DoE evaluated across worker threads
-
-
-def test_parallel_results_match_serial(tmp_path):
-    # DoE is deterministic (seeded Sobol); parallel must match serial exactly.
+def test_parallel_processes_match_serial(tmp_path):
+    # DoE is deterministic (seeded Sobol); a process pool must match serial
+    # exactly. _smooth_objective is module-level → picklable to worker processes.
     serial = orch.run_campaign(
         _smooth_objective, tmp_path / "serial", _fast_cfg(n_init=4, n_iterations=0, n_workers=1)
     )
     parallel = orch.run_campaign(
-        _smooth_objective, tmp_path / "par", _fast_cfg(n_init=4, n_iterations=0, n_workers=4)
+        _smooth_objective, tmp_path / "par", _fast_cfg(n_init=4, n_iterations=0, n_workers=2)
     )
     assert np.allclose(serial.y_raw, parallel.y_raw)
-    # ledger has one row per design in both
     for d in ("serial", "par"):
         lines = (tmp_path / d / orch.LEDGER_NAME).read_text().strip().splitlines()
         assert len(lines) == 4
