@@ -44,9 +44,33 @@ __all__ = [
     "EDGE_PROFILES",
     "FOURIER_HARMONIC_COUNT",
     "FOURIER_AMPLITUDE_RELATIVE_MAX",
+    "camber_height_at",
     "ThicknessGridField",
     "Layer1Params",
 ]
+
+
+def camber_height_at(camber_knots_m: tuple[float, ...], y_norm: float) -> float:
+    """Chordwise camber height at ``y_norm ∈ [-1, 1]`` (piecewise-linear over knots).
+
+    Knots land at even positions in ``[-1, 1]`` (3 knots → ``{-1, 0, +1}``). This
+    is the same section camber the CadQuery generator applies to the top face
+    (``envelope_cad._camber_height``) — kept here as a CadQuery-free helper so the
+    2D CFD slice and the 3D blade agree on the mean surface.
+    """
+    if not camber_knots_m:
+        raise ValueError("camber_knots_m must be non-empty")
+    if len(camber_knots_m) == 1:
+        return float(camber_knots_m[0])
+    t = (min(max(y_norm, -1.0), 1.0) + 1.0) / 2.0
+    if t <= 0.0:
+        return float(camber_knots_m[0])
+    if t >= 1.0:
+        return float(camber_knots_m[-1])
+    seg = t * (len(camber_knots_m) - 1)
+    i = int(seg)
+    frac = seg - i
+    return float(camber_knots_m[i]) * (1.0 - frac) + float(camber_knots_m[i + 1]) * frac
 
 
 CAMBER_KNOT_COUNT_RANGE: tuple[int, int] = (3, 4)

@@ -64,11 +64,12 @@ def run(
     cfg: CampaignConfig,
     su2_bin: str | None = None,
     eval_cfg: SliceEvalConfig | None = None,
+    progress: bool = True,
 ) -> dict[str, object]:
     """Run the campaign and write ``pareto.json``; return the summary."""
     out_dir.mkdir(parents=True, exist_ok=True)
     objective_fn = make_cfd_objective(out_dir, su2_bin=su2_bin, eval_cfg=eval_cfg)
-    state = run_campaign(objective_fn, out_dir, cfg)
+    state = run_campaign(objective_fn, out_dir, cfg, progress=progress)
     pareto = pareto_designs(state)
     summary: dict[str, object] = {
         "n_evaluations": int(state.x.shape[0]),
@@ -89,6 +90,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--stall-patience", type=int, default=5)
+    parser.add_argument(
+        "--workers", type=int, default=1, help="Parallel CFD threads (DoE + batch); ≈ n_cores."
+    )
     parser.add_argument("--no-trust-region", action="store_true")
     parser.add_argument(
         "--production",
@@ -96,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Use the locked 5-cycle / dt=T/200 unsteady resolution (else the fast demo).",
     )
     parser.add_argument("--su2-bin", default=None, help="Path to SU2_CFD (default: $SU2_RUN/PATH)")
+    parser.add_argument("--no-progress", action="store_true", help="Disable the tqdm progress bar.")
     args = parser.parse_args(argv)
 
     cfg = CampaignConfig(
@@ -105,9 +110,16 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         stall_patience=args.stall_patience,
         use_trust_region=not args.no_trust_region,
+        n_workers=args.workers,
     )
     eval_cfg = PRODUCTION_EVAL_CFG if args.production else None
-    summary = run(out_dir=args.out_dir, cfg=cfg, su2_bin=args.su2_bin, eval_cfg=eval_cfg)
+    summary = run(
+        out_dir=args.out_dir,
+        cfg=cfg,
+        su2_bin=args.su2_bin,
+        eval_cfg=eval_cfg,
+        progress=not args.no_progress,
+    )
     print(json.dumps({k: v for k, v in summary.items() if k != "pareto"}, indent=2))
     print(
         f"[phase4] {summary['n_pareto']} Pareto designs from "

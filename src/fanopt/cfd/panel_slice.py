@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from fanopt.geometry.envelope import ThicknessGridField
+from fanopt.geometry.envelope import ThicknessGridField, camber_height_at
 from fanopt.geometry.schema import (
     HUB_RADIUS_M,
     INTER_BLADE_ANGLE_RAD,
@@ -105,6 +105,7 @@ def panel_slice_polygons(
     radial_u: float = 0.5,
     n_panels: int = 5,
     n_samples: int = 24,
+    camber_knots_m: tuple[float, ...] | None = None,
     layout: PanelSliceLayout | None = None,
 ) -> list[np.ndarray]:
     """Cross-section polygons for a Path A+ panel at radial station ``radial_u``.
@@ -115,8 +116,12 @@ def panel_slice_polygons(
     closed ``(streamwise, cross)`` polygons centred on ``cross = 0``, ready for
     :func:`fanopt.cfd.mesh_2d_slice.build_cascade_slice_mesh`.
 
-    ``layout`` overrides the radius-derived panel width/gap (tests / bespoke
-    cascades). ``n_samples`` is the tangential resolution of the top face.
+    ``camber_knots_m`` (Layer-1 chordwise camber) bows the top face across the
+    tangential span, matching the CadQuery blade's mean surface — the smooth
+    asymmetry lever the ASO uses for directed thrust. In the slice the airfoil
+    chord *is* the tangential span, so ``v`` doubles as the camber's ``y_norm``.
+    ``layout`` overrides the radius-derived panel width/gap. ``n_samples`` is the
+    tangential resolution of the top face.
     """
     if n_panels < 1:
         raise ValueError(f"n_panels must be >= 1; got {n_panels}")
@@ -133,6 +138,10 @@ def panel_slice_polygons(
     top_offsets = np.array(
         [thickness_field.thickness_at(radial_u, float(v)) for v in v_param], dtype=float
     )
+    if camber_knots_m is not None:
+        top_offsets = top_offsets + np.array(
+            [camber_height_at(camber_knots_m, float(v)) for v in v_param], dtype=float
+        )
 
     polys: list[np.ndarray] = []
     for i in range(n_panels):

@@ -39,7 +39,7 @@ def test_make_cfd_objective_returns_callable(tmp_path):
 
 
 def test_main_writes_pareto_json(tmp_path, monkeypatch):
-    def fake_run_campaign(objective_fn, out_dir, cfg, *, resume=True):
+    def fake_run_campaign(objective_fn, out_dir, cfg, **kwargs):
         return _fake_state(cfg.n_iterations)
 
     monkeypatch.setattr(script, "run_campaign", fake_run_campaign)

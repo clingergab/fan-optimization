@@ -13,6 +13,7 @@ from fanopt.geometry.envelope import (
     TWIST_RANGE_RAD,
     Layer1Params,
     ThicknessGridField,
+    camber_height_at,
 )
 from fanopt.geometry.schema import (
     BLADE_COUNTS,
@@ -159,3 +160,28 @@ def test_twist_at_negative_10deg_exactly_passes() -> None:
     kw = _canonical_kwargs()
     kw["twist_knots_rad"] = (TWIST_RANGE_RAD[0], TWIST_RANGE_RAD[1])
     Layer1Params(**kw)
+
+
+def test_camber_height_at_knot_positions() -> None:
+    knots = (0.0, 0.004, 0.0)  # 3 knots at y_norm = -1, 0, +1
+    assert camber_height_at(knots, -1.0) == pytest.approx(0.0)
+    assert camber_height_at(knots, 0.0) == pytest.approx(0.004)
+    assert camber_height_at(knots, 1.0) == pytest.approx(0.0)
+
+
+def test_camber_height_at_interpolates() -> None:
+    assert camber_height_at((0.0, 0.004, 0.0), -0.5) == pytest.approx(0.002)
+
+
+def test_camber_height_at_clamps_out_of_range() -> None:
+    assert camber_height_at((0.001, 0.005, 0.001), -2.0) == pytest.approx(0.001)
+    assert camber_height_at((0.001, 0.005, 0.001), 2.0) == pytest.approx(0.001)
+
+
+def test_camber_height_at_single_knot() -> None:
+    assert camber_height_at((0.003,), 0.5) == pytest.approx(0.003)
+
+
+def test_camber_height_at_rejects_empty() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        camber_height_at((), 0.0)
