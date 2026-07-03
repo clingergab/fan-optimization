@@ -371,18 +371,18 @@ def test_slice_steady_renders_mach_0_0064() -> None:
 
 
 def test_slice_steady_default_freestream_is_productive_2d() -> None:
-    """Default freestream is 2D PRODUCTIVE = (-1, 0) per C2 sign convention."""
+    """Default freestream PRODUCTIVE = (-1, 0) => flow in -x => AOA 180 (C2)."""
     out = render_slice_steady_cfg(mesh_filename="slice.su2")
-    assert "FREESTREAM_DIRECTION= -1.0 0.0" in out
+    assert "AOA= 180.0" in out
 
 
 def test_slice_steady_return_stroke() -> None:
-    """RETURN-stroke half of the two-eval delta: 2D = (+1, 0)."""
+    """RETURN-stroke half of the two-eval delta: 2D = (+1, 0) => AOA 0."""
     out = render_slice_steady_cfg(
         mesh_filename="slice.su2",
         freestream_direction=FREESTREAM_DIRECTION_2D_RETURN,
     )
-    assert "FREESTREAM_DIRECTION= 1.0 0.0" in out
+    assert "AOA= 0.0" in out
 
 
 def test_slice_steady_time_domain_no() -> None:
@@ -391,15 +391,14 @@ def test_slice_steady_time_domain_no() -> None:
     assert "TIME_DOMAIN= NO" in out
 
 
-def test_slice_steady_uses_2d_freestream_vector() -> None:
-    """2D slice cfg uses a 2-component FREESTREAM_DIRECTION (no z)."""
+def test_slice_steady_uses_aoa_not_freestream_direction() -> None:
+    """SU2 8.0.1 has no FREESTREAM_DIRECTION option — the 2D slice sets the flow
+    direction via AOA, uses a valid FREESTREAM_OPTION, and low-Mach prec."""
     out = render_slice_steady_cfg(mesh_filename="slice.su2")
-    match = re.search(r"^FREESTREAM_DIRECTION=\s*(.+)$", out, re.MULTILINE)
-    assert match is not None, "FREESTREAM_DIRECTION directive not found"
-    components = match.group(1).strip().split()
-    assert (
-        len(components) == 2
-    ), f"Tier -1 slice cfg must emit a 2-vector freestream, got {components}"
+    assert re.search(r"^AOA=\s*\S+", out, re.MULTILINE) is not None
+    assert re.search(r"^FREESTREAM_DIRECTION=", out, re.MULTILINE) is None
+    assert "FREESTREAM_OPTION= TEMPERATURE_FS" in out
+    assert "LOW_MACH_PREC= YES" in out
 
 
 def test_slice_steady_rejects_3d_freestream() -> None:

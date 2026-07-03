@@ -34,17 +34,23 @@ RESTART_SOL= NO
 
 % --- steady freestream (V_tip-based at r_mid) ---
 MACH_NUMBER= {{ mach_number }}
-FREESTREAM_OPTION= REYNOLDS
+FREESTREAM_OPTION= TEMPERATURE_FS
 FREESTREAM_TEMPERATURE= 300.0
 FREESTREAM_PRESSURE= 101325.0
 REYNOLDS_NUMBER= {{ reynolds_number }}
 REYNOLDS_LENGTH= {{ reynolds_length }}
 
-% --- C2 sign-locked freestream direction (2D slice frame) ---
-% PRODUCTIVE stroke: (-1, 0) — air flows -x past the stationary slice that's
-% actually being swept in +x toward the user (locally tangential at r_mid).
-% RETURN stroke: (+1, 0).
-FREESTREAM_DIRECTION= {{ freestream_direction_x }} {{ freestream_direction_y }}
+% --- low-Mach preconditioning (MACH ~ 0.006 is deep in the incompressible
+% regime; the compressible solver is ill-conditioned / diverges without it) ---
+LOW_MACH_PREC= YES
+MIN_ROE_TURKEL_PREC= 0.01
+MAX_ROE_TURKEL_PREC= 0.2
+
+% --- C2 sign-locked freestream direction via ANGLE OF ATTACK ---
+% SU2 has no FREESTREAM_DIRECTION option; the flow direction IS the AOA.
+% PRODUCTIVE (-1, 0) = air flowing -x = AOA 180°; RETURN (+1, 0) = +x = AOA 0°.
+% aoa_deg = atan2(dir_y, dir_x). The C2 productive/return mapping is preserved.
+AOA= {{ aoa_deg }}
 
 % --- steady — no time integration ---
 TIME_DOMAIN= NO
