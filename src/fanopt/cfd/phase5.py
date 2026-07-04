@@ -134,10 +134,15 @@ class _VerifyWorker:
     def __call__(self, design: tuple[str, np.ndarray, float | None]) -> VerifyResult:
         name, vector, j_slice = design
         d_dir = self.workdir / name
-        mesh = prepare_verification_case(vector, d_dir, self.cfg)
-        hist = run_su2(CFG_NAME, d_dir, self.su2_bin)
-        j3d = extract_j_fan_3d(hist, n_cycles=self.cfg.n_cycles)
-        return VerifyResult(name, j3d, j_slice, meta={"n_nodes": float(mesh.n_nodes)})
+        try:
+            mesh = prepare_verification_case(vector, d_dir, self.cfg)
+            hist = run_su2(CFG_NAME, d_dir, self.su2_bin)
+            j3d = extract_j_fan_3d(hist, n_cycles=self.cfg.n_cycles)
+            return VerifyResult(name, j3d, j_slice, meta={"n_nodes": float(mesh.n_nodes)})
+        except Exception as exc:  # fault isolation: one bad design shouldn't sink the batch
+            d_dir.mkdir(parents=True, exist_ok=True)
+            (d_dir / "FAILED.txt").write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
+            return VerifyResult(name, float("nan"), j_slice, meta={"failed": 1.0})
 
 
 def run_verification(
@@ -181,7 +186,11 @@ def run_verification(
 
 def verify_ranking(results: list[VerifyResult]) -> dict[str, object]:
     """Kendall τ between the 2D-slice and 3D J_fan — does the slice ranking hold?"""
-    paired = [(r.j_fan_slice, r.j_fan_3d) for r in results if r.j_fan_slice is not None]
+    paired = [
+        (r.j_fan_slice, r.j_fan_3d)
+        for r in results
+        if r.j_fan_slice is not None and np.isfinite(r.j_fan_3d)  # skip failed 3D runs
+    ]
     if len(paired) < 2:
         return {"n": len(paired), "rank_preserved": None}
     slice_j = np.array([p[0] for p in paired], dtype=float)

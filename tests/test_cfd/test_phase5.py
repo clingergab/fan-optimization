@@ -97,6 +97,28 @@ def test_verify_ranking_ignores_missing_slice():
     assert phase5.verify_ranking(res)["n"] == 1
 
 
+def test_verify_ranking_skips_failed_3d_runs():
+    res = [
+        phase5.VerifyResult("a", j_fan_3d=float("nan"), j_fan_slice=1.0),  # failed 3D
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
+        phase5.VerifyResult("c", j_fan_3d=3.0, j_fan_slice=3.0),
+    ]
+    assert phase5.verify_ranking(res)["n"] == 2  # the nan (failed) design skipped
+
+
+def test_run_verification_penalizes_failed_design(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("bad mesh")
+
+    monkeypatch.setattr("fanopt.cfd.phase5.prepare_verification_case", boom)
+    results = phase5.run_verification(
+        [("d0", _mid_vector(), 1.0)], tmp_path, su2_bin="/fake/SU2_CFD"
+    )
+    assert np.isnan(results[0].j_fan_3d)
+    assert results[0].meta.get("failed") == 1.0
+    assert (tmp_path / "d0" / "FAILED.txt").exists()
+
+
 # --- geometry → mesh → cfg (real) ---
 
 

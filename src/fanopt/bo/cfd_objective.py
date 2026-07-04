@@ -41,14 +41,24 @@ class CfdObjective:
     def __call__(self, vector: np.ndarray) -> tuple[float, float, float]:
         layer1 = decode(vector)
         workdir = self.out_dir / "designs" / design_hash(layer1.to_dict())
-        res = evaluate_design(
-            vector,
-            workdir,
-            su2_bin=self.su2_bin,
-            cfg=self.eval_cfg,
-            inertia_fn=fan_i_wrist_kgm2,
-            structural_fn=panel_tip_deflection_m,
-        )
-        if res.i_wrist_kgm2 is None or res.structural is None:  # pragma: no cover - both injected
-            raise RuntimeError("CFD objective expects inertia + structural evaluators")
-        return (float(res.j_fan), float(res.i_wrist_kgm2), float(res.structural))
+        try:
+            res = evaluate_design(
+                vector,
+                workdir,
+                su2_bin=self.su2_bin,
+                cfg=self.eval_cfg,
+                inertia_fn=fan_i_wrist_kgm2,
+                structural_fn=panel_tip_deflection_m,
+            )
+            if res.i_wrist_kgm2 is None or res.structural is None:  # pragma: no cover - injected
+                raise RuntimeError("CFD objective expects inertia + structural evaluators")
+            return (float(res.j_fan), float(res.i_wrist_kgm2), float(res.structural))
+        except Exception as exc:  # fault isolation: a bad design is penalized, not fatal
+            # A degenerate geometry (CadQuery/gmsh throws) or a hard SU2 divergence
+            # (run_su2 non-zero exit) must not kill a multi-hour campaign. Record it
+            # and return a non-finite objective; the orchestrator sanitizes it to a
+            # dominated point so the optimizer just avoids that region.
+            workdir.mkdir(parents=True, exist_ok=True)
+            (workdir / "FAILED.txt").write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
+            nan = float("nan")
+            return (nan, nan, nan)

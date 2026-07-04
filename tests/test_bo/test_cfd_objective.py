@@ -51,6 +51,19 @@ def test_cfd_objective_is_picklable():
     assert callable(restored)
 
 
+def test_cfd_objective_penalizes_on_failure(tmp_path, monkeypatch):
+    # A degenerate geometry / SU2 divergence must be penalized, not fatal.
+    def boom(*a, **k):
+        raise RuntimeError("degenerate geometry")
+
+    monkeypatch.setattr("fanopt.bo.cfd_objective.evaluate_design", boom)
+    obj = CfdObjective(out_dir=tmp_path, su2_bin="/fake/SU2_CFD")
+    result = obj(_mid_vector())
+    assert all(np.isnan(v) for v in result)  # non-finite → sanitized to dominated
+    failed = list(tmp_path.glob("designs/*/FAILED.txt"))
+    assert failed and "degenerate geometry" in failed[0].read_text()
+
+
 def test_cfd_objective_returns_three_finite_objectives(tmp_path, monkeypatch):
     monkeypatch.setattr(phase3.subprocess, "run", _fake_su2_writing([5.0, -3.0] * 60))
     obj = CfdObjective(out_dir=tmp_path, su2_bin="/fake/SU2_CFD")

@@ -43,6 +43,7 @@ def test_main_writes_pareto_json(tmp_path, monkeypatch):
         return _fake_state(cfg.n_iterations)
 
     monkeypatch.setattr(script, "run_campaign", fake_run_campaign)
+    monkeypatch.setattr(script, "find_su2", lambda: "/fake/SU2_CFD")
     rc = script.main(["--out-dir", str(tmp_path), "--n-init", "3", "--n-iterations", "2"])
     assert rc == 0
     summary = json.loads((tmp_path / "pareto.json").read_text())
@@ -54,6 +55,15 @@ def test_main_writes_pareto_json(tmp_path, monkeypatch):
 
 def test_run_returns_summary(tmp_path, monkeypatch):
     monkeypatch.setattr(script, "run_campaign", lambda *a, **k: _fake_state(4))
+    monkeypatch.setattr(script, "find_su2", lambda: "/fake/SU2_CFD")
     summary = script.run(out_dir=tmp_path, cfg=CampaignConfig(n_iterations=4), su2_bin=None)
     assert summary["n_evaluations"] == 3
     assert (tmp_path / "pareto.json").exists()
+
+
+def test_run_errors_upfront_without_su2(tmp_path, monkeypatch):
+    # SU2 resolved up front → a missing binary fails fast (not silent per-design).
+    monkeypatch.delenv("SU2_RUN", raising=False)
+    monkeypatch.setattr(script, "find_su2", lambda: None)
+    with pytest.raises(RuntimeError, match="SU2_CFD not found"):
+        script.run(out_dir=tmp_path, cfg=CampaignConfig(n_init=2, n_iterations=0), su2_bin=None)

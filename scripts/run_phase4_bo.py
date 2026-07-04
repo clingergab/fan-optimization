@@ -22,6 +22,7 @@ from pathlib import Path
 from fanopt.bo.cfd_objective import CfdObjective
 from fanopt.bo.objective import PRODUCTION_EVAL_CFG, SliceEvalConfig
 from fanopt.bo.orchestration import CampaignConfig, ObjectiveFn, pareto_designs, run_campaign
+from fanopt.cfd.phase3 import find_su2
 
 
 def make_cfd_objective(
@@ -47,7 +48,12 @@ def run(
 ) -> dict[str, object]:
     """Run the campaign and write ``pareto.json``; return the summary."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    objective_fn = make_cfd_objective(out_dir, su2_bin=su2_bin, eval_cfg=eval_cfg)
+    # Resolve SU2 up front so a missing binary fails fast — the per-design failure
+    # handling in CfdObjective must not silently penalize every design.
+    su2 = su2_bin or find_su2()
+    if su2 is None:
+        raise RuntimeError("SU2_CFD not found (set $SU2_RUN or put SU2_CFD on PATH)")
+    objective_fn = make_cfd_objective(out_dir, su2_bin=su2, eval_cfg=eval_cfg)
     state = run_campaign(objective_fn, out_dir, cfg, progress=progress)
     pareto = pareto_designs(state)
     summary: dict[str, object] = {
