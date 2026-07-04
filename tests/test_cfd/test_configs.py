@@ -213,18 +213,21 @@ def test_render_steady_default_renders() -> None:
 
 
 def test_render_steady_default_freestream_is_productive() -> None:
-    """Default direction is C2 PRODUCTIVE (0, 0, -1)."""
+    """PRODUCTIVE (0, 0, -1) → AOA -90° (SU2 v8 has no FREESTREAM_DIRECTION)."""
     out = render_steady_cfg(mesh_filename="fan3d.su2")
-    assert "FREESTREAM_DIRECTION= 0.0 0.0 -1.0" in out
+    assert "FREESTREAM_DIRECTION=" not in out  # directive removed for SU2 8.0.1
+    assert "FREESTREAM_OPTION= TEMPERATURE_FS" in out
+    assert "AOA= -90.0" in out
+    assert "SIDESLIP_ANGLE= 0.0" in out
 
 
 def test_render_steady_return_stroke() -> None:
-    """Operator can switch to RETURN (0, 0, +1) for the two-eval delta."""
+    """RETURN (0, 0, +1) → AOA +90° for the two-eval delta."""
     out = render_steady_cfg(
         mesh_filename="fan3d.su2",
         freestream_direction=(0.0, 0.0, +1.0),
     )
-    assert "FREESTREAM_DIRECTION= 0.0 0.0 1.0" in out
+    assert "AOA= 90.0" in out
 
 
 def test_render_steady_time_domain_no() -> None:

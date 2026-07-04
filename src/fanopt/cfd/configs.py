@@ -238,6 +238,13 @@ def render_steady_cfg(
         tpl = env.get_template("fan3d_steady.cfg.j2")
     except jinja2.TemplateNotFound as e:
         raise TemplateRenderError(f"template not found: {e}") from e
+    # SU2 has no FREESTREAM_DIRECTION; the 3D flow direction is AOA + sideslip.
+    # SU2 convention: u=cosα·cosβ, v=sinβ, w=sinα·cosβ. PRODUCTIVE (0,0,-1) → AOA=-90°.
+    dx, dy, dz = freestream_direction
+    norm = math.sqrt(dx * dx + dy * dy + dz * dz) or 1.0
+    dx, dy, dz = dx / norm, dy / norm, dz / norm
+    aoa_deg = math.degrees(math.atan2(dz, dx))
+    sideslip_deg = math.degrees(math.asin(max(-1.0, min(1.0, dy))))
     try:
         return tpl.render(
             mesh_filename=mesh_filename,
@@ -245,9 +252,8 @@ def render_steady_cfg(
             marker_farfield=marker_farfield,
             reynolds_number=reynolds_number,
             reynolds_length=reynolds_length,
-            freestream_direction_x=freestream_direction[0],
-            freestream_direction_y=freestream_direction[1],
-            freestream_direction_z=freestream_direction[2],
+            aoa_deg=aoa_deg,
+            sideslip_deg=sideslip_deg,
             cfl_number=cfl_number,
             mach_number=MACH_STEADY,
         )

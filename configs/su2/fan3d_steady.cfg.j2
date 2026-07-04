@@ -25,17 +25,23 @@ RESTART_SOL= NO
 
 % --- steady freestream (V_tip-based) ---
 MACH_NUMBER= {{ mach_number }}
-FREESTREAM_OPTION= REYNOLDS
+FREESTREAM_OPTION= TEMPERATURE_FS
 FREESTREAM_TEMPERATURE= 300.0
 FREESTREAM_PRESSURE= 101325.0
 REYNOLDS_NUMBER= {{ reynolds_number }}
 REYNOLDS_LENGTH= {{ reynolds_length }}
 
-% --- C2 sign-locked freestream direction ---
-% PRODUCTIVE stroke: (0, 0, -1) — air flows -z past a stationary fan that's
-% actually being swept in +z toward the user.
-% RETURN stroke: (0, 0, +1).
-FREESTREAM_DIRECTION= {{ freestream_direction_x }} {{ freestream_direction_y }} {{ freestream_direction_z }}
+% --- low-Mach preconditioning (MACH ~ 0.006 is deep in the incompressible
+%     regime; without this the compressible solver stalls) ---
+LOW_MACH_PREC= YES
+MIN_ROE_TURKEL_PREC= 0.01
+MAX_ROE_TURKEL_PREC= 0.2
+
+% --- C2 sign-locked freestream direction, as AOA + sideslip ---
+% SU2 v8 has no FREESTREAM_DIRECTION; the flow direction IS AOA + SIDESLIP.
+% PRODUCTIVE (0, 0, -1) = AOA -90°; RETURN (0, 0, +1) = AOA +90°.
+AOA= {{ aoa_deg }}
+SIDESLIP_ANGLE= {{ sideslip_deg }}
 
 % --- steady — no time integration ---
 TIME_DOMAIN= NO

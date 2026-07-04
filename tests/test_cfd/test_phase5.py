@@ -1,0 +1,130 @@
+"""Tests for fanopt.cfd.phase5 (3D verification of top Pareto designs).
+
+Geometry + gmsh meshing are real; the SU2 subprocess is mocked. Requires gmsh +
+cadquery (blade geometry + 3D mesh).
+"""
+
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+if importlib.util.find_spec("gmsh") is None:  # pragma: no cover - env-dependent
+    pytest.skip("gmsh not installed", allow_module_level=True)
+if importlib.util.find_spec("cadquery") is None:  # pragma: no cover - env-dependent
+    pytest.skip("cadquery not installed", allow_module_level=True)
+
+from fanopt.bo.codec import bounds, clip_to_bounds
+from fanopt.cfd import phase3, phase5
+
+
+def _mid_vector() -> np.ndarray:
+    low, high = bounds()
+    return clip_to_bounds((low + high) / 2.0)
+
+
+def _write(path: Path, text: str) -> Path:
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _fake_su2_writing(series):
+    def fake_run(cmd, cwd, stdout, stderr, env):
+        lines = ["Time_Iter,CFx"] + [f"{t},{v}" for t, v in enumerate(series)]
+        (Path(cwd) / "history.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        class R:
+            returncode = 0
+
+        return R()
+
+    return fake_run
+
+
+# --- pure pieces ---
+
+
+def test_extract_j_fan_3d_cycle_mean(tmp_path):
+    # 3 cycles x 4 steps; per-cycle CFx = [10, 2, 4]; discard cycle 0 -> mean(2,4)=3.
+    lines = ["Time_Iter,CFx"]
+    for t, v in enumerate([10.0] * 4 + [2.0] * 4 + [4.0] * 4):
+        lines.append(f"{t},{v}")
+    h = _write(tmp_path / "u.csv", "\n".join(lines) + "\n")
+    assert phase5.extract_j_fan_3d(h, n_cycles=3) == pytest.approx(3.0)
+
+
+def test_extract_j_fan_3d_rejects_too_short(tmp_path):
+    h = _write(tmp_path / "u.csv", "Time_Iter,CFx\n0,1.0\n")
+    with pytest.raises(ValueError, match="too short"):
+        phase5.extract_j_fan_3d(h, n_cycles=3)
+
+
+def test_verify_ranking_preserved_when_correlated():
+    res = [
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0),
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
+        phase5.VerifyResult("c", j_fan_3d=3.0, j_fan_slice=3.0),
+    ]
+    out = phase5.verify_ranking(res)
+    assert out["rank_preserved"] is True
+    assert out["kendall_tau"] == pytest.approx(1.0)
+
+
+def test_verify_ranking_broken_when_anticorrelated():
+    res = [
+        phase5.VerifyResult("a", j_fan_3d=3.0, j_fan_slice=1.0),
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
+        phase5.VerifyResult("c", j_fan_3d=1.0, j_fan_slice=3.0),
+    ]
+    assert phase5.verify_ranking(res)["rank_preserved"] is False
+
+
+def test_verify_ranking_needs_two_points():
+    res = [phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0)]
+    out = phase5.verify_ranking(res)
+    assert out["rank_preserved"] is None
+    assert out["n"] == 1
+
+
+def test_verify_ranking_ignores_missing_slice():
+    res = [
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=None),
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
+    ]
+    assert phase5.verify_ranking(res)["n"] == 1
+
+
+# --- geometry → mesh → cfg (real) ---
+
+
+def test_prepare_verification_case_builds_mesh_and_cfg(tmp_path):
+    mesh = phase5.prepare_verification_case(_mid_vector(), tmp_path)
+    assert mesh.n_nodes > 0
+    assert (tmp_path / phase5.MESH_NAME).exists()
+    cfg = (tmp_path / phase5.CFG_NAME).read_text()
+    assert "PITCHING_OMEGA=" in cfg
+    assert phase5.FAN_SURFACE_MARKER in cfg
+
+
+# --- SU2-driving path (mocked subprocess) ---
+
+
+def test_run_verification_errors_without_su2(tmp_path, monkeypatch):
+    monkeypatch.delenv("SU2_RUN", raising=False)
+    monkeypatch.setattr(phase3.shutil, "which", lambda _n: None)
+    with pytest.raises(RuntimeError, match="SU2_CFD not found"):
+        phase5.run_verification([("d0", _mid_vector(), 1.0)], tmp_path, su2_bin=None)
+
+
+def test_run_verification_happy_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(phase3.subprocess, "run", _fake_su2_writing([6.0, -2.0] * 30))
+    results = phase5.run_verification(
+        [("d0", _mid_vector(), 1.5)], tmp_path, su2_bin="/fake/SU2_CFD"
+    )
+    assert len(results) == 1
+    assert np.isfinite(results[0].j_fan_3d)
+    assert results[0].j_fan_slice == 1.5
+    assert results[0].meta["n_nodes"] > 0
