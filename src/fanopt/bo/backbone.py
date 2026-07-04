@@ -40,6 +40,9 @@ __all__ = [
     "SAASBO_DIM_THRESHOLD",
     "TrustRegionState",
     "to_maximization",
+    "sanitize_objectives",
+    "normalize_objectives",
+    "apply_objective_norm",
     "infer_reference_point",
     "pareto_mask",
     "hypervolume",
@@ -101,6 +104,52 @@ def to_maximization(y_raw: np.ndarray, signs: tuple[float, ...] = OBJECTIVE_SIGN
     if y.shape[1] != len(signs):
         raise ValueError(f"y has {y.shape[1]} objectives; expected {len(signs)}")
     return y * np.asarray(signs, dtype=float)
+
+
+def sanitize_objectives(y_max: np.ndarray) -> np.ndarray:
+    """Replace non-finite objective values with a dominated penalty (per column).
+
+    A divergent CFD eval (degenerate geometry → SU2 blows up) yields ``nan``/``inf``
+    ``J_fan``. Left in, it crashes the GP (``Input data contains NaN``); here each
+    bad value becomes ``min_finite − range`` in the maximization frame — worse than
+    every real design, so the optimizer avoids that region instead of dying.
+    """
+    y = np.atleast_2d(np.asarray(y_max, dtype=float)).copy()
+    for j in range(y.shape[1]):
+        col = y[:, j]
+        bad = ~np.isfinite(col)
+        if not bad.any():
+            continue
+        good = col[~bad]
+        if good.size:
+            lo, hi = float(good.min()), float(good.max())
+            penalty = lo - (hi - lo if hi > lo else abs(lo) + 1.0)
+        else:  # pragma: no cover - a whole batch failing is a config/geometry bug
+            penalty = 0.0
+        col[bad] = penalty
+    return y
+
+
+def normalize_objectives(y_max: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Center + unit-scale each objective to ~O(1); return ``(y_norm, loc, scale)``.
+
+    The unsteady ``J_fan`` is a nondimensionalized force ~1e10–1e14. At that scale
+    qNEHVI's hypervolume overflows to inf/nan and the acquisition optimizer's
+    multinomial sampler dies (``probability tensor contains inf/nan``). Normalizing
+    the objectives to unit scale before the GP + acquisition keeps everything O(1);
+    the raw values are kept elsewhere for the Pareto front. ``loc``/``scale`` let
+    later observations transform consistently (:func:`apply_objective_norm`).
+    """
+    y = np.atleast_2d(np.asarray(y_max, dtype=float))
+    loc = y.mean(axis=0)
+    scale = y.std(axis=0)
+    scale = np.where(scale > 0, scale, 1.0)
+    return (y - loc) / scale, loc, scale
+
+
+def apply_objective_norm(y_max: np.ndarray, loc: np.ndarray, scale: np.ndarray) -> np.ndarray:
+    """Apply a stored :func:`normalize_objectives` transform to new observations."""
+    return (np.atleast_2d(np.asarray(y_max, dtype=float)) - loc) / scale
 
 
 def infer_reference_point(y_max: np.ndarray, *, margin_frac: float = 0.1) -> np.ndarray:

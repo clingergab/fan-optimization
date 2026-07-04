@@ -111,6 +111,32 @@ def test_no_trust_region_path(tmp_path):
     assert state.x.shape[0] == 9
 
 
+def _extreme_objective(v: np.ndarray) -> tuple[float, float, float]:
+    # Campaign-scale J_fan (~1e12) that overflowed qNEHVI before normalization.
+    xn = (v - _LOW) / (_HIGH - _LOW)
+    return (float(-np.sum((xn - 0.5) ** 2) * 1e12), float(np.sum(xn[:18]) * 1e-3), 5e-4)
+
+
+def test_campaign_handles_extreme_magnitude_objectives(tmp_path):
+    # Regression: J_fan ~1e12 crashed the BO proposal (multinomial inf/nan).
+    state = orch.run_campaign(_extreme_objective, tmp_path, _fast_cfg())
+    assert state.x.shape[0] == 9
+    assert np.all(np.isfinite(state.y_raw))
+
+
+def test_campaign_survives_nan_eval(tmp_path):
+    mid = (_LOW[0] + _HIGH[0]) / 2.0
+
+    def flaky(v: np.ndarray) -> tuple[float, float, float]:
+        if v[0] > mid:  # some designs "diverge" → NaN J_fan
+            return (float("nan"), 0.005, 0.001)
+        return _smooth_objective(v)
+
+    state = orch.run_campaign(flaky, tmp_path, _fast_cfg())
+    assert state.x.shape[0] == 9
+    assert np.all(np.isfinite(state.y_raw))  # NaN evals sanitized, campaign completed
+
+
 def test_evaluate_batch_calls_on_eval_per_design(tmp_path):
     calls = {"n": 0}
 

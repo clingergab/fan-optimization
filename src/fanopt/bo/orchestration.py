@@ -27,12 +27,16 @@ from scipy.stats.qmc import Sobol
 from tqdm.auto import tqdm
 
 from fanopt.bo.backbone import (
+    OBJECTIVE_SIGNS,
     TrustRegionState,
+    apply_objective_norm,
     fit_gp,
     hypervolume,
     infer_reference_point,
+    normalize_objectives,
     pareto_mask,
     propose_candidates,
+    sanitize_objectives,
     to_maximization,
 )
 from fanopt.bo.codec import N_DIMS, bounds, clip_to_bounds, decode, encode
@@ -256,6 +260,15 @@ def _evaluate_batch(
     return np.atleast_2d(np.asarray(out, dtype=float))
 
 
+def _sanitize_yraw(y_raw: np.ndarray) -> np.ndarray:
+    """Keep stored objectives finite: penalize non-finite evals (divergent CFD).
+
+    Sanitizes in the maximization frame, then maps back (``OBJECTIVE_SIGNS`` are ±1).
+    """
+    signs = np.asarray(OBJECTIVE_SIGNS)
+    return sanitize_objectives(to_maximization(y_raw)) * signs
+
+
 def run_campaign(
     objective_fn: ObjectiveFn,
     out_dir: Path,
@@ -293,16 +306,22 @@ def run_campaign(
                 on_eval=lambda: bar.update(1),
             )
             state = CampaignState(
-                x=x0, y_raw=y0, tr=TrustRegionState(dim=N_DIMS, batch_size=cfg.batch_size)
+                x=x0,
+                y_raw=_sanitize_yraw(y0),
+                tr=TrustRegionState(dim=N_DIMS, batch_size=cfg.batch_size),
             )
             _save_checkpoint(ckpt, state)
 
         fallback = deque(diverse_fallback_designs())
 
         while state.iteration < cfg.n_iterations:
-            y_max = to_maximization(state.y_raw)
-            ref = infer_reference_point(y_max)
-            hv_before = hypervolume(y_max, ref)
+            # Normalize objectives to O(1) for the GP + acquisition — the raw
+            # unsteady J_fan (~1e12) overflows qNEHVI otherwise. Raw values stay in
+            # state.y_raw for the Pareto. loc/scale are frozen for this iteration so
+            # the HV before/after comparison is on one consistent scale.
+            y_norm, loc, scale = normalize_objectives(to_maximization(state.y_raw))
+            ref = infer_reference_point(y_norm)
+            hv_before = hypervolume(y_norm, ref)
 
             stalled = cfg.stall_patience > 0 and state.stall_counter >= cfg.stall_patience
             if stalled and fallback:
@@ -310,11 +329,11 @@ def run_campaign(
                 source = "fallback"
                 state.used_fallback += 1
             else:
-                model = fit_gp(state.x, y_max, low, high)
+                model = fit_gp(state.x, y_norm, low, high)
                 proposed = propose_candidates(
                     model,
                     state.x,
-                    y_max,
+                    y_norm,
                     low,
                     high,
                     ref,
@@ -338,9 +357,11 @@ def run_campaign(
                 on_eval=lambda: bar.update(1),
             )
             state.x = np.vstack([state.x, batch])
-            state.y_raw = np.vstack([state.y_raw, y_new])
+            state.y_raw = _sanitize_yraw(np.vstack([state.y_raw, y_new]))
 
-            hv_after = hypervolume(to_maximization(state.y_raw), ref)
+            hv_after = hypervolume(
+                apply_objective_norm(to_maximization(state.y_raw), loc, scale), ref
+            )
             improved = hv_after > hv_before + 1e-12
             if cfg.use_trust_region:
                 state.tr.update(improved)

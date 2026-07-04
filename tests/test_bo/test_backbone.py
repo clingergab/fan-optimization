@@ -45,6 +45,58 @@ def test_to_maximization_rejects_wrong_width():
         bb.to_maximization(np.zeros((2, 2)))
 
 
+def test_normalize_objectives_centers_and_scales():
+    y = np.array([[1e12, 1.0], [2e12, 2.0], [3e12, 3.0]])
+    y_norm, loc, scale = bb.normalize_objectives(y)
+    assert np.allclose(y_norm.mean(axis=0), 0.0, atol=1e-9)
+    assert np.allclose(bb.apply_objective_norm(y, loc, scale), y_norm)
+
+
+def test_normalize_handles_zero_variance_column():
+    y = np.array([[5.0, 1.0], [5.0, 2.0]])  # column 0 constant → scale would be 0
+    y_norm, _, _ = bb.normalize_objectives(y)
+    assert np.all(np.isfinite(y_norm))
+
+
+def test_sanitize_replaces_non_finite_with_penalty():
+    y = np.array([[1.0, 2.0], [np.nan, 3.0], [np.inf, 1.0]])
+    out = bb.sanitize_objectives(y)
+    assert np.all(np.isfinite(out))
+    assert out[1, 0] < 1.0 and out[2, 0] < 1.0  # penalized below the min finite
+
+
+def test_sanitize_is_noop_when_all_finite():
+    y = np.array([[1.0, 2.0], [3.0, 4.0]])
+    assert np.array_equal(bb.sanitize_objectives(y), y)
+
+
+def test_normalize_enables_extreme_magnitude_proposal():
+    # J_fan ~1e12 broke qNEHVI (multinomial inf/nan) before normalize_objectives.
+    x, _ = _synthetic(12)
+    low, high = bounds()
+    rng = np.random.default_rng(1)
+    y_raw = np.column_stack(
+        [rng.uniform(-5e12, 5e12, 12), rng.uniform(5e-3, 9e-3, 12), rng.uniform(5e-4, 9e-4, 12)]
+    )
+    y_norm, _, _ = bb.normalize_objectives(bb.to_maximization(y_raw))
+    model = bb.fit_gp(x, y_norm, low, high)
+    ref = bb.infer_reference_point(y_norm)
+    cand = bb.propose_candidates(
+        model,
+        x,
+        y_norm,
+        low,
+        high,
+        ref,
+        batch_size=4,
+        num_restarts=2,
+        raw_samples=16,
+        mc_samples=16,
+    )
+    assert cand.shape == (4, N_DIMS)
+    assert np.all(np.isfinite(cand))
+
+
 def test_reference_point_is_dominated_by_all():
     _, y_raw = _synthetic(10)
     y_max = bb.to_maximization(y_raw)
