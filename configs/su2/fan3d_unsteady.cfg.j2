@@ -72,8 +72,10 @@ INNER_ITER= {{ inner_iter | default(100) }}
 
 % --- pitching about the wrist axis (+y) at the wrist-grip point ---
 % C11 sign lock: PITCHING_OMEGA y-component is NEGATIVE (right-hand-rule on
-% productive stroke). The locked value is -12.5664 rad/s. PITCHING_AMPL y is
-% POSITIVE (+0.6981 rad = 40°).
+% productive stroke); the locked value is -12.5664 rad/s (SU2 PITCHING_OMEGA
+% is rad/s). PITCHING_AMPL y is POSITIVE 40.0 — SU2 PITCHING_AMPL is in
+% DEGREES (the renderer converts the locked +0.6981 rad = 40° to degrees;
+% emitting radians would pitch the fan ~57x too little).
 GRID_MOVEMENT= RIGID_MOTION
 MOTION_ORIGIN= {{ motion_origin_x | default(0.0) }} {{ motion_origin_y | default(0.0) }} {{ motion_origin_z | default(0.0) }}
 PITCHING_OMEGA= 0.0 {{ pitching_omega_y }} 0.0

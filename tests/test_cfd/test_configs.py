@@ -151,6 +151,18 @@ def test_unsteady_renders_positive_y_amplitude(unsteady_render: str) -> None:
     assert y > 0
 
 
+def test_unsteady_pitching_ampl_emitted_in_degrees(unsteady_render: str) -> None:
+    """SU2 PITCHING_AMPL is degrees — the locked 0.6981 rad (40°) must emit as 40.0."""
+    m = re.search(
+        r"^PITCHING_AMPL=\s*([\d.+-eE]+)\s+([\d.+-eE]+)\s+([\d.+-eE]+)",
+        unsteady_render,
+        re.MULTILINE,
+    )
+    assert m is not None
+    _, y, _ = (float(g) for g in m.groups())
+    assert y == pytest.approx(40.0, abs=0.01)  # NOT 0.6981 radians
+
+
 def test_unsteady_dt_is_T_over_200(unsteady_render: str) -> None:
     """Plan: dt = T/200 = 2.5 ms with T = 0.5 s."""
     m = re.search(r"^TIME_STEP=\s*([\d.eE+-]+)", unsteady_render, re.MULTILINE)
@@ -496,6 +508,18 @@ def test_thin_plate_2d_cfg_pitching_about_quarter_chord(
     thin_plate_render: str,
 ) -> None:
     assert "MOTION_ORIGIN= 0.25 0.0 0.0" in thin_plate_render
+
+
+def test_thin_plate_2d_cfg_ampl_emitted_in_degrees(thin_plate_render: str) -> None:
+    """pitching_ampl_z=0.1745 rad must emit as ~10° (SU2 PITCHING_AMPL is degrees)."""
+    m = re.search(
+        r"^PITCHING_AMPL=\s*([\d.+-eE]+)\s+([\d.+-eE]+)\s+([\d.+-eE]+)",
+        thin_plate_render,
+        re.MULTILINE,
+    )
+    assert m is not None
+    _, _, z = (float(g) for g in m.groups())
+    assert z == pytest.approx(10.0, abs=0.01)  # degrees(0.1745), NOT 0.1745
 
 
 def test_thin_plate_2d_cfg_omega_z_negative_per_c11_analog(

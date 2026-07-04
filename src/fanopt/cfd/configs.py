@@ -169,6 +169,12 @@ def render_unsteady_cfg(
     lock (negative-y omega, positive-y amplitude). Overriding is allowed
     only for benchmarks; production runs MUST use the default.
 
+    Both inputs are in the physics/schema units: ``pitching_omega_y`` in rad/s,
+    ``pitching_ampl_y`` in **radians**. SU2's ``PITCHING_OMEGA`` is rad/s but
+    ``PITCHING_AMPL`` is **degrees**, so the amplitude is converted at emission
+    (the locked 0.6981 rad → 40.0°). Passing radians straight through would
+    pitch the fan ~57x too little.
+
     The template ships the Round-9 HIGH-12 fallback path
     (`REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`) because SU2 v8.0.1
     rejects the primary path (`FREESTREAM_OPTION = FREESTREAM_VELOCITY`)
@@ -206,8 +212,10 @@ def render_unsteady_cfg(
             marker_farfield=marker_farfield,
             reynolds_number=reynolds_number,
             reynolds_length=reynolds_length,
-            pitching_omega_y=pitching_omega_y,
-            pitching_ampl_y=pitching_ampl_y,
+            pitching_omega_y=pitching_omega_y,  # rad/s (SU2 PITCHING_OMEGA)
+            # SU2 PITCHING_AMPL is DEGREES — the schema value is radians (40°),
+            # so convert; emitting radians pitches the fan ~57x too little.
+            pitching_ampl_y=math.degrees(pitching_ampl_y),
             motion_origin_x=motion_origin_x,
             motion_origin_y=motion_origin_y,
             motion_origin_z=motion_origin_z,
@@ -408,6 +416,10 @@ def render_thin_plate_2d_pitching_cfg(
     the 3D production cfg (``fan3d_unsteady.cfg.j2``); on a 2D x-y mesh the
     physically meaningful pitch axis is z, so the analog lock here is
     ``pitching_omega_z`` must be negative on the productive stroke.
+
+    ``pitching_omega_z`` is rad/s and ``pitching_ampl_z`` is **radians**; the
+    amplitude is converted to degrees at emission (SU2's ``PITCHING_AMPL`` is
+    degrees, not radians).
     """
     if pitching_omega_z > 0:
         raise TemplateRenderError(
@@ -426,8 +438,9 @@ def render_thin_plate_2d_pitching_cfg(
             marker_farfield=marker_farfield,
             reynolds_number=reynolds_number,
             reynolds_length=reynolds_length,
-            pitching_omega_z=pitching_omega_z,
-            pitching_ampl_z=pitching_ampl_z,
+            pitching_omega_z=pitching_omega_z,  # rad/s (SU2 PITCHING_OMEGA)
+            # SU2 PITCHING_AMPL is DEGREES; pitching_ampl_z is radians — convert.
+            pitching_ampl_z=math.degrees(pitching_ampl_z),
             motion_origin_x=motion_origin_x,
             time_step=time_step,
             max_time=max_time,
