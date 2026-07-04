@@ -128,3 +128,25 @@ def test_run_verification_happy_path(tmp_path, monkeypatch):
     assert np.isfinite(results[0].j_fan_3d)
     assert results[0].j_fan_slice == 1.5
     assert results[0].meta["n_nodes"] > 0
+
+
+def _make_fake_su2(tmp_path: Path) -> str:
+    # A real executable (mocks don't cross process boundaries): writes history.csv.
+    s = tmp_path / "fake_su2"
+    s.write_text(
+        "#!/bin/sh\n"
+        "printf 'Time_Iter,CFx\\n' > history.csv\n"
+        "i=0\n"
+        "while [ $i -lt 120 ]; do printf '%d,5\\n' $i >> history.csv; i=$((i+1)); done\n"
+    )
+    s.chmod(0o755)
+    return str(s)
+
+
+def test_run_verification_parallel_preserves_order(tmp_path):
+    su2 = _make_fake_su2(tmp_path)
+    designs = [("d0", _mid_vector(), 1.0), ("d1", _mid_vector(), 2.0)]
+    results = phase5.run_verification(designs, tmp_path / "out", su2_bin=su2, n_workers=2)
+    assert [r.name for r in results] == ["d0", "d1"]  # order preserved across processes
+    assert all(np.isfinite(r.j_fan_3d) for r in results)
+    assert [r.j_fan_slice for r in results] == [1.0, 2.0]

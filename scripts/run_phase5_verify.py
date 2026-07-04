@@ -42,11 +42,14 @@ def run(
     top_k: int,
     su2_bin: str | None = None,
     cfg: VerifyConfig | None = None,
+    n_workers: int = 1,
 ) -> dict[str, object]:
     """Verify the top-k designs and write ``verification.json``; return the summary."""
     out_dir.mkdir(parents=True, exist_ok=True)
     designs = _designs_from_campaign(campaign_dir, top_k)
-    results = run_verification(designs, out_dir, cfg=cfg or VerifyConfig(), su2_bin=su2_bin)
+    results = run_verification(
+        designs, out_dir, cfg=cfg or VerifyConfig(), su2_bin=su2_bin, n_workers=n_workers
+    )
     ranking = verify_ranking(results)
     summary: dict[str, object] = {
         "ranking": ranking,
@@ -69,11 +72,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--campaign-dir", type=Path, default=Path("data/phase4_bo"))
     parser.add_argument("--out-dir", type=Path, default=Path("data/phase5_verify"))
     parser.add_argument("--top-k", type=int, default=3)
+    parser.add_argument(
+        "--workers", type=int, default=1, help="Parallel designs (processes); ≈ min(top_k, cores)."
+    )
     parser.add_argument("--su2-bin", default=None, help="Path to SU2_CFD (default: $SU2_RUN/PATH)")
     args = parser.parse_args(argv)
 
     summary = run(
-        campaign_dir=args.campaign_dir, out_dir=args.out_dir, top_k=args.top_k, su2_bin=args.su2_bin
+        campaign_dir=args.campaign_dir,
+        out_dir=args.out_dir,
+        top_k=args.top_k,
+        su2_bin=args.su2_bin,
+        n_workers=args.workers,
     )
     ranking = summary["ranking"]
     print(json.dumps(ranking, indent=2))

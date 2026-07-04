@@ -51,7 +51,7 @@ def _fake_campaign(tmp_path):
 def test_main_writes_verification_json(tmp_path, monkeypatch):
     camp = _fake_campaign(tmp_path)
 
-    def fake_run_verification(designs, out_dir, *, cfg=None, su2_bin=None):
+    def fake_run_verification(designs, out_dir, **kwargs):
         return [
             VerifyResult(name, j_fan_3d=float(i + 1), j_fan_slice=j, meta={"n_nodes": 100.0})
             for i, (name, _vec_, j) in enumerate(designs)

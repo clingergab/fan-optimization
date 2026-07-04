@@ -15,6 +15,7 @@ expensive — a Colab job in practice — but geometry + meshing + cfg run local
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -121,25 +122,45 @@ def extract_j_fan_3d(history_csv: Path, *, n_cycles: int = _DEMO_CYCLES) -> floa
     return reduce_cycles(usable, steps_per_cycle=steps_per_cycle, n_discard=1).j_fan
 
 
+@dataclass(frozen=True)
+class _VerifyWorker:
+    """Picklable per-design 3D verification (for the process pool)."""
+
+    workdir: Path
+    cfg: VerifyConfig
+    su2_bin: str
+
+    def __call__(self, design: tuple[str, np.ndarray, float | None]) -> VerifyResult:
+        name, vector, j_slice = design
+        d_dir = self.workdir / name
+        mesh = prepare_verification_case(vector, d_dir, self.cfg)
+        hist = run_su2(CFG_NAME, d_dir, self.su2_bin)
+        j3d = extract_j_fan_3d(hist, n_cycles=self.cfg.n_cycles)
+        return VerifyResult(name, j3d, j_slice, meta={"n_nodes": float(mesh.n_nodes)})
+
+
 def run_verification(
     designs: list[tuple[str, np.ndarray, float | None]],
     workdir: Path,
     *,
     cfg: VerifyConfig = _DEFAULT_VERIFY_CFG,
     su2_bin: str | None = None,
+    n_workers: int = 1,
 ) -> list[VerifyResult]:
-    """3D-verify each ``(name, vector, j_fan_slice)`` design; return the results."""
+    """3D-verify each ``(name, vector, j_fan_slice)`` design; return the results.
+
+    ``n_workers`` > 1 runs designs concurrently in **separate processes** (gmsh
+    can't be threaded; each 3D SU2 run is single-core, so ``n_workers`` ≈ min(
+    n_designs, cores) is the useful range). Order is preserved.
+    """
     su2 = su2_bin or find_su2()
     if su2 is None:
         raise RuntimeError("SU2_CFD not found (set $SU2_RUN or put SU2_CFD on PATH)")
-    results: list[VerifyResult] = []
-    for name, vector, j_slice in designs:
-        d_dir = workdir / name
-        mesh = prepare_verification_case(vector, d_dir, cfg)
-        hist = run_su2(CFG_NAME, d_dir, su2)
-        j3d = extract_j_fan_3d(hist, n_cycles=cfg.n_cycles)
-        results.append(VerifyResult(name, j3d, j_slice, meta={"n_nodes": float(mesh.n_nodes)}))
-    return results
+    worker = _VerifyWorker(workdir, cfg, su2)
+    if n_workers > 1 and len(designs) > 1:
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            return list(pool.map(worker, designs))
+    return [worker(d) for d in designs]
 
 
 def verify_ranking(results: list[VerifyResult]) -> dict[str, object]:
