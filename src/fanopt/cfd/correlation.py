@@ -24,6 +24,7 @@ __all__ = [
     "CorrelationResult",
     "pearson_r2",
     "kendall_tau",
+    "spearman_rho",
     "correlate",
 ]
 
@@ -63,6 +64,18 @@ def kendall_tau(x: np.ndarray, y: np.ndarray) -> float:
         raise ValueError("need at least 2 points to correlate")
     tau = stats.kendalltau(x, y).correlation
     return 0.0 if np.isnan(tau) else float(tau)
+
+
+def spearman_rho(x: np.ndarray, y: np.ndarray) -> float:
+    """Spearman rank correlation ρ (monotone-agreement, complements Kendall τ)."""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if x.size < 2:
+        raise ValueError("need at least 2 points to correlate")
+    if np.std(x) == 0 or np.std(y) == 0:
+        return 0.0  # a constant series has no rank correlation (avoids scipy warning)
+    rho = stats.spearmanr(x, y).correlation
+    return 0.0 if np.isnan(rho) else float(rho)
 
 
 def correlate(

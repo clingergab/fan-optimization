@@ -106,6 +106,54 @@ def test_verify_ranking_skips_failed_3d_runs():
     assert phase5.verify_ranking(res)["n"] == 2  # the nan (failed) design skipped
 
 
+def test_verify_ranking_reports_all_three_metrics():
+    res = [
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0),
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
+        phase5.VerifyResult("c", j_fan_3d=3.0, j_fan_slice=3.0),
+    ]
+    v = phase5.verify_ranking(res)["valid_only"]
+    assert v["kendall_tau"] == pytest.approx(1.0)
+    assert v["spearman_rho"] == pytest.approx(1.0)
+    assert v["pearson_r2"] == pytest.approx(1.0)
+
+
+def test_verify_ranking_flags_negative_jfan_as_suspect():
+    res = [
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0),
+        phase5.VerifyResult("b", j_fan_3d=-5.0, j_fan_slice=2.0),  # net reverse thrust
+    ]
+    out = phase5.verify_ranking(res)
+    assert out["n_suspect"] == 1
+    assert out["suspect_designs"] == ["b"]
+    assert out["valid_only"]["n"] == 1  # 'b' excluded from the valid set
+
+
+def test_verify_ranking_exposes_ranking_that_only_holds_via_suspect():
+    # slice ranks a>b (both positive); 3D inverts them; a degenerate negative
+    # design 'c' is worst by both. all_finite τ is dragged positive by 'c', but
+    # valid_only (excluding 'c') reveals the top-two ranking is actually broken.
+    res = [
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=3.0),
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
+        phase5.VerifyResult("c", j_fan_3d=-9.0, j_fan_slice=1.0),  # degenerate worst
+    ]
+    out = phase5.verify_ranking(res)
+    assert out["all_finite"]["kendall_tau"] > 0  # 'c' props it up
+    assert out["valid_only"]["kendall_tau"] < 0  # honest: top-two inverted
+    assert out["rank_preserved"] is False  # keys off valid_only
+
+
+def test_verify_ranking_pairs_carry_suspect_flag():
+    res = [
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0),
+        phase5.VerifyResult("b", j_fan_3d=float("nan"), j_fan_slice=2.0),
+    ]
+    pairs = {p["name"]: p for p in phase5.verify_ranking(res)["pairs"]}
+    assert pairs["a"]["suspect"] is False
+    assert pairs["b"]["suspect"] is True and pairs["b"]["j_fan_3d"] is None
+
+
 def test_run_verification_penalizes_failed_design(tmp_path, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("bad mesh")

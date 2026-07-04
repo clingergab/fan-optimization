@@ -26,7 +26,7 @@ from tqdm.auto import tqdm
 from fanopt.bo.codec import decode
 from fanopt.bo.inertia import NEUTRAL_LAYER4
 from fanopt.cfd.configs import render_unsteady_cfg
-from fanopt.cfd.correlation import kendall_tau
+from fanopt.cfd.correlation import kendall_tau, pearson_r2, spearman_rho
 from fanopt.cfd.j_fan import reduce_cycles
 from fanopt.cfd.mesh import (
     FAN_SURFACE_MARKER,
@@ -184,16 +184,56 @@ def run_verification(
         bar.close()
 
 
+def _rank_metrics(pairs: list[tuple[float, float]]) -> dict[str, object]:
+    """Kendall τ, Spearman ρ, Pearson R² over (slice, 3D) pairs (None if < 2)."""
+    if len(pairs) < 2:
+        return {"n": len(pairs), "kendall_tau": None, "spearman_rho": None, "pearson_r2": None}
+    s = np.array([p[0] for p in pairs], dtype=float)
+    c = np.array([p[1] for p in pairs], dtype=float)
+    return {
+        "n": len(pairs),
+        "kendall_tau": kendall_tau(s, c),
+        "spearman_rho": spearman_rho(s, c),
+        "pearson_r2": pearson_r2(s, c),
+    }
+
+
 def verify_ranking(results: list[VerifyResult]) -> dict[str, object]:
-    """Kendall τ between the 2D-slice and 3D J_fan — does the slice ranking hold?"""
-    paired = [
-        (r.j_fan_slice, r.j_fan_3d)
-        for r in results
-        if r.j_fan_slice is not None and np.isfinite(r.j_fan_3d)  # skip failed 3D runs
-    ]
-    if len(paired) < 2:
-        return {"n": len(paired), "rank_preserved": None}
-    slice_j = np.array([p[0] for p in paired], dtype=float)
-    cfd_j = np.array([p[1] for p in paired], dtype=float)
-    tau = kendall_tau(slice_j, cfd_j)
-    return {"n": len(paired), "kendall_tau": tau, "rank_preserved": bool(tau > 0.0)}
+    """Full-spectrum slice-vs-3D agreement — three metrics, with suspect designs flagged.
+
+    A **suspect** design has a non-finite (failed 3D run) or **negative** 3D J_fan
+    (net reverse thrust — physically invalid for a fan, i.e. a degenerate or
+    non-converged run). Metrics are reported twice: over ``all_finite`` pairs
+    (includes negative-J designs) and ``valid_only`` (excludes them), so a ranking
+    that only "holds" because both fidelities agree a degenerate design is worst is
+    exposed rather than hidden behind a single τ. Kept for back-compat: top-level
+    ``n`` / ``kendall_tau`` / ``rank_preserved`` mirror the ``valid_only`` set.
+    """
+    with_slice = [r for r in results if r.j_fan_slice is not None]
+    finite = [r for r in with_slice if np.isfinite(r.j_fan_3d)]
+    suspect = [r for r in with_slice if not np.isfinite(r.j_fan_3d) or r.j_fan_3d < 0.0]
+    valid = [r for r in finite if r.j_fan_3d >= 0.0]
+
+    all_finite = _rank_metrics([(r.j_fan_slice, r.j_fan_3d) for r in finite])  # type: ignore[misc]
+    valid_only = _rank_metrics([(r.j_fan_slice, r.j_fan_3d) for r in valid])  # type: ignore[misc]
+    valid_tau = valid_only["kendall_tau"]
+    rank_preserved = bool(valid_tau > 0.0) if isinstance(valid_tau, float) else None
+
+    return {
+        "n": valid_only["n"],
+        "kendall_tau": valid_tau,
+        "rank_preserved": rank_preserved,
+        "n_suspect": len(suspect),
+        "suspect_designs": [r.name for r in suspect],
+        "all_finite": all_finite,
+        "valid_only": valid_only,
+        "pairs": [
+            {
+                "name": r.name,
+                "j_fan_slice": r.j_fan_slice,
+                "j_fan_3d": r.j_fan_3d if np.isfinite(r.j_fan_3d) else None,
+                "suspect": not np.isfinite(r.j_fan_3d) or r.j_fan_3d < 0.0,
+            }
+            for r in with_slice
+        ],
+    }

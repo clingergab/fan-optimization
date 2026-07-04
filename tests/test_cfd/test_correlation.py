@@ -10,6 +10,7 @@ from fanopt.cfd.correlation import (
     correlate,
     kendall_tau,
     pearson_r2,
+    spearman_rho,
 )
 
 
@@ -58,6 +59,25 @@ def test_kendall_tau_reversed_is_minus_one():
 
 def test_kendall_tau_constant_is_zero():
     assert kendall_tau(np.array([1.0, 2.0, 3.0]), np.array([5.0, 5.0, 5.0])) == 0.0
+
+
+def test_spearman_rho_monotone_is_one():
+    x = np.array([1.0, 2.0, 3.0, 4.0])
+    assert spearman_rho(x, x**3) == pytest.approx(1.0)  # monotone but nonlinear
+
+
+def test_spearman_rho_reversed_is_minus_one():
+    x = np.array([1.0, 2.0, 3.0, 4.0])
+    assert spearman_rho(x, -x) == pytest.approx(-1.0)
+
+
+def test_spearman_rho_constant_is_zero():
+    assert spearman_rho(np.array([1.0, 2.0, 3.0]), np.array([5.0, 5.0, 5.0])) == 0.0
+
+
+def test_spearman_rejects_single_point():
+    with pytest.raises(ValueError, match="at least 2"):
+        spearman_rho(np.array([1.0]), np.array([1.0]))
 
 
 def test_correlate_passes_above_threshold():

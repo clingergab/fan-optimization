@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -93,12 +94,18 @@ def main(argv: list[str] | None = None) -> int:
         n_workers=args.workers,
         progress=not args.no_progress,
     )
-    ranking = summary["ranking"]
+    ranking: dict[str, Any] = summary["ranking"]  # type: ignore[assignment]
     print(json.dumps(ranking, indent=2))
+    valid = ranking["valid_only"]
+    suspects = ranking["suspect_designs"]
     print(
         f"[phase5] verified {len(summary['designs'])} designs → "  # type: ignore[arg-type]
-        f"rank_preserved={ranking['rank_preserved']}"  # type: ignore[index]
+        f"rank_preserved={ranking['rank_preserved']} "
+        f"(valid n={valid['n']}: τ={valid['kendall_tau']}, ρ={valid['spearman_rho']}, "
+        f"R²={valid['pearson_r2']})"
     )
+    if suspects:
+        print(f"[phase5] ⚠ {ranking['n_suspect']} suspect (negative/failed 3D J_fan): {suspects}")
     return 0
 
 
