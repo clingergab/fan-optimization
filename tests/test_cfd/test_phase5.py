@@ -143,10 +143,21 @@ def _make_fake_su2(tmp_path: Path) -> str:
     return str(s)
 
 
+def test_run_verification_progress_bar(tmp_path, monkeypatch):
+    # progress=True must not change results (bar is display-only).
+    monkeypatch.setattr(phase3.subprocess, "run", _fake_su2_writing([1.0, -1.0] * 30))
+    results = phase5.run_verification(
+        [("d0", _mid_vector(), 1.0)], tmp_path, su2_bin="/fake/SU2_CFD", progress=True
+    )
+    assert len(results) == 1
+
+
 def test_run_verification_parallel_preserves_order(tmp_path):
     su2 = _make_fake_su2(tmp_path)
     designs = [("d0", _mid_vector(), 1.0), ("d1", _mid_vector(), 2.0)]
-    results = phase5.run_verification(designs, tmp_path / "out", su2_bin=su2, n_workers=2)
+    results = phase5.run_verification(
+        designs, tmp_path / "out", su2_bin=su2, n_workers=2, progress=True
+    )
     assert [r.name for r in results] == ["d0", "d1"]  # order preserved across processes
     assert all(np.isfinite(r.j_fan_3d) for r in results)
     assert [r.j_fan_slice for r in results] == [1.0, 2.0]

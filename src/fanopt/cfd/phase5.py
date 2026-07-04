@@ -15,12 +15,13 @@ expensive — a Colab job in practice — but geometry + meshing + cfg run local
 
 from __future__ import annotations
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import cadquery as cq
 import numpy as np
+from tqdm.auto import tqdm
 
 from fanopt.bo.codec import decode
 from fanopt.bo.inertia import NEUTRAL_LAYER4
@@ -146,21 +147,36 @@ def run_verification(
     cfg: VerifyConfig = _DEFAULT_VERIFY_CFG,
     su2_bin: str | None = None,
     n_workers: int = 1,
+    progress: bool = False,
 ) -> list[VerifyResult]:
     """3D-verify each ``(name, vector, j_fan_slice)`` design; return the results.
 
     ``n_workers`` > 1 runs designs concurrently in **separate processes** (gmsh
     can't be threaded; each 3D SU2 run is single-core, so ``n_workers`` ≈ min(
-    n_designs, cores) is the useful range). Order is preserved.
+    n_designs, cores) is the useful range). Order is preserved. ``progress`` shows
+    a live ``tqdm`` bar over the designs (each 3D run takes a while).
     """
     su2 = su2_bin or find_su2()
     if su2 is None:
         raise RuntimeError("SU2_CFD not found (set $SU2_RUN or put SU2_CFD on PATH)")
     worker = _VerifyWorker(workdir, cfg, su2)
-    if n_workers > 1 and len(designs) > 1:
-        with ProcessPoolExecutor(max_workers=n_workers) as pool:
-            return list(pool.map(worker, designs))
-    return [worker(d) for d in designs]
+    bar = tqdm(total=len(designs), disable=not progress, desc="Phase 5 3D verify", unit="design")
+    try:
+        if n_workers > 1 and len(designs) > 1:
+            out: list[VerifyResult | None] = [None] * len(designs)
+            with ProcessPoolExecutor(max_workers=n_workers) as pool:
+                fut_to_i = {pool.submit(worker, d): i for i, d in enumerate(designs)}
+                for fut in as_completed(fut_to_i):
+                    out[fut_to_i[fut]] = fut.result()
+                    bar.update(1)
+            return [r for r in out if r is not None]
+        results: list[VerifyResult] = []
+        for d in designs:
+            results.append(worker(d))
+            bar.update(1)
+        return results
+    finally:
+        bar.close()
 
 
 def verify_ranking(results: list[VerifyResult]) -> dict[str, object]:

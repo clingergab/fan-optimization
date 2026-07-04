@@ -27,6 +27,7 @@ dependencies = [
     "pyyaml>=6.0",
     "jinja2>=3.1",
     "jsonschema>=4.21",
+    "tqdm>=4.66",  # progress bars (phase 4 campaign + phase 5 verification)
 ]
 
 [project.optional-dependencies]
@@ -36,7 +37,6 @@ bo = [
     "gpytorch>=1.11",
     # SAASBO high-dimensional fallback (fully-Bayesian sparse GP via NUTS).
     "numpyro>=0.13",
-    "tqdm>=4.66",  # campaign progress bar
 ]
 cfd = [
     "vtk>=9.3",

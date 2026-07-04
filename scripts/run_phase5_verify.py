@@ -43,12 +43,18 @@ def run(
     su2_bin: str | None = None,
     cfg: VerifyConfig | None = None,
     n_workers: int = 1,
+    progress: bool = True,
 ) -> dict[str, object]:
     """Verify the top-k designs and write ``verification.json``; return the summary."""
     out_dir.mkdir(parents=True, exist_ok=True)
     designs = _designs_from_campaign(campaign_dir, top_k)
     results = run_verification(
-        designs, out_dir, cfg=cfg or VerifyConfig(), su2_bin=su2_bin, n_workers=n_workers
+        designs,
+        out_dir,
+        cfg=cfg or VerifyConfig(),
+        su2_bin=su2_bin,
+        n_workers=n_workers,
+        progress=progress,
     )
     ranking = verify_ranking(results)
     summary: dict[str, object] = {
@@ -76,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
         "--workers", type=int, default=1, help="Parallel designs (processes); ≈ min(top_k, cores)."
     )
     parser.add_argument("--su2-bin", default=None, help="Path to SU2_CFD (default: $SU2_RUN/PATH)")
+    parser.add_argument("--no-progress", action="store_true", help="Disable the tqdm progress bar.")
     args = parser.parse_args(argv)
 
     summary = run(
@@ -84,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         top_k=args.top_k,
         su2_bin=args.su2_bin,
         n_workers=args.workers,
+        progress=not args.no_progress,
     )
     ranking = summary["ranking"]
     print(json.dumps(ranking, indent=2))
