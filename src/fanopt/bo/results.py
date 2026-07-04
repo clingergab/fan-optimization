@@ -10,6 +10,7 @@ can be analyzed anywhere the checkpoint lands.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ __all__ = [
     "pareto_designs",
     "select_diverse",
     "analyze",
+    "recommend",
 ]
 
 # (J_fan, I_wrist, structural): +1 maximize, -1 minimize (matches backbone).
@@ -130,4 +132,58 @@ def analyze(out_dir: str | Path, *, top_k: int = 3) -> dict[str, Any]:
         "n_pareto": len(pareto),
         "top_k_diverse": [d for d in pareto if d["diverse_pick"]],
         "pareto": pareto,
+    }
+
+
+def _verification_by_index(verification_path: str | Path | None) -> dict[int, dict[str, Any]]:
+    """Map a Phase-5 ``verification.json``'s designs by campaign index (name ``b{n}_i{idx}``)."""
+    if verification_path is None or not Path(verification_path).exists():
+        return {}
+    ver = json.loads(Path(verification_path).read_text(encoding="utf-8"))
+    out: dict[int, dict[str, Any]] = {}
+    for d in ver.get("designs", []):
+        try:
+            idx = int(str(d["name"]).split("_i")[-1])
+        except (KeyError, ValueError):  # pragma: no cover - malformed name
+            continue
+        out[idx] = d
+    return out
+
+
+def recommend(
+    out_dir: str | Path, *, top_k: int = 3, verification_path: str | Path | None = None
+) -> dict[str, Any]:
+    """Consolidated print recommendation: top-k diverse Pareto + 3D verification.
+
+    Merges the Phase-4 Pareto (``analyze``'s structurally-diverse picks) with a
+    Phase-5 ``verification.json`` (if present) so each recommended design shows its
+    2D-slice **and** 3D ``J_fan`` side by side, flagged ``verified``. The 3–5
+    designs to print for the Phase-6 blinded A/B test. Works before verification
+    exists (``verification`` = ``"absent"``, 3D fields ``None``).
+    """
+    summary = analyze(out_dir, top_k=top_k)
+    ver_by_idx = _verification_by_index(verification_path)
+    recommended: list[dict[str, Any]] = []
+    for r in summary["top_k_diverse"]:
+        vr = ver_by_idx.get(int(r["index"]))
+        j3d = vr.get("j_fan_3d") if vr else None
+        recommended.append(
+            {
+                "index": r["index"],
+                "blade_count": r["blade_count"],
+                "edge_profile": r["edge_profile"],
+                "j_fan_slice": r["j_fan"],
+                "j_fan_3d": j3d,
+                "i_wrist_kgm2": r["i_wrist_kgm2"],
+                "structural_m": r["structural_m"],
+                "verified": vr is not None and j3d is not None and bool(np.isfinite(j3d)),
+                "vector": r["vector"],
+            }
+        )
+    return {
+        "top_k": top_k,
+        "n_pareto": summary["n_pareto"],
+        "verification": "present" if ver_by_idx else "absent",
+        "n_verified": sum(1 for d in recommended if d["verified"]),
+        "recommended": recommended,
     }

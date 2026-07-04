@@ -109,3 +109,42 @@ def test_analyze_flags_diverse_picks(tmp_path):
     assert summary["n_pareto"] == 3  # all non-dominated (a proper tradeoff)
     assert len(summary["top_k_diverse"]) == 2
     assert all(d["diverse_pick"] for d in summary["top_k_diverse"])
+
+
+def _campaign_three(tmp_path):
+    x = np.array([_vec(8, 0.0022), _vec(10, 0.003), _vec(12, 0.0038)])
+    y_raw = np.array([[2.0, 0.004, 0.001], [1.5, 0.005, 0.0009], [1.0, 0.006, 0.0008]])
+    return _fake_campaign(tmp_path, x, y_raw)
+
+
+def test_recommend_without_verification(tmp_path):
+    _campaign_three(tmp_path)
+    out = results.recommend(tmp_path, top_k=3)
+    assert out["verification"] == "absent"
+    assert out["n_verified"] == 0
+    assert len(out["recommended"]) == 3
+    assert all(d["j_fan_3d"] is None and d["verified"] is False for d in out["recommended"])
+
+
+def test_recommend_with_verification(tmp_path):
+    _campaign_three(tmp_path)
+    ver = {
+        "ranking": {"rank_preserved": True},
+        "designs": [
+            {"name": "b8_i0", "j_fan_3d": 1.8, "j_fan_slice": 2.0},
+            {"name": "b10_i1", "j_fan_3d": 1.3, "j_fan_slice": 1.5},
+        ],
+    }
+    vp = tmp_path / "verification.json"
+    vp.write_text(json.dumps(ver), encoding="utf-8")
+    out = results.recommend(tmp_path, top_k=3, verification_path=vp)
+    assert out["verification"] == "present"
+    assert out["n_verified"] == 2  # indices 0, 1 verified; 2 not
+    verified = {d["index"] for d in out["recommended"] if d["verified"]}
+    assert verified == {0, 1}
+
+
+def test_recommend_ignores_missing_verification_file(tmp_path):
+    _campaign_three(tmp_path)
+    out = results.recommend(tmp_path, top_k=3, verification_path=tmp_path / "nope.json")
+    assert out["verification"] == "absent"
