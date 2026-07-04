@@ -319,8 +319,8 @@ def render_benchmark_cfg(
     marker_farfield: str,
     reynolds_number: float,
     reynolds_length: float,
-    pitching_omega_y: float,
-    pitching_ampl_y: float,
+    pitching_omega_z: float,
+    pitching_ampl_deg: float,
     motion_origin_x: float,
     time_step: float,
     max_time: float,
@@ -342,6 +342,11 @@ def render_benchmark_cfg(
     Default ``mach_number = 0.05`` is the conventional "low enough to
     be effectively incompressible, high enough that the compressible
     solver stays well conditioned with LOW_MACH_PREC = YES" choice.
+
+    Units follow SU2: ``pitching_omega_z`` is rad/s, ``pitching_ampl_deg`` is
+    **degrees** (SU2's ``PITCHING_AMPL`` is degrees — passing radians pitches
+    ~57x too little). The 2D x-y airfoil pitches about the **z-axis** through
+    ``motion_origin_x`` (pitching about y leaves the angle of attack unchanged).
     """
     env = _env()
     try:
@@ -358,8 +363,8 @@ def render_benchmark_cfg(
             freestream_pressure=freestream_pressure,
             reynolds_number=reynolds_number,
             reynolds_length=reynolds_length,
-            pitching_omega_y=pitching_omega_y,
-            pitching_ampl_y=pitching_ampl_y,
+            pitching_omega_z=pitching_omega_z,
+            pitching_ampl_deg=pitching_ampl_deg,
             motion_origin_x=motion_origin_x,
             time_step=time_step,
             max_time=max_time,

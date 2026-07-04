@@ -264,8 +264,8 @@ def test_render_benchmark_template_not_found(monkeypatch, tmp_path) -> None:
             marker_farfield="F",
             reynolds_number=40000,
             reynolds_length=1.0,
-            pitching_omega_y=-3.0,
-            pitching_ampl_y=0.1,
+            pitching_omega_z=-3.0,
+            pitching_ampl_deg=10.0,
             motion_origin_x=0.25,
             time_step=0.001,
             max_time=5.0,
@@ -286,14 +286,17 @@ def test_benchmark_renders_wind_tunnel_frame() -> None:
         marker_farfield="FARFIELD",
         reynolds_number=40000,
         reynolds_length=1.0,
-        pitching_omega_y=-3.45,  # negative — same C11 convention
-        pitching_ampl_y=0.1745,
+        pitching_omega_z=-3.45,
+        pitching_ampl_deg=10.0,
         motion_origin_x=0.25,
         time_step=0.001,
         max_time=5.0,
         time_iter=5000,
     )
     assert "MACH_NUMBER= 0.05" in out
+    # 2D x-y airfoil pitches about z (not y) and PITCHING_AMPL is degrees (SU2).
+    assert "PITCHING_OMEGA= 0.0 0.0 -3.45" in out
+    assert "PITCHING_AMPL=  0.0 0.0 10.0" in out
     # The body-in-still-air directive (Tier-1 production fallback) MUST
     # be absent — its presence is the conceptual bug the 2026-05-14
     # diagnostic invalidated.
@@ -314,8 +317,8 @@ def test_benchmark_mach_number_parameterizable() -> None:
         marker_farfield="F",
         reynolds_number=40000,
         reynolds_length=1.0,
-        pitching_omega_y=-3.0,
-        pitching_ampl_y=0.1,
+        pitching_omega_z=-3.0,
+        pitching_ampl_deg=10.0,
         motion_origin_x=0.25,
         time_step=0.001,
         max_time=5.0,
@@ -334,8 +337,8 @@ def test_benchmark_freestream_state_parameterizable() -> None:
         marker_farfield="F",
         reynolds_number=40000,
         reynolds_length=1.0,
-        pitching_omega_y=-3.0,
-        pitching_ampl_y=0.1,
+        pitching_omega_z=-3.0,
+        pitching_ampl_deg=10.0,
         motion_origin_x=0.25,
         time_step=0.001,
         max_time=5.0,
@@ -354,8 +357,8 @@ def test_benchmark_marker_airfoil_propagates() -> None:
         marker_farfield="MY_FARFIELD",
         reynolds_number=40000,
         reynolds_length=1.0,
-        pitching_omega_y=-3.0,
-        pitching_ampl_y=0.1,
+        pitching_omega_z=-3.0,
+        pitching_ampl_deg=10.0,
         motion_origin_x=0.25,
         time_step=0.001,
         max_time=5.0,

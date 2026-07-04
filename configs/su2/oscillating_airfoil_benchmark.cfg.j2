@@ -49,12 +49,15 @@
 %                                conditioned with LOW_MACH_PREC = YES)
 %   {{ reynolds_number }}      - target Re (within [30000, 50000])
 %   {{ reynolds_length }}      - reference chord length (m)
-%   {{ pitching_omega_y }}     - angular frequency (rad/s) for the target
-%                                k_reduced; sign follows C11 convention
-%   {{ pitching_ampl_y }}      - pitch amplitude (rad); default ~0.1745
-%                                (= 10°)
-%   {{ motion_origin_x }}      - pitching axis x-location (quarter-chord
-%                                = 0.25 * c)
+%   {{ pitching_omega_z }}     - angular frequency (rad/s) for the target
+%                                k_reduced (SU2 PITCHING_OMEGA is rad/s)
+%   {{ pitching_ampl_deg }}    - pitch amplitude in DEGREES; default 10.0.
+%                                SU2 PITCHING_AMPL is degrees, NOT radians —
+%                                passing radians pitches ~57x too little.
+%   {{ motion_origin_x }}      - pitch axis x-location (quarter-chord = 0.25c);
+%                                the 2D x-y airfoil pitches about the z-axis
+%                                through this point (NOT y — that leaves AOA
+%                                unchanged and produces zero lift response)
 %   {{ time_step }}            - dt = T/200 by spec
 %   {{ max_time }}             - 5 * T (5 full cycles)
 %   {{ time_iter }}            - 5 * 200 = 1000 outer time steps
@@ -92,11 +95,12 @@ MAX_TIME= {{ max_time }}
 TIME_ITER= {{ time_iter }}
 INNER_ITER= {{ inner_iter | default(100) }}
 
-% --- pitching about the quarter-chord ---
+% --- pitching about the quarter-chord (z-axis for a 2D x-y airfoil) ---
+% PITCHING_OMEGA is rad/s; PITCHING_AMPL is DEGREES (SU2 convention).
 GRID_MOVEMENT= RIGID_MOTION
 MOTION_ORIGIN= {{ motion_origin_x }} 0.0 0.0
-PITCHING_OMEGA= 0.0 {{ pitching_omega_y }} 0.0
-PITCHING_AMPL=  0.0 {{ pitching_ampl_y }} 0.0
+PITCHING_OMEGA= 0.0 0.0 {{ pitching_omega_z }}
+PITCHING_AMPL=  0.0 0.0 {{ pitching_ampl_deg }}
 
 % --- boundary conditions ---
 MARKER_HEATFLUX= ( {{ marker_airfoil }}, 0.0 )
