@@ -183,6 +183,32 @@ gate).
 J_fan in milliseconds turns a multi-day campaign into minutes, unlocking orders
 of magnitude more design exploration and making generative search tractable.
 
+**North star — escape the parameterization ceiling (operator insight 2026-07-18):**
+V1's 35-variable codec is an **expert-priored simplification chosen for compute
+tractability** (GP-BO degrades past ~40 dims; each CFD eval is expensive), *not* a
+fundamental limit. It can only find the best fan **expressible in that hand-picked
+basis** — `report-final.md` §7 is explicit: "BO searches *within* them but cannot
+invent a 6th field type or a primitive shape outside the library." So V1/V1.5 are
+optimal *within the box*; the deepest payoff of the ML route is **removing the box**,
+because cheap surrogate evals + GPU make a far larger space searchable. Progression
+of design freedom:
+- (a) **Higher-dimensional parameterization** — more Fourier modes / fields / finer
+  control (hundreds of dims: intractable for GP-BO, fine for a neural surrogate +
+  gradient or generative search).
+- (b) **Free-form representations** — neural implicit fields (a network *is* the
+  shape) or voxel/mesh-level TO (thousands of density variables): no hand-picked
+  basis, arbitrary topology.
+- (c) **Generative latent spaces** — diffusion / GAN / VAE that learn a manifold of
+  valid designs from data and generate novel topologies the codec cannot express.
+
+**What still binds (NOT simplifications to remove):** the architectural +
+manufacturing locks — panel-pivot architecture, m < 100 g, single-material PETG
+printability, the click mechanism, blade-count range, the kinematic load cases.
+These **define a valid, buildable fan**; free-form search explores shapes *within*
+them, and the physics gate (§59.5 + real SU2/FEA) verifies buildability. Distinguish
+a **compute-driven basis simplification** (escape it) from a **product-defining
+constraint** (keep it).
+
 **The hard part = data + GPU (be honest about this):** ML TO/AO needs thousands of
 (design → response) pairs from SIMP/SU2. V1 has a *seed* (208 aero evals + 1 rib
 TO), not a training set, and the fan is bespoke (no off-the-shelf dataset). **Data
