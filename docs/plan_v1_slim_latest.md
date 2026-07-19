@@ -363,3 +363,44 @@ radial dimension). Cut Layer-2 porosity fields (TPMS/noise) per S1.
 spline), the geometry generator (``fields_cad``/``generator_cad`` build the
 thickness field surface), and the deployed-geometry → 2D mid-radius
 cross-section extractor that feeds ``mesh_2d_slice.build_cascade_slice_mesh``.
+
+## 11. Beyond V1 — coupling + ML roadmap (operator direction 2026-07-18)
+
+Forward-looking note; full spec + acceptance criteria live in `V2_backlog.md`
+(sections "V1.5 — Staggered AO↔TO co-optimization" and "ML-driven TO + AO"). This
+section records the *arc* so future reads don't lose the intent.
+
+**The arc — "optimize a simplification" → "search the real thing":**
+
+- **V1 — best fan *in the box*.** AO (Phase 4 BO) and TO (Phase 2 SIMP) run
+  **sequentially + decoupled**, over the §10 **35–40-var basis**. The §59.5
+  combined-blade FEA is a one-way verification gate (rejects under-built designs,
+  no feedback). Ships + blinded A/B feel-test.
+- **V1.5 — couple AO↔TO *in the box*.** A **staggered (block Gauss-Seidel)** loop
+  over the *existing* solvers: pass aero pressures → TO, updated rib mass/stiffness
+  → AO, iterate to convergence. **Computational-only — needs none of the deferred
+  V2 measurement hardware.** Its real products: a **ground-truth coupled baseline**
+  and the **seed dataset** the ML route trains on. (The panel-compliance→aero
+  channel needs a static-deflection step — the V1 "No FSI" lock is relaxed here.)
+- **ML route — escape the box.** Surrogate-accelerated (aero surrogate first — CFD
+  is the ~85 min/eval bottleneck), then ML-TO, then **generative** design, then
+  end-to-end neural-operator MDO. GPU-powered; physics stays the ground-truth
+  verifier (surrogate proposes, SU2/FEA + §59.5 dispose).
+
+**Why this reshapes the target (the key insight):** the §10 35–40-var basis is an
+**expert-priored simplification chosen for compute tractability** (GP-BO degrades
+past ~40 dims), *not* a fundamental limit — BO can only find the best fan
+*expressible in that hand-picked basis* (`report-final.md` §7). The deepest payoff
+of the ML route is **removing that ceiling**, because cheap surrogate evals + GPU
+make a far larger space searchable: higher-dim → free-form (neural implicit fields
+/ voxel-level TO) → generative latent spaces that invent topologies the codec
+cannot express. So V1/V1.5 are optimal *within the box* and a validated base — but
+by design a simplified one, potentially far from the free-form optimum.
+
+**Distinguish two kinds of a priori decision:**
+- **Compute-driven basis simplifications → escape them** (the 35–40-var
+  Fourier/grid/primitive parameterization is the ceiling).
+- **Product-defining constraints → keep them** (panel-pivot architecture,
+  m < 100 g, single-material PETG printability, click mechanism, blade-count range,
+  kinematic load cases). Free-form/generative search explores *within* these; the
+  physics gate enforces them.
