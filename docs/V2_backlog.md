@@ -170,6 +170,54 @@ while still passing the §59.5 combined-blade structural gate.
 
 ---
 
+## ML-driven TO + AO (research track — V2/V3)
+
+**Origin:** operator direction 2026-07-18 — push the design space with genuinely
+**ML-based** topology *and* aero optimization (surrogate + generative), not just
+deterministic SIMP + GP-BO. This is the ambitious end-state; V1.5's staggered
+AO↔TO loop is the harness it plugs into (same objectives, params schema, §59.5
+gate).
+
+**Why it's compelling here:** the CFD is the binding cost (~85 min/eval; the
+208-eval Phase-4 campaign took ~23 h). A trained aero surrogate that predicts
+J_fan in milliseconds turns a multi-day campaign into minutes, unlocking orders
+of magnitude more design exploration and making generative search tractable.
+
+**The hard part = data + GPU (be honest about this):** ML TO/AO needs thousands of
+(design → response) pairs from SIMP/SU2. V1 has a *seed* (208 aero evals + 1 rib
+TO), not a training set, and the fan is bespoke (no off-the-shelf dataset). **Data
+generation is the dominant cost** and is GPU/compute-heavy. Mitigations: active
+learning (sample only where the surrogate is uncertain), transfer learning, and
+physics-informed operators (PINN / DeepONet / Fourier Neural Operator) that need
+less data. **Physics stays ground truth** — the surrogate proposes; SU2/FEA + the
+§59.5 gate dispose. Never ship an unverified ML output.
+
+**Staged path (highest ROI first):**
+1. **ML aero surrogate** — biggest win (CFD is the bottleneck). Train a model
+   (CNN/GNN on the flow field, or an FNO for the PDE operator) on the accumulated
+   SU2 evals to predict J_fan / pressure. Bootstrap from the existing Phase-4
+   ledger (`evaluations.jsonl` + design vectors) via active learning; replace most
+   SU2 calls in the BO inner loop, keep periodic SU2 spot-checks.
+2. **ML TO surrogate** — CNN/FNO predicting the rib compliance/stress field, to
+   accelerate the V1.5 staggered inner loop (the §6.3 "iterative TO↔ASO" case).
+   GPU re-entry point on the structural side.
+3. **Generative design** — VAE/GAN/diffusion over rib topologies + panel shapes
+   that *generate* near-optimal candidates from loads/BCs, seeding the physics
+   verifier instead of blind BO/SIMP starts. Hardest to constrain to feasibility;
+   best as a candidate-generator feeding Filter 2 + §59.5.
+4. **End-to-end differentiable / neural-operator MDO** — the research end-state:
+   differentiable aero + structural surrogates enabling gradient-based *monolithic*
+   coupled MDO, or RL/generative agents over the joint design space.
+
+**First concrete step:** an `src/fanopt/ml/` + notebook prototype — an aero
+surrogate trained on the Phase-4 ledger, validated against held-out SU2 evals, with
+an active-learning acquisition. **Success:** predicts J_fan within the CFD noise
+floor on held-out designs and cuts SU2 calls ≥5× in a re-run campaign. This is
+where GPU finally matters across the whole pipeline (surrogate training +
+generative inference), not only PyFR.
+
+---
+
 ## Optional (V1-complete, V2-improves)
 
 Items where V1 ships a working solution but V2 has a clear path to a better one. No triggering condition required; V2 picks these up as time permits.
