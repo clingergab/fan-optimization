@@ -168,6 +168,25 @@ tighter-coupled design without buying measurement hardware.
 co-optimized design Pareto-dominates the V1 sequential winner on (J_fan, I_wrist)
 while still passing the §59.5 combined-blade structural gate.
 
+### Geometry-validity filter (found in the Phase-5 K=6 re-run, 2026-07-19)
+
+Phase-4's objective only evaluates the fast **2D mid-radius slice**, which cannot
+see 3D self-intersection — so the BO pushed toward extreme high-J_fan designs whose
+**full 3D blade self-intersects** (an invalid, un-printable, un-meshable solid).
+Observed: of a 7-design Phase-5 top-k, **3 failed 3D meshing with self-intersection
+errors** (`Invalid boundary mesh (overlapping facets)` ×2, `PLC Error: segment and
+facet intersect` ×1), and they were the **highest-2D-J_fan Pareto picks** — the
+optimizer was being rewarded for geometry that can't be built.
+
+**Fix:** build the 3D CadQuery/OCC solid and test validity (`Shape.val().isValid()`
+/ OCC `BRepCheck_Analyzer`) inside the Phase-4 objective (or a pre-filter), and
+**penalize invalid geometry** — return the same dominated-penalty used for a
+diverged CFD run — so the optimizer never proposes un-buildable shapes. **Cost:**
+one CAD solid build per eval (adds geometry time, but catches the failure at
+proposal time instead of wasting a ~85-min 3D verification on it). Benefits V1.5
+(a cleaner, all-buildable Pareto) and is a **hard prerequisite for the ML/generative
+route** — a generative model will propose far more invalid geometry than BO does.
+
 ---
 
 ## ML-driven TO + AO (research track — V2/V3)
