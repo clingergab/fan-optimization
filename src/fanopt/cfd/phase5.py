@@ -15,6 +15,7 @@ expensive — a Colab job in practice — but geometry + meshing + cfg run local
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -153,13 +154,17 @@ def run_verification(
     su2_bin: str | None = None,
     n_workers: int = 1,
     progress: bool = False,
+    on_result: Callable[[VerifyResult], None] | None = None,
 ) -> list[VerifyResult]:
     """3D-verify each ``(name, vector, j_fan_slice)`` design; return the results.
 
     ``n_workers`` > 1 runs designs concurrently in **separate processes** (gmsh
     can't be threaded; each 3D SU2 run is single-core, so ``n_workers`` ≈ min(
     n_designs, cores) is the useful range). Order is preserved. ``progress`` shows
-    a live ``tqdm`` bar over the designs (each 3D run takes a while).
+    a live ``tqdm`` bar over the designs (each 3D run takes a while). ``on_result``,
+    if given, is called with each :class:`VerifyResult` as it completes — the caller
+    uses it to checkpoint partial results so a mid-run crash/disconnect isn't total
+    loss.
     """
     su2 = su2_bin or find_su2()
     if su2 is None:
@@ -172,12 +177,18 @@ def run_verification(
             with ProcessPoolExecutor(max_workers=n_workers) as pool:
                 fut_to_i = {pool.submit(worker, d): i for i, d in enumerate(designs)}
                 for fut in as_completed(fut_to_i):
-                    out[fut_to_i[fut]] = fut.result()
+                    r = fut.result()
+                    out[fut_to_i[fut]] = r
+                    if on_result is not None:
+                        on_result(r)
                     bar.update(1)
             return [r for r in out if r is not None]
         results: list[VerifyResult] = []
         for d in designs:
-            results.append(worker(d))
+            r = worker(d)
+            results.append(r)
+            if on_result is not None:
+                on_result(r)
             bar.update(1)
         return results
     finally:

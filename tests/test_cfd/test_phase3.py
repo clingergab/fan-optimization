@@ -8,6 +8,7 @@ the local integration run, not unit tests.
 from __future__ import annotations
 
 import importlib.util
+import types
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,22 @@ def test_find_su2_from_su2_run_env(tmp_path, monkeypatch):
     (tmp_path / "SU2_CFD").write_text("#!/bin/sh\n")
     monkeypatch.setenv("SU2_RUN", str(tmp_path))
     assert phase3.find_su2() == str(tmp_path / "SU2_CFD")
+
+
+def test_run_su2_forces_single_thread_env(tmp_path, monkeypatch):
+    """SU2 subprocess must get OMP_NUM_THREADS=1 so N-way process parallelism is real."""
+    monkeypatch.setenv("OMP_NUM_THREADS", "8")  # simulate Colab pre-setting it to 8
+    captured: dict = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(phase3.subprocess, "run", fake_run)
+    (tmp_path / "history.csv").write_text("Time_Iter,CD\n0,1.0\n", encoding="utf-8")
+    phase3.run_su2("x.cfg", tmp_path, str(tmp_path / "SU2_CFD"))
+    assert captured["env"]["OMP_NUM_THREADS"] == "1"  # hard-set, overrides the inherited 8
+    assert captured["env"]["OPENBLAS_NUM_THREADS"] == "1"
 
 
 def test_extract_unsteady_mean_rejects_too_short(tmp_path):

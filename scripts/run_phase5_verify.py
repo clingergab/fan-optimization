@@ -22,7 +22,7 @@ from typing import Any
 import numpy as np
 
 from fanopt.bo.results import analyze
-from fanopt.cfd.phase5 import VerifyConfig, run_verification, verify_ranking
+from fanopt.cfd.phase5 import VerifyConfig, VerifyResult, run_verification, verify_ranking
 
 
 def _designs_from_campaign(
@@ -46,9 +46,36 @@ def run(
     n_workers: int = 1,
     progress: bool = True,
 ) -> dict[str, object]:
-    """Verify the top-k designs and write ``verification.json``; return the summary."""
+    """Verify the top-k designs and write ``verification.json``; return the summary.
+
+    ``verification.json`` is rewritten after **each** design completes, so a mid-run
+    Colab disconnect keeps the designs finished so far instead of losing everything.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     designs = _designs_from_campaign(campaign_dir, top_k)
+
+    done: list[VerifyResult] = []
+
+    def _summary(results: list[VerifyResult]) -> dict[str, Any]:
+        return {
+            "ranking": verify_ranking(results),
+            "designs": [
+                {
+                    "name": r.name,
+                    "j_fan_3d": r.j_fan_3d,
+                    "j_fan_slice": r.j_fan_slice,
+                    "n_nodes": r.meta.get("n_nodes"),
+                }
+                for r in results
+            ],
+        }
+
+    def _checkpoint(r: VerifyResult) -> None:
+        done.append(r)
+        (out_dir / "verification.json").write_text(
+            json.dumps(_summary(done), indent=2), encoding="utf-8"
+        )
+
     results = run_verification(
         designs,
         out_dir,
@@ -56,20 +83,9 @@ def run(
         su2_bin=su2_bin,
         n_workers=n_workers,
         progress=progress,
+        on_result=_checkpoint,
     )
-    ranking = verify_ranking(results)
-    summary: dict[str, object] = {
-        "ranking": ranking,
-        "designs": [
-            {
-                "name": r.name,
-                "j_fan_3d": r.j_fan_3d,
-                "j_fan_slice": r.j_fan_slice,
-                "n_nodes": r.meta.get("n_nodes"),
-            }
-            for r in results
-        ],
-    }
+    summary = _summary(results)  # final write with order-preserved results
     (out_dir / "verification.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary
 

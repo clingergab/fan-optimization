@@ -180,7 +180,16 @@ def run_su2(cfg: str, workdir: Path, su2_bin: str) -> Path:
     Raises RuntimeError with the log tail on failure (so errors surface).
     """
     log = workdir / (cfg + ".log")
-    env = dict(os.environ, SU2_RUN=str(Path(su2_bin).parent))
+    # Force single-threaded SU2 so N-way process parallelism (Phase 4/5) gets real
+    # concurrency instead of N processes each grabbing all cores. HARD-set (not the
+    # notebook's setdefault, which is a no-op when Colab pre-sets OMP_NUM_THREADS).
+    env = dict(
+        os.environ,
+        SU2_RUN=str(Path(su2_bin).parent),
+        OMP_NUM_THREADS="1",
+        OPENBLAS_NUM_THREADS="1",
+        MKL_NUM_THREADS="1",
+    )
     with open(log, "w") as f:
         r = subprocess.run(
             [su2_bin, cfg], cwd=str(workdir), stdout=f, stderr=subprocess.STDOUT, env=env

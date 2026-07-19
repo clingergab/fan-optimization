@@ -75,3 +75,25 @@ def test_designs_from_campaign_shapes(tmp_path):
     name, vec, j_slice = designs[0]
     assert vec.shape[0] == 35
     assert isinstance(j_slice, float)
+
+
+def test_run_checkpoints_verification_json_after_each_design(tmp_path, monkeypatch):
+    """A mid-run disconnect must keep completed designs — verify the incremental write."""
+    camp = _fake_campaign(tmp_path)
+    out = tmp_path / "out"
+    seen_counts = []
+
+    def fake_run_verification(designs, out_dir, *, on_result=None, **kwargs):
+        results = []
+        for i, (name, _v, j) in enumerate(designs):
+            r = VerifyResult(name, j_fan_3d=float(i + 1), j_fan_slice=j, meta={"n_nodes": 100.0})
+            results.append(r)
+            if on_result is not None:
+                on_result(r)
+                # verification.json on disk must already reflect designs done so far
+                seen_counts.append(len(json.loads((out_dir / "verification.json").read_text())["designs"]))
+        return results
+
+    monkeypatch.setattr(script, "run_verification", fake_run_verification)
+    script.run(campaign_dir=camp, out_dir=out, top_k=2)
+    assert seen_counts == [1, 2]  # written after each design, not just at the end
