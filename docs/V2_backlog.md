@@ -104,6 +104,72 @@ Each item has a triggering condition that fires at Phase 6 wrap-up (or earlier i
 
 **Acceptance:** affected architectures' Tier 0 → Tier 1 Spearman ρ² improves by ≥ 0.1 over the V1 0.3/0.7 reweighting baseline.
 
+---
+
+## V1.5 — Staggered AO↔TO co-optimization (computational-only, no new hardware)
+
+**Origin:** operator design discussion 2026-07-18. V1 runs aero optimization (AO,
+Phase 4 BO) and rib topology optimization (TO, Phase 2 SIMP) **sequentially** and
+decoupled, with the §59.5 combined-blade FEA gate as a one-way verification (it
+*rejects* under-built designs but doesn't *feed back*). This item closes the loop
+with a **staggered (block Gauss-Seidel) AO↔TO iteration** — alternate AO and TO,
+passing loads/mass between them, until the coupled objectives converge.
+
+**Why this is V1.5, not V2:** it is **purely computational** — every objective is
+simulated (J_fan from SU2, I_wrist analytic, compliance/stress from FEA). It needs
+**none** of the deferred V2 measurement hardware (Spikes 0.2/0.3/0.5). The
+epistemic status is identical to V1: optimize in sim, validate by the printed
+blinded A/B feel-test.
+
+**Prerequisites — both solvers already exist and have run:**
+- AO loop ✅ — Phase 4 machinery (`fanopt.bo.orchestration`, 208-eval campaign).
+- TO loop ✅ — Phase 2 rib SIMP (`fanopt.topopt.{simp,plate_bending,loads,solver}`,
+  landed `8565212`; converged, −71.6% compliance at volfrac 0.4).
+- Missing = **coupling orchestration only** (a `scripts/run_staggered_mdo.py` +
+  the live load-passing wiring). Phase 2a already does CFD→structural-load
+  extraction (`loads.py`), so the AO→TO direction has precedent.
+
+**Architecture sketch (`scripts/run_staggered_mdo.py`):**
+1. Seed from the V1 Phase-4 Pareto winner(s).
+2. **AO → TO:** extract the winning design's SU2 pressure field → map to the rib
+   structural load → run rib SIMP TO.
+3. **TO → AO:** the TO'd rib updates **mass → I_wrist** (already a BO objective)
+   and support stiffness; re-run a *bounded* Phase-4 AO around the current design.
+4. Repeat until ΔJ_fan and ΔI_wrist between passes fall below tolerance
+   (≈ 2–4 outer iterations expected).
+
+**Coupling channels + honest expected payoff:**
+- **mass → I_wrist** (TO shaves rib material → better wrist-feel at equal airflow):
+  the main, cleanly-captured win.
+- **aero-pressure → rib load:** weak (few-Pa aero vs ~10–25× larger inertial/click
+  loads); marginal.
+- **panel-compliance → as-loaded aero shape** (the panel flexes 5–15 mm under aero,
+  §3.1 note): the *biggest* coupling, but it needs a **static-deflection step**
+  (deflect panel under aero, re-mesh, re-run) — the V1 "No FSI" lock (§2.3) is
+  relaxed here. Still 100% computational, no hardware; it's the extra machinery
+  that makes the loop worth doing.
+
+**Cost:** each outer pass ≈ one bounded AO campaign (hours–1 day on an 8-core Colab
+CPU) + a TO solve (~30 min). 2–4 passes ≈ a few days, CPU-only. GPU only becomes
+relevant if an **ML-surrogate TO** is added to accelerate the inner loop — exactly
+the scenario `report-final.md` §6.3 (ML-for-TO) flags as worthwhile *only* under
+iterative TO↔ASO coupling.
+
+**Relationship to V2 / V3:** V1.5 is the lightweight precursor. V2's queued
+**Winkler-foundation BC** (§13.3 / `report-final.md` §3.1 rib-panel BC note)
+captures the panel-compliance coupling *without* a full loop. Full **monolithic
+MDO** (coupled SU2↔FEniCSx adjoints, simultaneous aero+topology) is the rigorous
+end-state — see Out-of-scope (V3+/research) below.
+
+**Trigger:** V1 ships (printed + feel-tested) and the operator wants a
+tighter-coupled design without buying measurement hardware.
+
+**Acceptance:** the staggered loop converges (Δobjectives < tol), and the
+co-optimized design Pareto-dominates the V1 sequential winner on (J_fan, I_wrist)
+while still passing the §59.5 combined-blade structural gate.
+
+---
+
 ## Optional (V1-complete, V2-improves)
 
 Items where V1 ships a working solution but V2 has a clear path to a better one. No triggering condition required; V2 picks these up as time permits.
