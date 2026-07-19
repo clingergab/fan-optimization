@@ -163,6 +163,9 @@ def recommend(
     """
     summary = analyze(out_dir, top_k=top_k)
     ver_by_idx = _verification_by_index(verification_path)
+    diverse_idx = {int(r["index"]) for r in summary["top_k_diverse"]}
+    pareto_by_idx = {int(d["index"]): d for d in summary["pareto"]}
+
     recommended: list[dict[str, Any]] = []
     for r in summary["top_k_diverse"]:
         vr = ver_by_idx.get(int(r["index"]))
@@ -180,10 +183,36 @@ def recommend(
                 "vector": r["vector"],
             }
         )
+
+    # Every verified design, ranked by the high-fidelity 3D J_fan (valid first,
+    # suspects/failed last), so the full picture is visible — not just the print-3.
+    ranked: list[dict[str, Any]] = []
+    for idx, vr in ver_by_idx.items():
+        p = pareto_by_idx.get(idx, {})
+        raw = vr.get("j_fan_3d")
+        jf3 = float(raw) if isinstance(raw, int | float) and bool(np.isfinite(raw)) else None
+        ranked.append(
+            {
+                "index": idx,
+                "name": vr.get("name", f"i{idx}"),
+                "blade_count": p.get("blade_count"),
+                "edge_profile": p.get("edge_profile"),
+                "j_fan_slice": vr.get("j_fan_slice", p.get("j_fan")),
+                "j_fan_3d": jf3,
+                "i_wrist_kgm2": p.get("i_wrist_kgm2"),
+                "structural_m": p.get("structural_m"),
+                "verified": jf3 is not None and jf3 > 0,
+                "suspect": jf3 is None or jf3 <= 0,  # failed 3D run or net reverse thrust
+                "recommended_for_print": idx in diverse_idx,
+            }
+        )
+    ranked.sort(key=lambda d: (d["j_fan_3d"] is not None, d["j_fan_3d"] or 0.0), reverse=True)
+
     return {
         "top_k": top_k,
         "n_pareto": summary["n_pareto"],
         "verification": "present" if ver_by_idx else "absent",
         "n_verified": sum(1 for d in recommended if d["verified"]),
         "recommended": recommended,
+        "ranked": ranked,
     }

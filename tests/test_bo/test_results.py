@@ -148,3 +148,40 @@ def test_recommend_ignores_missing_verification_file(tmp_path):
     _campaign_three(tmp_path)
     out = results.recommend(tmp_path, top_k=3, verification_path=tmp_path / "nope.json")
     assert out["verification"] == "absent"
+
+
+def test_recommend_ranked_orders_all_verified_by_3d_jfan(tmp_path):
+    _campaign_three(tmp_path)
+    ver = {
+        "ranking": {},
+        "designs": [
+            {"name": "b8_i0", "j_fan_3d": 1.8, "j_fan_slice": 2.0},
+            {"name": "b10_i1", "j_fan_3d": 3.3, "j_fan_slice": 1.5},  # best in 3D, 2nd in 2D
+            {"name": "b12_i2", "j_fan_3d": -5.0, "j_fan_slice": 1.0},  # negative → suspect
+        ],
+    }
+    vp = tmp_path / "verification.json"
+    vp.write_text(json.dumps(ver), encoding="utf-8")
+    ranked = results.recommend(tmp_path, top_k=3, verification_path=vp)["ranked"]
+
+    assert [d["index"] for d in ranked] == [1, 0, 2]  # 3.3 > 1.8 > -5.0 (suspect last)
+    assert ranked[0]["verified"] is True and ranked[0]["blade_count"] == 10
+    assert ranked[-1]["index"] == 2 and ranked[-1]["suspect"] is True
+    assert ranked[-1]["verified"] is False
+
+
+def test_recommend_ranked_sinks_failed_3d_runs_to_bottom(tmp_path):
+    _campaign_three(tmp_path)
+    ver = {
+        "ranking": {},
+        "designs": [
+            {"name": "b8_i0", "j_fan_3d": None, "j_fan_slice": 2.0},  # failed 3D run
+            {"name": "b10_i1", "j_fan_3d": 1.3, "j_fan_slice": 1.5},
+        ],
+    }
+    vp = tmp_path / "verification.json"
+    vp.write_text(json.dumps(ver), encoding="utf-8")
+    ranked = results.recommend(tmp_path, top_k=3, verification_path=vp)["ranked"]
+    assert ranked[0]["index"] == 1  # finite 3D J_fan ranks above the failed run
+    assert ranked[-1]["index"] == 0 and ranked[-1]["j_fan_3d"] is None
+    assert ranked[-1]["suspect"] is True

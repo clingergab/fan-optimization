@@ -55,14 +55,23 @@ def main(argv: list[str] | None = None) -> int:
         f"(top-{summary['top_k']} of {summary['n_pareto']} Pareto) | "
         f"verification={summary['verification']} | {summary['n_verified']} 3D-verified"
     )
-    for d in summary["recommended"]:
-        j3d = f"{d['j_fan_3d']:.3e}" if d["j_fan_3d"] is not None else "—"
-        tag = " (3D-verified)" if d["verified"] else ""
-        print(
-            f"  b{d['blade_count']} {d['edge_profile']} (i{d['index']}): "
-            f"J_fan_2D={d['j_fan_slice']:.3e} J_fan_3D={j3d} "
-            f"I_wrist={d['i_wrist_kgm2']:.3e} defl={d['structural_m'] * 1000:.3f}mm{tag}"
-        )
+
+    ranked = summary["ranked"]
+    if ranked:
+        # Full ranked table of every verified design (by 3D J_fan) — ★ = print pick.
+        print(f"\n  all {len(ranked)} verified designs, ranked by 3D J_fan:")
+        print(f"  {'':2}{'design':12}{'J_fan_3D':>12}{'J_fan_2D':>12}{'I_wrist':>11}"
+              f"{'defl_mm':>9}  status")
+        for rk in ranked:
+            star = "★ " if rk["recommended_for_print"] else "  "
+            j3d = f"{rk['j_fan_3d']:.3e}" if rk["j_fan_3d"] is not None else "—"
+            j2d = f"{rk['j_fan_slice']:.3e}" if rk["j_fan_slice"] is not None else "—"
+            iw = f"{rk['i_wrist_kgm2']:.3e}" if rk["i_wrist_kgm2"] is not None else "—"
+            defl = f"{rk['structural_m'] * 1000:.3f}" if rk["structural_m"] is not None else "—"
+            status = "SUSPECT" if rk["suspect"] else "verified"
+            print(f"  {star}{rk['name']:<11}{j3d:>12}{j2d:>12}"
+                  f"{iw:>11}{defl:>9}  {status}")
+        print("\n  ★ = recommended for the Phase-6 blinded A/B print set (top-k structurally diverse).")
     return 0
 
 
