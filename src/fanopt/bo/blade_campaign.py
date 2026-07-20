@@ -204,6 +204,22 @@ def _evaluate_batch(
     return np.atleast_2d(np.asarray(out, dtype=float))
 
 
+def _log_batch(bar: tqdm, label: str, batch: np.ndarray, y_new: np.ndarray, batch_s: float) -> None:
+    """Print an unmissable throughput line per batch — the real parallelism signal.
+
+    ``designs/min`` and the feasible count (how many actually ran SU2) say directly
+    whether cores are full: a batch of B with ~B/2 feasible finishing in ≈ one eval-time
+    is healthy; the same batch taking ≈ B eval-times is serial.
+    """
+    n = len(batch)
+    n_feas = int(np.isfinite(np.atleast_2d(np.asarray(y_new, dtype=float))[:, 0]).sum())
+    per_min = n / max(batch_s / 60.0, 1e-9)
+    tqdm.write(
+        f"[{label}] {n} designs in {batch_s:.0f}s | {n_feas} feasible (ran SU2) | "
+        f"{per_min:.1f} designs/min"
+    )
+
+
 def _save_checkpoint(path: Path, state: CampaignState) -> None:
     np.savez(
         path, x=state.x, y_raw=state.y_raw, iteration=state.iteration,
@@ -265,8 +281,10 @@ def run_campaign(
             bar.update(int(state.x.shape[0]))
         else:
             x0 = sobol_doe(cfg.n_init, cfg.seed)
+            t_doe = time.perf_counter()
             y0 = _evaluate_batch(objective_fn, ledger_path, x0, iteration=0, source="sobol",
                                  n_workers=cfg.n_workers, on_eval=lambda: bar.update(1))
+            _log_batch(bar, "DoE", x0, y0, time.perf_counter() - t_doe)
             state = CampaignState(
                 x=x0, y_raw=_sanitize_yraw(y0),
                 tr=TrustRegionState(dim=N_DIMS, batch_size=cfg.batch_size),
@@ -301,10 +319,8 @@ def run_campaign(
             y_new = _evaluate_batch(objective_fn, ledger_path, batch, iteration=state.iteration,
                                     source=source, n_workers=cfg.n_workers,
                                     on_eval=lambda: bar.update(1))
-            # Real batch throughput — the unambiguous parallelism signal: a batch of B
-            # should finish in ≈ one eval-time if parallel, ≈ B·eval-time if serial.
-            batch_s = time.perf_counter() - t_batch
-            evals_per_min = len(batch) / max(batch_s / 60.0, 1e-9)
+            _log_batch(bar, f"iter {state.iteration} ({source})", batch, y_new,
+                       time.perf_counter() - t_batch)
             state.x = np.vstack([state.x, batch])
             state.y_raw = _sanitize_yraw(np.vstack([state.y_raw, y_new]))
 
@@ -316,12 +332,7 @@ def run_campaign(
                 state.tr.update(improved)
             state.stall_counter = 0 if improved else state.stall_counter + 1
             _save_checkpoint(ckpt, state)
-            bar.set_postfix(
-                iter=state.iteration,
-                best_J_fan=f"{state.y_raw[:, 0].max():.2e}",
-                batch=f"{len(batch)}/{batch_s:.0f}s",
-                ev_per_min=f"{evals_per_min:.1f}",
-            )
+            bar.set_postfix(iter=state.iteration, best_J_fan=f"{state.y_raw[:, 0].max():.2e}")
     finally:
         bar.close()
     return state
