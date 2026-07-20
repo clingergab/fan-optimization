@@ -93,6 +93,14 @@ def oc_update(
     dvf = dv[free]
     # OC scaling uses −dc/dv (both should drive material where compliance-sensitive).
     b = np.maximum(-dcf / np.maximum(dvf, 1e-12), 0.0)
+    # Normalize by the sensitivity scale so the fixed multiplier-bisection bounds below
+    # are scale-invariant. Without this, a low-compliance problem (e.g. a stiff panel
+    # under light load) has its true multiplier fall below l1 and the bisection
+    # saturates → garbage update. Normalizing leaves the result identical whenever the
+    # un-normalized bisection already bracketed correctly (so the rib TO is unchanged).
+    bmax = b.max()
+    if bmax > 0.0:
+        b = b / bmax
     target = volfrac * active.sum()
 
     l1, l2 = 1e-9, 1e9

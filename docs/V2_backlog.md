@@ -287,6 +287,52 @@ Items where V1 ships a working solution but V2 has a clear path to a better one.
 
 **V2 scope:** explore an asymmetric weighting `J_fan_biased = w_p · J_productive_half + (1 − w_p) · J_return_half` with `w_p` measured from IMU during Phase 6. Would change the optimization target away from the parachute baseline more aggressively (the symmetric metric rewards equal forward/backward drag; the biased metric rewards productive-stroke drag specifically).
 
+### Effort-minimizing asymmetric two-face blade (operator insight 2026-07-19)
+
+**Distinct from the weighting entry above:** that one re-weights the *objective*; this
+one changes the *geometry*. A biconvex `)(` blade generates ≈ the same airflow on the
+up-stroke and the down-stroke — but you only *want* airflow on the productive
+(down) stroke. So a future blade could be **asymmetric between its two faces**: the
+down-stroke-facing side shaped for high thrust, the up-stroke-facing side shaped
+**aerodynamically clean (low drag)** so the return stroke costs less muscular effort.
+Over a sustained few-minute continuous wave, that lowers **net work per cycle**.
+
+**Why it fits cleanly here:** the project already carries *productive stroke* and
+*return stroke* as two of the four locked kinematic load cases, and the binding
+artifact is a **`J_fan / W_cycle` ratio** (airflow-per-effort), so "minimize effort
+over a cycle" is already half-present. This item makes the **geometry** exploit that
+asymmetry rather than only the objective weighting.
+
+**What it needs (why it's not V1):** (a) an objective term for **net cycle work /
+sustained-swing effort** (integrate the unsteady aero + inertial reaction torque over
+a full up-down cycle, not just peak productive thrust), and (b) evaluating the blade
+on **both stroke directions** per candidate (roughly doubles the unsteady-CFD cost).
+Pairs naturally with the V1.5 staggered loop and the asymmetric-`J_fan` weighting above.
+
+**Not foreclosed by the V1 lean codec:** the lean panel is already a *free both-face*
+surface (base ± thickness), so it can represent an asymmetric `)(`-vs-clean profile
+today — only the effort objective + dual-stroke evaluation are missing. So V1 keeps
+this reachable without a parameterization change.
+
+**Trigger:** V1/V1.5 ships and the operator wants to optimize sustained-waving effort,
+not just per-stroke airflow.
+
+### Porosity / vent sweet-spot for wind-per-effort (operator insight 2026-07-19)
+
+V1's solid-surface parameterization forbids through-holes (they leak airflow, so a solid
+paddle beats a vented one for *raw* wind). But the binding artifact is **`J_fan / W_cycle`
+— wind per effort**, and there may be a **sweet spot** where small pores / slots shave
+drag (hence swing effort) *faster* than they shave wind, improving the *ratio* even as
+peak wind drops. A solid-surface V1 can never propose this; only a **free-form / topology-
+varying** search (the ML free-form route below) can discover porous or louvered blades and
+weigh the drag-reduction vs wind-loss tradeoff. Related to the directional-louver idea in
+the effort-asymmetry entry above.
+
+**Scope:** free-form aero optimization that allows the blade to open pores/slots, scored
+on `J_fan / W_cycle` (not peak `J_fan`), with the physics verifier confirming the folded
++ printable result. Requires the V2 free-form representation + the CFD to resolve
+flow-through-slot; not expressible in any V1 parameterization.
+
 ### `directional_asymmetry_score` functional-form refinement
 
 **Current V1 spec (C6 lock):** starter form from §Phase 3 step 33:

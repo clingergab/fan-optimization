@@ -71,6 +71,18 @@ def test_oc_update_respects_move_and_bounds():
     assert np.abs(x_new - x).max() <= 0.1 + 1e-9
 
 
+def test_oc_update_is_scale_invariant_in_sensitivity():
+    # Compliance-minimization is scale-invariant: multiplying the compliance
+    # sensitivity by any positive constant (e.g. a larger load) must give the SAME
+    # density update. A regression guard for the fixed-bisection-bounds bug that broke
+    # low-compliance problems (a stiff panel under light load).
+    x, _, dv, hs, free, active = _uniform_problem()
+    dc = -(np.arange(x.size, dtype=float).reshape(x.shape) + 1.0)  # non-uniform
+    x_small = oc_update(x, dc * 1e-9, dv, hs, volfrac=0.4, free=free, active=active)
+    x_large = oc_update(x, dc * 1e6, dv, hs, volfrac=0.4, free=free, active=active)
+    assert np.abs(x_small - x_large).max() < 1e-9
+
+
 def test_oc_update_leaves_preserved_fixed():
     nely, nelx = 4, 6
     x = np.full((nely, nelx), 0.4)
