@@ -17,6 +17,7 @@ can ship it to parallel workers.
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -73,6 +74,7 @@ class BladeObjective:
 
     out_dir: Path
     su2_bin: str | None = None
+    diag_dir: Path | None = None  # persistent (e.g. Drive) for failure markers; default = out_dir
     radial_u: float = 0.5
     n_panels: int = 5
     n_samples: int = 28
@@ -82,14 +84,17 @@ class BladeObjective:
 
     def __call__(self, vector: np.ndarray) -> tuple[float, float, float]:
         params = decode(vector)
-        workdir = self.out_dir / "designs" / design_hash(params.to_dict())
+        h = design_hash(params.to_dict())
+        workdir = self.out_dir / "designs" / h  # SU2 scratch (may be ephemeral)
+        # Failure markers go to a persistent dir so a killed session stays debuggable.
+        diagdir = (self.diag_dir or self.out_dir) / "designs" / h
         nan = float("nan")
         try:
             if not feasible(params):
                 # Won't fold / over-mass / panel pokes past the rib: penalize, skip SU2.
-                workdir.mkdir(parents=True, exist_ok=True)
-                (workdir / "INFEASIBLE.txt").write_text(
-                    "fold/containment/mass proxy failed\n", encoding="utf-8"
+                diagdir.mkdir(parents=True, exist_ok=True)
+                (diagdir / "INFEASIBLE.txt").write_text(
+                    f"infeasible: {params.to_dict()}\n", encoding="utf-8"
                 )
                 return (nan, nan, nan)
             res = evaluate_blade_aero(
@@ -103,12 +108,16 @@ class BladeObjective:
                 inner_iter=self.inner_iter,
                 steps_per_cycle=self.steps_per_cycle,
             )
+            # Persist the (small) CFD output — mesh, cfgs, history.csv, final field — to the
+            # persistent dir so a killed session keeps every result, not just the ledger.
+            if diagdir != workdir and workdir.exists():
+                shutil.copytree(workdir, diagdir, dirs_exist_ok=True)
             return (
                 float(res.j_fan),
                 float(estimate_mass_kg(params)),
                 float(blade_panel_deflection_m(params)),
             )
         except Exception as exc:  # fault isolation: a bad design is penalized, not fatal
-            workdir.mkdir(parents=True, exist_ok=True)
-            (workdir / "FAILED.txt").write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
+            diagdir.mkdir(parents=True, exist_ok=True)
+            (diagdir / "FAILED.txt").write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
             return (nan, nan, nan)

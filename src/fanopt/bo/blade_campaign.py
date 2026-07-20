@@ -297,9 +297,14 @@ def run_campaign(
                 source = "bo"
 
             state.iteration += 1
+            t_batch = time.perf_counter()
             y_new = _evaluate_batch(objective_fn, ledger_path, batch, iteration=state.iteration,
                                     source=source, n_workers=cfg.n_workers,
                                     on_eval=lambda: bar.update(1))
+            # Real batch throughput — the unambiguous parallelism signal: a batch of B
+            # should finish in ≈ one eval-time if parallel, ≈ B·eval-time if serial.
+            batch_s = time.perf_counter() - t_batch
+            evals_per_min = len(batch) / max(batch_s / 60.0, 1e-9)
             state.x = np.vstack([state.x, batch])
             state.y_raw = _sanitize_yraw(np.vstack([state.y_raw, y_new]))
 
@@ -311,7 +316,12 @@ def run_campaign(
                 state.tr.update(improved)
             state.stall_counter = 0 if improved else state.stall_counter + 1
             _save_checkpoint(ckpt, state)
-            bar.set_postfix(iter=state.iteration, best_J_fan=f"{state.y_raw[:, 0].max():.2e}")
+            bar.set_postfix(
+                iter=state.iteration,
+                best_J_fan=f"{state.y_raw[:, 0].max():.2e}",
+                batch=f"{len(batch)}/{batch_s:.0f}s",
+                ev_per_min=f"{evals_per_min:.1f}",
+            )
     finally:
         bar.close()
     return state

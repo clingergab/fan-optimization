@@ -10,8 +10,16 @@ from fanopt.geometry.blade import (
     PANEL_GRID_RADIAL_COUNT,
     PANEL_GRID_TANGENTIAL_COUNT,
     BladeParams,
+    containment_margin_m,
+    fold_margin_m,
 )
 from fanopt.geometry.schema import BLADE_COUNTS
+
+
+def _random_vec(seed: int) -> np.ndarray:
+    low, high = codec.bounds()
+    rng = np.random.default_rng(seed)
+    return codec.clip_to_bounds(low + rng.random(codec.N_DIMS) * (high - low))
 
 _SAMPLE_GRID = (
     (0.0003, 0.0005, 0.0003),
@@ -46,8 +54,8 @@ def test_grid_var_count():
 
 def test_leading_and_trailing_names():
     names = [v.name for v in codec.SEARCH_SPACE]
-    assert names[:4] == ["rib_bow_mid_m", "rib_bow_tip_m", "t_rib_hub_m", "t_rib_tip_m"]
-    assert names[-2:] == ["panel_thickness_nom_m", "blade_count"]
+    assert names[:4] == ["rib_bow_mid_m", "rib_bow_tip_m", "t_rib_hub_k", "t_rib_tip_k"]
+    assert names[-2:] == ["panel_thickness_k", "blade_count"]
 
 
 def test_bounds_shapes():
@@ -60,10 +68,20 @@ def test_bounds_high_above_low():
     assert np.all(high > low)
 
 
-@pytest.mark.parametrize("blade_count", BLADE_COUNTS)
-def test_encode_decode_roundtrip(blade_count):
-    p = _sample(blade_count)
+@pytest.mark.parametrize("seed", [0, 1, 2, 3])
+def test_encode_decode_roundtrips_decoded_design(seed):
+    # decode maps a vector into the feasible space; encode/decode is then idempotent.
+    p = codec.decode(_random_vec(seed))
     assert codec.decode(codec.encode(p)) == p
+
+
+def test_decode_is_always_fold_and_containment_feasible():
+    # The whole point of the reparam: EVERY vector decodes to a foldable, contained
+    # blade (mass stays a soft check, so it's excluded here).
+    for seed in range(150):
+        p = codec.decode(_random_vec(seed))
+        assert fold_margin_m(p) >= -1e-12
+        assert containment_margin_m(p) >= -1e-12
 
 
 def test_decode_wrong_shape_raises():

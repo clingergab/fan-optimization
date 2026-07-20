@@ -93,3 +93,19 @@ def test_returns_three_objectives(tmp_path, monkeypatch):
     )
     out = bobj.BladeObjective(out_dir=tmp_path, su2_bin="x")(encode(_feasible()))
     assert len(out) == 3 and len(bobj.OBJECTIVE_NAMES) == 3
+
+
+def test_success_persists_cfd_output_to_diag_dir(tmp_path, monkeypatch):
+    scratch, drive = tmp_path / "scratch", tmp_path / "drive"
+
+    def fake_eval(params, workdir, **kw):
+        from pathlib import Path
+
+        Path(workdir).mkdir(parents=True, exist_ok=True)
+        (Path(workdir) / "history.csv").write_text("iter,CD\n1,0.2\n", encoding="utf-8")
+        return BladeAeroResult(j_fan=1.0, steady_cd=0.2, n_nodes=10)
+
+    monkeypatch.setattr(bobj, "evaluate_blade_aero", fake_eval)
+    bobj.BladeObjective(out_dir=scratch, diag_dir=drive, su2_bin="x")(encode(_feasible()))
+    # the CFD history.csv was copied from the (ephemeral) scratch to the persistent dir
+    assert list(drive.glob("designs/*/history.csv"))

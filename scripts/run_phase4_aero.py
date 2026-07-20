@@ -41,6 +41,7 @@ def run(
     out_dir = Path(out_dir)
     obj = objective_fn or BladeObjective(
         out_dir=Path(scratch_dir) if scratch_dir is not None else out_dir,
+        diag_dir=out_dir,  # failure markers persist to the campaign dir (Drive), not scratch
         su2_bin=su2_bin, radial_u=radial_u, n_panels=n_panels, n_cycles=n_cycles,
     )
     state = run_campaign(obj, out_dir, cfg or CampaignConfig(), progress=progress)
