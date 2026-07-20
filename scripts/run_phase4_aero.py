@@ -27,6 +27,8 @@ def run(
     radial_u: float = 0.5,
     n_panels: int = 5,
     n_cycles: int = 5,
+    inner_iter: int = 50,
+    steps_per_cycle: int = 200,
     scratch_dir: Path | None = None,
     objective_fn=None,
     progress: bool = False,
@@ -37,12 +39,17 @@ def run(
     essential — persist it via ``out_dir`` (e.g. Google Drive, so a disconnect resumes).
     The per-design SU2 *scratch* (thousands of files/eval, regenerable, never reused)
     goes to ``scratch_dir`` if given (e.g. a local ephemeral disk), else ``out_dir``.
+
+    ``n_cycles`` / ``steps_per_cycle`` / ``inner_iter`` set the unsteady CFD cost — this
+    is a *screen* (relative J_fan ranking; top designs get full-fidelity Phase-5 3D
+    verification), so a lighter setting trades little ranking quality for big speed.
     """
     out_dir = Path(out_dir)
     obj = objective_fn or BladeObjective(
         out_dir=Path(scratch_dir) if scratch_dir is not None else out_dir,
         diag_dir=out_dir,  # failure markers persist to the campaign dir (Drive), not scratch
         su2_bin=su2_bin, radial_u=radial_u, n_panels=n_panels, n_cycles=n_cycles,
+        inner_iter=inner_iter, steps_per_cycle=steps_per_cycle,
     )
     state = run_campaign(obj, out_dir, cfg or CampaignConfig(), progress=progress)
     (out_dir / "pareto.json").write_text(
