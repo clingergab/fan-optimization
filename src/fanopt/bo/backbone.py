@@ -257,6 +257,10 @@ def propose_candidates(
     ``(batch_size, n_dims)``). With ``tr_state`` given, the acquisition is
     optimized inside a TuRBO trust region centred on the incumbent that maximizes
     ``incumbent_objective`` (default ``J_fan``); otherwise over the full box.
+
+    For ``batch_size > 1`` the q points are optimized **greedily** (sequential
+    fantasizing) rather than jointly — near-identical quality but peak memory ~q×
+    lower, which keeps an over-provisioned batch (``q = 2·N_WORKERS``) from OOMing.
     """
     low = np.asarray(low, dtype=float)
     high = np.asarray(high, dtype=float)
@@ -286,6 +290,12 @@ def propose_candidates(
         q=batch_size,
         num_restarts=num_restarts,
         raw_samples=raw_samples,
+        # Greedy q-batch (fantasize one point at a time): peak RAM is ~q× lower than a
+        # joint qLogNEHVI solve, which otherwise grows with q and the Pareto front until
+        # a long over-provisioned campaign (q = 2·N_WORKERS) OOMs the kernel.
+        sequential=batch_size > 1,
+        # Chunk the raw-sample init and the L-BFGS restarts so peak RAM is bounded.
+        options={"init_batch_limit": 32, "batch_limit": 5},
     )
     cand_norm = candidates.detach().cpu().numpy()
     return low + cand_norm * (high - low)
