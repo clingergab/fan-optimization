@@ -26,8 +26,8 @@ _FLAT_GRID = tuple((0.0, 0.0, 0.0) for _ in range(4))
 def _params(grid) -> BladeParams:
     return BladeParams(
         blade_count=10,
-        rib_bow_mid_m=0.010,
-        rib_bow_tip_m=0.020,
+        rib_bow_knots_m=(0.005, 0.010, 0.013, 0.017, 0.020),
+        rib_bow_interp="linear",
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=grid,

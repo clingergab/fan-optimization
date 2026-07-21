@@ -102,11 +102,14 @@ def sobol_doe(n: int, seed: int = 0) -> np.ndarray:
     return np.array([clip_to_bounds(v) for v in scaled])
 
 
-def _blade(grid, *, blade_count=10, t_hub=0.0025, t_tip=0.0035, panel=0.0015) -> BladeParams:
+def _blade(
+    grid, *, blade_count=10, t_hub=0.0025, t_tip=0.0035, panel=0.0015,
+    bow_knots=(0.005, 0.010, 0.013, 0.017, 0.020), interp="linear",
+) -> BladeParams:
     return BladeParams(
         blade_count=blade_count,
-        rib_bow_mid_m=0.010,
-        rib_bow_tip_m=0.020,
+        rib_bow_knots_m=bow_knots,
+        rib_bow_interp=interp,
         t_rib_hub_m=t_hub,
         t_rib_tip_m=t_tip,
         panel_offsets_m=grid,
@@ -125,12 +128,18 @@ def diverse_fallback_designs() -> list[np.ndarray]:
               (0.0006, 0.0013, 0.0006), (0.0007, 0.0015, 0.0007))
     zig = ((0.0008, -0.0008, 0.0008), (0.0009, -0.0009, 0.0009),
            (0.0010, -0.0010, 0.0010), (0.0011, -0.0011, 0.0011))
+    # Radial meridian archetypes (the fold-free large-amplitude shape lever): a deep smooth
+    # dome and a sharp radial pleat/zigzag — the shapes the panel grid can't reach.
+    dome = (0.008, 0.016, 0.022, 0.026, 0.028)
+    pleat = (0.006, 0.024, 0.008, 0.026, 0.010)
     designs = [
         _blade(flat, blade_count=10),
         _blade(camber, blade_count=10),
         _blade(zig, blade_count=8, t_hub=0.003, t_tip=0.004),
         _blade(flat, blade_count=8, panel=0.0012),  # thin/light
         _blade(camber, blade_count=12, t_hub=0.003, t_tip=0.0045),  # thick/stiff
+        _blade(flat, blade_count=8, bow_knots=dome, interp="smooth"),  # deep smooth cup
+        _blade(flat, blade_count=8, bow_knots=pleat, interp="linear"),  # radial pleat/zigzag
     ]
     return [encode(p) for p in designs]
 

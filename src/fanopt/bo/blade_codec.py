@@ -33,6 +33,8 @@ from fanopt.geometry.blade import (
     PANEL_GRID_RADIAL_COUNT,
     PANEL_GRID_TANGENTIAL_COUNT,
     PANEL_THICKNESS_NOM_RANGE_M,
+    RIB_BOW_INTERP_MODES,
+    RIB_BOW_KNOT_COUNT,
     RIB_BOW_RANGE_M,
     RIB_THICKNESS_RANGE_M,
     BladeParams,
@@ -89,7 +91,8 @@ def _mass_thickness_cap_m(blade_count: int) -> float:
     def mass(t: float) -> float:
         return estimate_mass_kg(
             BladeParams(
-                blade_count=blade_count, rib_bow_mid_m=0.0, rib_bow_tip_m=0.0,
+                blade_count=blade_count,
+                rib_bow_knots_m=(0.0,) * RIB_BOW_KNOT_COUNT, rib_bow_interp="linear",
                 t_rib_hub_m=t, t_rib_tip_m=t, panel_offsets_m=flat,
                 panel_thickness_nom_m=min(t, _P_HI),
             )
@@ -122,9 +125,12 @@ def rib_thickness_cap_m(blade_count: int) -> float:
 
 
 def _build_search_space() -> tuple[Var, ...]:
-    vars_: list[Var] = [
-        Var("rib_bow_mid_m", *RIB_BOW_RANGE_M),
-        Var("rib_bow_tip_m", *RIB_BOW_RANGE_M),
+    vars_: list[Var] = [Var(f"rib_bow_k{i}", *RIB_BOW_RANGE_M) for i in range(RIB_BOW_KNOT_COUNT)]
+    vars_.append(
+        Var("rib_bow_interp", 0.0, float(len(RIB_BOW_INTERP_MODES)),
+            kind="categorical", choices=RIB_BOW_INTERP_MODES)
+    )
+    vars_ += [
         Var("t_rib_hub_k", 0.0, 1.0),  # knob → [T_MIN, cap(blade_count)]
         Var("t_rib_tip_k", 0.0, 1.0),
     ]
@@ -207,10 +213,18 @@ def decode(vec: np.ndarray) -> BladeParams:
             )
         )
 
+    interp = _decode_categorical(
+        float(arr[_IDX["rib_bow_interp"]]), SEARCH_SPACE[_IDX["rib_bow_interp"]]
+    )
+    knots = tuple(
+        min(max(float(arr[_IDX[f"rib_bow_k{i}"]]), RIB_BOW_RANGE_M[0]), RIB_BOW_RANGE_M[1])
+        for i in range(RIB_BOW_KNOT_COUNT)
+    )
+
     return BladeParams(
         blade_count=blade_count,
-        rib_bow_mid_m=float(arr[_IDX["rib_bow_mid_m"]]),
-        rib_bow_tip_m=float(arr[_IDX["rib_bow_tip_m"]]),
+        rib_bow_knots_m=knots,
+        rib_bow_interp=interp,
         t_rib_hub_m=t_hub,
         t_rib_tip_m=t_tip,
         panel_offsets_m=tuple(grid),
@@ -221,8 +235,9 @@ def decode(vec: np.ndarray) -> BladeParams:
 def encode(params: BladeParams) -> np.ndarray:
     """:class:`BladeParams` → vector. ``decode(encode(p))`` round-trips any feasible ``p``."""
     out = np.zeros(N_DIMS, dtype=float)
-    out[_IDX["rib_bow_mid_m"]] = params.rib_bow_mid_m
-    out[_IDX["rib_bow_tip_m"]] = params.rib_bow_tip_m
+    for i in range(RIB_BOW_KNOT_COUNT):
+        out[_IDX[f"rib_bow_k{i}"]] = params.rib_bow_knots_m[i]
+    out[_IDX["rib_bow_interp"]] = float(RIB_BOW_INTERP_MODES.index(params.rib_bow_interp)) + 0.5
 
     t_cap = rib_thickness_cap_m(params.blade_count)
     t_span = t_cap - _T_LO

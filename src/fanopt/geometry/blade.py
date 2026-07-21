@@ -9,8 +9,8 @@ panel *inside* the rib thickness envelope.
 Design variables (per §7.2, panel widened to a free displacement grid so the
 optimizer discovers the panel shape *type* — camber, base→tip zigzag, louvers, … —
 not just a camber magnitude):
-- rib meridian ``z_rib(r)``: ``rib_bow_mid_m``, ``rib_bow_tip_m`` (the ``)`` generatrix,
-  anchored ``z = 0`` at the boss),
+- rib meridian ``z_rib(r)``: ``rib_bow_knots_m`` (K radial knots, anchored ``z = 0`` at the
+  boss) with ``rib_bow_interp`` (linear pleats vs smooth camber) — the ``)`` generatrix,
 - rib thickness ``t_rib(r)``: ``t_rib_hub_m``, ``t_rib_tip_m`` (thin at the hub — the
   fold constraint binds there),
 - panel aero surface: a ``PANEL_GRID_RADIAL_COUNT × PANEL_GRID_TANGENTIAL_COUNT`` grid
@@ -49,6 +49,8 @@ from fanopt.geometry.schema import (
 
 __all__ = [
     "RIB_BOW_RANGE_M",
+    "RIB_BOW_KNOT_COUNT",
+    "RIB_BOW_INTERP_MODES",
     "RIB_THICKNESS_RANGE_M",
     "PANEL_THICKNESS_NOM_RANGE_M",
     "PANEL_GRID_RADIAL_COUNT",
@@ -60,6 +62,7 @@ __all__ = [
     "RIB_TIP_RADIUS_M",
     "BladeParams",
     "panel_radial_stations",
+    "rib_bow_stations",
     "rib_z_at",
     "rib_thickness_at",
     "rib_width_at",
@@ -77,7 +80,19 @@ __all__ = [
 # envelope.py's CAMBER_RANGE_M — NOT locked schema constants). -----------------
 
 RIB_BOW_RANGE_M: tuple[float, float] = (0.0, 0.030)
-"""Out-of-plane rise of the ``)`` rib meridian at mid-span / tip (0–30 mm)."""
+"""Out-of-plane rise of the ``)`` rib meridian at each knot (0–30 mm)."""
+
+RIB_BOW_KNOT_COUNT: int = 5
+"""Free radial control knots of the rib meridian (hub pinned to 0, knots hub→tip).
+
+The meridian is a surface of revolution, so **any** radial profile nests when folded —
+unlike the panel grid (fold-limited to sub-mm). More knots let the optimizer sculpt
+radial camber, S-curves, or sharp pleats/zigzags at full amplitude, not just one cup.
+``2`` reproduces the original (mid, tip) two-segment meridian."""
+
+RIB_BOW_INTERP_MODES: tuple[str, ...] = ("linear", "smooth")
+"""Radial interpolation between meridian knots: ``linear`` (crisp pleats / zigzag) or
+``smooth`` (Catmull-Rom dished camber). A categorical BO knob — the optimizer tries both."""
 
 RIB_THICKNESS_RANGE_M: tuple[float, float] = (0.002, 0.006)
 """Rib z-thickness envelope at hub / tip. 2 mm floor = FDM minimum feature."""
@@ -109,7 +124,6 @@ Thick ribs → fat bundle; this is the pressure that keeps ribs thin."""
 RIB_TIP_RADIUS_M: float = HUB_RADIUS_M + L_RIB_M
 """0.185 m — outer rib radius (hub + rib radial extent)."""
 
-_MID_RADIUS_M: float = HUB_RADIUS_M + 0.5 * L_RIB_M
 _MARGIN_SAMPLES: int = 21  # radial sampling for the nesting constraint
 
 
@@ -123,8 +137,8 @@ class BladeParams:
     """
 
     blade_count: int
-    rib_bow_mid_m: float
-    rib_bow_tip_m: float
+    rib_bow_knots_m: tuple[float, ...]
+    rib_bow_interp: str
     t_rib_hub_m: float
     t_rib_tip_m: float
     panel_offsets_m: tuple[tuple[float, ...], ...]
@@ -133,8 +147,17 @@ class BladeParams:
     def __post_init__(self) -> None:
         if self.blade_count not in BLADE_COUNTS:
             raise ValueError(f"blade_count must be one of {BLADE_COUNTS}, got {self.blade_count}")
-        self._check("rib_bow_mid_m", self.rib_bow_mid_m, RIB_BOW_RANGE_M)
-        self._check("rib_bow_tip_m", self.rib_bow_tip_m, RIB_BOW_RANGE_M)
+        if len(self.rib_bow_knots_m) != RIB_BOW_KNOT_COUNT:
+            raise ValueError(
+                f"rib_bow_knots_m must have {RIB_BOW_KNOT_COUNT} knots, "
+                f"got {len(self.rib_bow_knots_m)}"
+            )
+        for i, k in enumerate(self.rib_bow_knots_m):
+            self._check(f"rib_bow_knots_m[{i}]", k, RIB_BOW_RANGE_M)
+        if self.rib_bow_interp not in RIB_BOW_INTERP_MODES:
+            raise ValueError(
+                f"rib_bow_interp must be one of {RIB_BOW_INTERP_MODES}, got {self.rib_bow_interp!r}"
+            )
         self._check("t_rib_hub_m", self.t_rib_hub_m, RIB_THICKNESS_RANGE_M)
         self._check("t_rib_tip_m", self.t_rib_tip_m, RIB_THICKNESS_RANGE_M)
         self._check(
@@ -168,8 +191,8 @@ class BladeParams:
         """JSON-friendly dict for the BO ledger / serialisation."""
         return {
             "blade_count": self.blade_count,
-            "rib_bow_mid_m": self.rib_bow_mid_m,
-            "rib_bow_tip_m": self.rib_bow_tip_m,
+            "rib_bow_knots_m": list(self.rib_bow_knots_m),
+            "rib_bow_interp": self.rib_bow_interp,
             "t_rib_hub_m": self.t_rib_hub_m,
             "t_rib_tip_m": self.t_rib_tip_m,
             "panel_offsets_m": [list(row) for row in self.panel_offsets_m],
@@ -178,11 +201,23 @@ class BladeParams:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> BladeParams:
-        """Inverse of :meth:`to_dict`. Validates on construction."""
+        """Inverse of :meth:`to_dict`. Validates on construction.
+
+        Back-compatible with the pre-enrichment two-knot schema (``rib_bow_mid_m`` /
+        ``rib_bow_tip_m``): those are resampled onto the current knot stations so old
+        ``pareto.json`` / ledger rows still load.
+        """
+        if "rib_bow_knots_m" in d:
+            knots = tuple(float(k) for k in d["rib_bow_knots_m"])
+            interp = str(d.get("rib_bow_interp", "linear"))
+        else:
+            mid, tip = float(d["rib_bow_mid_m"]), float(d["rib_bow_tip_m"])
+            knots = tuple(_legacy_rib_z(mid, tip, r) for r in rib_bow_stations())
+            interp = "linear"
         return cls(
             blade_count=int(d["blade_count"]),
-            rib_bow_mid_m=float(d["rib_bow_mid_m"]),
-            rib_bow_tip_m=float(d["rib_bow_tip_m"]),
+            rib_bow_knots_m=knots,
+            rib_bow_interp=interp,
             t_rib_hub_m=float(d["t_rib_hub_m"]),
             t_rib_tip_m=float(d["t_rib_tip_m"]),
             panel_offsets_m=tuple(tuple(float(x) for x in row) for row in d["panel_offsets_m"]),
@@ -201,19 +236,69 @@ def panel_radial_stations() -> list[float]:
     return [HUB_RADIUS_M + (RIB_TIP_RADIUS_M - HUB_RADIUS_M) * i / (n - 1) for i in range(n)]
 
 
+def rib_bow_stations() -> list[float]:
+    """Radii of the meridian's free knots — evenly spaced hub(exclusive)→tip.
+
+    The hub itself is pinned to ``z = 0`` (the blade meets the boss), so the ``K`` knots
+    sit at ``hub + (i+1)/K · span`` for ``i in 0..K-1`` (the last is the tip). ``K = 2``
+    would land on (mid, tip) — the original two-segment meridian.
+    """
+    k = RIB_BOW_KNOT_COUNT
+    return [HUB_RADIUS_M + (RIB_TIP_RADIUS_M - HUB_RADIUS_M) * (i + 1) / k for i in range(k)]
+
+
+def _legacy_rib_z(mid: float, tip: float, r: float) -> float:
+    """Old two-segment meridian z at ``r``: (hub, 0) → (mid_radius, ``mid``) → (tip, ``tip``).
+
+    Used only by :meth:`BladeParams.from_dict` to resample pre-enrichment designs onto the
+    current knot stations.
+    """
+    mid_radius = HUB_RADIUS_M + 0.5 * L_RIB_M
+    r = min(max(r, HUB_RADIUS_M), RIB_TIP_RADIUS_M)
+    if r <= mid_radius:
+        return mid * (r - HUB_RADIUS_M) / (mid_radius - HUB_RADIUS_M)
+    t = (r - mid_radius) / (RIB_TIP_RADIUS_M - mid_radius)
+    return mid * (1.0 - t) + tip * t
+
+
+def _catmull_rom(ys: list[float], seg: int, t: float) -> float:
+    """Uniform Catmull-Rom value in segment ``[seg, seg+1]`` at local ``t`` ∈ [0, 1].
+
+    Endpoints duplicate the boundary knot (clamped tangents). Knots are evenly spaced, so
+    the uniform form applies.
+    """
+    n = len(ys)
+    p0 = ys[seg - 1] if seg - 1 >= 0 else ys[seg]
+    p1 = ys[seg]
+    p2 = ys[seg + 1]
+    p3 = ys[seg + 2] if seg + 2 < n else ys[seg + 1]
+    return 0.5 * (
+        (2.0 * p1)
+        + (-p0 + p2) * t
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t * t * t
+    )
+
+
 def rib_z_at(params: BladeParams, r: float) -> float:
     """Out-of-plane height of the ``)`` rib meridian at radius ``r`` (0 at the boss).
 
-    Piecewise-linear through (hub, 0), (mid, ``rib_bow_mid_m``), (tip, ``rib_bow_tip_m``).
-    Any generatrix revolved about the pivot axis nests; the shape only sets aero/fold
-    envelope, so a two-segment curve is enough for the lean blade.
+    Interpolates ``rib_bow_interp`` (``linear`` or ``smooth`` Catmull-Rom) through the hub
+    (pinned to 0) and the ``rib_bow_knots_m`` at :func:`rib_bow_stations`. Any generatrix
+    revolved about the pivot axis nests when folded, so the meridian is the fold-free lever
+    for radial camber / pleats — amplitude bounded only by the bow range and mass.
     """
     r = min(max(r, HUB_RADIUS_M), RIB_TIP_RADIUS_M)
-    if r <= _MID_RADIUS_M:
-        t = (r - HUB_RADIUS_M) / (_MID_RADIUS_M - HUB_RADIUS_M)
-        return params.rib_bow_mid_m * t
-    t = (r - _MID_RADIUS_M) / (RIB_TIP_RADIUS_M - _MID_RADIUS_M)
-    return params.rib_bow_mid_m * (1.0 - t) + params.rib_bow_tip_m * t
+    xs = [HUB_RADIUS_M, *rib_bow_stations()]
+    ys = [0.0, *params.rib_bow_knots_m]
+    # Locate the segment [i, i+1] containing r (xs is strictly increasing).
+    seg = 0
+    while seg < len(xs) - 2 and r > xs[seg + 1]:
+        seg += 1
+    t = (r - xs[seg]) / (xs[seg + 1] - xs[seg])
+    if params.rib_bow_interp == "smooth":
+        return _catmull_rom(ys, seg, t)
+    return ys[seg] * (1.0 - t) + ys[seg + 1] * t
 
 
 def rib_thickness_at(params: BladeParams, r: float) -> float:
@@ -318,7 +403,7 @@ def estimate_mass_kg(params: BladeParams) -> float:
 
 
 def mass_margin_kg(params: BladeParams) -> float:
-    """``MAX_TOTAL_MASS_KG − estimate_mass_kg``. ≥ 0 ⇒ under the C9 100 g cap."""
+    """``MAX_TOTAL_MASS_KG − estimate_mass_kg``. ≥ 0 ⇒ under the mass cap (120 g)."""
     return MAX_TOTAL_MASS_KG - estimate_mass_kg(params)
 
 

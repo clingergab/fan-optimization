@@ -9,6 +9,7 @@ from fanopt.bo import blade_codec as codec
 from fanopt.geometry.blade import (
     PANEL_GRID_RADIAL_COUNT,
     PANEL_GRID_TANGENTIAL_COUNT,
+    RIB_BOW_KNOT_COUNT,
     BladeParams,
     containment_margin_m,
     fold_margin_m,
@@ -32,8 +33,8 @@ _SAMPLE_GRID = (
 def _sample(blade_count: int = 10) -> BladeParams:
     return BladeParams(
         blade_count=blade_count,
-        rib_bow_mid_m=0.010,
-        rib_bow_tip_m=0.020,
+        rib_bow_knots_m=(0.005, 0.010, 0.013, 0.017, 0.020),
+        rib_bow_interp="linear",
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=_SAMPLE_GRID,
@@ -42,8 +43,10 @@ def _sample(blade_count: int = 10) -> BladeParams:
 
 
 def test_n_dims_matches_layout():
-    # 2 rib meridian + 2 rib thickness + grid + 1 panel thickness + 1 blade_count.
-    expected = 4 + PANEL_GRID_RADIAL_COUNT * PANEL_GRID_TANGENTIAL_COUNT + 2
+    # K meridian knots + 1 interp + 2 rib thickness + grid + 1 panel thickness + 1 blade_count.
+    expected = (
+        RIB_BOW_KNOT_COUNT + 1 + 2 + PANEL_GRID_RADIAL_COUNT * PANEL_GRID_TANGENTIAL_COUNT + 2
+    )
     assert codec.N_DIMS == expected
 
 
@@ -54,7 +57,8 @@ def test_grid_var_count():
 
 def test_leading_and_trailing_names():
     names = [v.name for v in codec.SEARCH_SPACE]
-    assert names[:4] == ["rib_bow_mid_m", "rib_bow_tip_m", "t_rib_hub_k", "t_rib_tip_k"]
+    assert names[:RIB_BOW_KNOT_COUNT] == [f"rib_bow_k{i}" for i in range(RIB_BOW_KNOT_COUNT)]
+    assert names[RIB_BOW_KNOT_COUNT] == "rib_bow_interp"
     assert names[-2:] == ["panel_thickness_k", "blade_count"]
 
 

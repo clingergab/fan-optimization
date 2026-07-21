@@ -24,6 +24,7 @@ from fanopt.geometry.blade import (
     layer_spacing_m,
     mass_margin_kg,
     panel_radial_stations,
+    rib_bow_stations,
     rib_thickness_at,
     rib_width_at,
     rib_z_at,
@@ -34,7 +35,6 @@ from fanopt.geometry.schema import (
     RIB_TIP_WIDTH_M,
 )
 
-_MID_RADIUS_M = HUB_RADIUS_M + 0.5 * (RIB_TIP_RADIUS_M - HUB_RADIUS_M)
 _SAMPLE_GRID = (
     (0.0003, 0.0005, 0.0003),
     (0.0004, 0.0006, 0.0004),
@@ -47,8 +47,8 @@ def _sample(blade_count: int = 8) -> BladeParams:
     """A feasible lean blade (all three constraint proxies satisfied)."""
     return BladeParams(
         blade_count=blade_count,
-        rib_bow_mid_m=0.010,
-        rib_bow_tip_m=0.020,
+        rib_bow_knots_m=(0.005, 0.010, 0.013, 0.017, 0.020),
+        rib_bow_interp="linear",
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=_SAMPLE_GRID,
@@ -71,8 +71,6 @@ def test_invalid_blade_count_raises():
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("rib_bow_mid_m", RIB_BOW_RANGE_M[1] + 0.001),
-        ("rib_bow_tip_m", RIB_BOW_RANGE_M[0] - 0.001),
         ("t_rib_hub_m", RIB_THICKNESS_RANGE_M[0] - 0.001),
         ("t_rib_tip_m", RIB_THICKNESS_RANGE_M[1] + 0.001),
         ("panel_thickness_nom_m", PANEL_THICKNESS_NOM_RANGE_M[1] + 0.001),
@@ -83,6 +81,37 @@ def test_out_of_range_scalar_field_raises(field, value):
     kwargs[field] = value
     with pytest.raises(ValueError, match=field):
         BladeParams.from_dict(kwargs)
+
+
+def test_out_of_range_bow_knot_raises():
+    kwargs = _sample().to_dict()
+    kwargs["rib_bow_knots_m"][2] = RIB_BOW_RANGE_M[1] + 0.001
+    with pytest.raises(ValueError, match="rib_bow_knots_m"):
+        BladeParams.from_dict(kwargs)
+
+
+def test_wrong_bow_knot_count_raises():
+    kwargs = _sample().to_dict()
+    kwargs["rib_bow_knots_m"] = [0.01, 0.02]  # too few
+    with pytest.raises(ValueError, match="rib_bow_knots_m"):
+        BladeParams.from_dict(kwargs)
+
+
+def test_invalid_bow_interp_raises():
+    kwargs = _sample().to_dict()
+    kwargs["rib_bow_interp"] = "cubic"
+    with pytest.raises(ValueError, match="rib_bow_interp"):
+        BladeParams.from_dict(kwargs)
+
+
+def test_from_dict_backcompat_legacy_meridian():
+    # Pre-enrichment schema (rib_bow_mid_m / rib_bow_tip_m) still loads, resampled to knots.
+    legacy = {k: v for k, v in _sample().to_dict().items()
+              if k not in ("rib_bow_knots_m", "rib_bow_interp")}
+    legacy["rib_bow_mid_m"], legacy["rib_bow_tip_m"] = 0.010, 0.020
+    p = BladeParams.from_dict(legacy)
+    assert len(p.rib_bow_knots_m) == len(rib_bow_stations())
+    assert rib_z_at(p, RIB_TIP_RADIUS_M) == pytest.approx(0.020)  # tip knot = old tip bow
 
 
 def test_out_of_range_grid_value_raises():
@@ -119,12 +148,29 @@ def test_rib_z_zero_at_hub():
     assert rib_z_at(_sample(), HUB_RADIUS_M) == pytest.approx(0.0)
 
 
-def test_rib_z_equals_bow_mid_at_mid():
-    assert rib_z_at(_sample(), _MID_RADIUS_M) == pytest.approx(0.010)
+def test_rib_z_hits_each_knot_at_its_station_linear():
+    p = _sample()
+    for station, knot in zip(rib_bow_stations(), p.rib_bow_knots_m):
+        assert rib_z_at(p, station) == pytest.approx(knot)
 
 
-def test_rib_z_equals_bow_tip_at_tip():
-    assert rib_z_at(_sample(), RIB_TIP_RADIUS_M) == pytest.approx(0.020)
+def test_rib_z_hits_each_knot_at_its_station_smooth():
+    # Catmull-Rom interpolates through its control points, so knots are hit exactly.
+    p = BladeParams(**{**_sample().to_dict(), "rib_bow_interp": "smooth"})
+    for station, knot in zip(rib_bow_stations(), p.rib_bow_knots_m):
+        assert rib_z_at(p, station) == pytest.approx(knot)
+
+
+def test_rib_z_equals_last_knot_at_tip():
+    assert rib_z_at(_sample(), RIB_TIP_RADIUS_M) == pytest.approx(_sample().rib_bow_knots_m[-1])
+
+
+def test_rib_z_linear_midpoint_between_two_knots():
+    # Two equal adjacent knots ⇒ the linear meridian is flat between them.
+    knots = (0.010, 0.010, 0.010, 0.010, 0.010)
+    p = BladeParams(**{**_sample().to_dict(), "rib_bow_knots_m": knots})
+    s0, s1 = rib_bow_stations()[1], rib_bow_stations()[2]
+    assert rib_z_at(p, 0.5 * (s0 + s1)) == pytest.approx(0.010)
 
 
 def test_rib_thickness_endpoints():

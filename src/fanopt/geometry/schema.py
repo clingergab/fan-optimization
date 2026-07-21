@@ -230,8 +230,10 @@ INTER_BLADE_ANGLE_RAD: float = math.radians(INTER_BLADE_ANGLE_DEG)
 # Mass + CoM caps — C9, §0 row 29
 # ---------------------------------------------------------------------------
 
-MAX_TOTAL_MASS_KG: float = 0.100
-"""C9 lock — total assembly mass."""
+MAX_TOTAL_MASS_KG: float = 0.120
+"""Total assembly mass cap. Relaxed from the C9 100 g lock to 120 g (2026-07-21,
+user-authorized) to give the optimizer more rib-thickness / material headroom for
+non-cup shapes. NOTE: the CLAUDE.md §3 / plan C9 lock text should be updated to match."""
 
 MAX_R_COM_WRIST_M: float = 0.160
 """d_handle 0.05 m + 0.55·L_blade 0.20 m. Distribution-based, not mass-based."""
