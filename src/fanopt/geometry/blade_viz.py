@@ -17,6 +17,7 @@ from fanopt.geometry.blade import (
     RIB_TIP_RADIUS_M,
     BladeParams,
     displacement_at,
+    panel_thickness_at,
     rib_thickness_at,
     rib_width_at,
     rib_z_at,
@@ -31,7 +32,7 @@ _ALPHA_RAD: float = INTER_BLADE_ANGLE_RAD / 2.0
 def _half_thickness_m(params: BladeParams, r: float, theta: float) -> float:
     if r >= HUB_RADIUS_M and r * (_ALPHA_RAD - abs(theta)) <= rib_width_at(r):
         return rib_thickness_at(params, r) / 2.0
-    return params.panel_thickness_nom_m / 2.0
+    return panel_thickness_at(params, r, theta / _ALPHA_RAD) / 2.0
 
 
 def blade_surface_xyz(

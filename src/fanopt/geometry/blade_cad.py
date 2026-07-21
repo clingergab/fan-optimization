@@ -29,6 +29,7 @@ from fanopt.geometry.blade import (
     BladeParams,
     displacement_at,
     layer_spacing_m,
+    panel_thickness_at,
     rib_thickness_at,
     rib_width_at,
     rib_z_at,
@@ -75,7 +76,7 @@ def _half_thickness_m(params: BladeParams, r: float, theta: float) -> float:
         edge_arc = r * (_ALPHA_RAD - abs(theta))
         if edge_arc <= rib_width_at(r):
             return rib_thickness_at(params, r) / 2.0
-    return params.panel_thickness_nom_m / 2.0
+    return panel_thickness_at(params, r, theta / _ALPHA_RAD) / 2.0
 
 
 def _surface_grids(

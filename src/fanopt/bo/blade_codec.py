@@ -89,12 +89,13 @@ def _mass_thickness_cap_m(blade_count: int) -> float:
     flat = tuple((0.0,) * PANEL_GRID_TANGENTIAL_COUNT for _ in range(PANEL_GRID_RADIAL_COUNT))
 
     def mass(t: float) -> float:
+        heavy = tuple((min(t, _P_HI),) * PANEL_GRID_TANGENTIAL_COUNT for _ in range(PANEL_GRID_RADIAL_COUNT))
         return estimate_mass_kg(
             BladeParams(
                 blade_count=blade_count,
                 rib_bow_knots_m=(0.0,) * RIB_BOW_KNOT_COUNT, rib_bow_interp="linear",
                 t_rib_hub_m=t, t_rib_tip_m=t, panel_offsets_m=flat,
-                panel_thickness_nom_m=min(t, _P_HI),
+                panel_thickness_m=heavy,
             )
         )
 
@@ -137,7 +138,9 @@ def _build_search_space() -> tuple[Var, ...]:
     for i in range(PANEL_GRID_RADIAL_COUNT):
         for j in range(PANEL_GRID_TANGENTIAL_COUNT):
             vars_.append(Var(f"panel_z_{i}_{j}", -1.0, 1.0))  # fraction of containable envelope
-    vars_.append(Var("panel_thickness_k", 0.0, 1.0))  # knob → [P_MIN, min(rib)]
+    for i in range(PANEL_GRID_RADIAL_COUNT):
+        for j in range(PANEL_GRID_TANGENTIAL_COUNT):
+            vars_.append(Var(f"panel_thick_{i}_{j}", 0.0, 1.0))  # knob → [P_MIN, min(rib) at node]
     vars_.append(
         Var("blade_count", 0.0, float(len(BLADE_COUNTS)), kind="categorical", choices=BLADE_COUNTS)
     )
@@ -194,24 +197,28 @@ def decode(vec: np.ndarray) -> BladeParams:
     blade_count: int = _decode_categorical(
         float(arr[_IDX["blade_count"]]), SEARCH_SPACE[_IDX["blade_count"]]
     )
-    # Rib thickness: knob → [T_MIN, fold cap]. Panel: knob → [P_MIN, min(rib)].
+    # Rib thickness: knob → [T_MIN, fold cap].
     t_cap = rib_thickness_cap_m(blade_count)
     t_hub = _T_LO + _c01(float(arr[_IDX["t_rib_hub_k"]])) * (t_cap - _T_LO)
     t_tip = _T_LO + _c01(float(arr[_IDX["t_rib_tip_k"]])) * (t_cap - _T_LO)
-    p_hi = max(min(t_hub, t_tip, _P_HI), _P_LO)  # panel ≤ min(rib) and within its own range
-    panel = _P_LO + _c01(float(arr[_IDX["panel_thickness_k"]])) * (p_hi - _P_LO)
 
-    # Offsets: fraction of the local containable envelope (t_rib(r) − panel)/2 ≥ 0.
-    grid: list[tuple[float, ...]] = []
+    # Per node: thickness knob → [P_MIN, min(t_rib(r), P_HI)]; offset knob → fraction of the
+    # local containable envelope (t_rib(r) − thickness)/2 ≥ 0. Two free grids ⇒ independent faces.
+    offsets: list[tuple[float, ...]] = []
+    thicks: list[tuple[float, ...]] = []
     for i, u in enumerate(_radial_fracs()):
         t_rib_i = t_hub * (1.0 - u) + t_tip * u
-        allow = max((t_rib_i - panel) / 2.0, 0.0)
-        grid.append(
-            tuple(
-                min(max(float(arr[_IDX[f"panel_z_{i}_{j}"]]), -1.0), 1.0) * allow
-                for j in range(PANEL_GRID_TANGENTIAL_COUNT)
-            )
-        )
+        p_hi_i = max(min(t_rib_i, _P_HI), _P_LO)
+        off_row: list[float] = []
+        th_row: list[float] = []
+        for j in range(PANEL_GRID_TANGENTIAL_COUNT):
+            thick = _P_LO + _c01(float(arr[_IDX[f"panel_thick_{i}_{j}"]])) * (p_hi_i - _P_LO)
+            allow = max((t_rib_i - thick) / 2.0, 0.0)
+            off = min(max(float(arr[_IDX[f"panel_z_{i}_{j}"]]), -1.0), 1.0) * allow
+            off_row.append(off)
+            th_row.append(thick)
+        offsets.append(tuple(off_row))
+        thicks.append(tuple(th_row))
 
     interp = _decode_categorical(
         float(arr[_IDX["rib_bow_interp"]]), SEARCH_SPACE[_IDX["rib_bow_interp"]]
@@ -227,8 +234,8 @@ def decode(vec: np.ndarray) -> BladeParams:
         rib_bow_interp=interp,
         t_rib_hub_m=t_hub,
         t_rib_tip_m=t_tip,
-        panel_offsets_m=tuple(grid),
-        panel_thickness_nom_m=panel,
+        panel_offsets_m=tuple(offsets),
+        panel_thickness_m=tuple(thicks),
     )
 
 
@@ -244,16 +251,16 @@ def encode(params: BladeParams) -> np.ndarray:
     out[_IDX["t_rib_hub_k"]] = _c01((params.t_rib_hub_m - _T_LO) / t_span) if t_span > 0 else 0.0
     out[_IDX["t_rib_tip_k"]] = _c01((params.t_rib_tip_m - _T_LO) / t_span) if t_span > 0 else 0.0
 
-    p_hi = max(min(params.t_rib_hub_m, params.t_rib_tip_m, _P_HI), _P_LO)
-    p_span = p_hi - _P_LO
-    out[_IDX["panel_thickness_k"]] = (
-        _c01((params.panel_thickness_nom_m - _P_LO) / p_span) if p_span > 0 else 0.0
-    )
-
     for i, u in enumerate(_radial_fracs()):
         t_rib_i = params.t_rib_hub_m * (1.0 - u) + params.t_rib_tip_m * u
-        allow = max((t_rib_i - params.panel_thickness_nom_m) / 2.0, 0.0)
+        p_hi_i = max(min(t_rib_i, _P_HI), _P_LO)
+        p_span_i = p_hi_i - _P_LO
         for j in range(PANEL_GRID_TANGENTIAL_COUNT):
+            thick = params.panel_thickness_m[i][j]
+            out[_IDX[f"panel_thick_{i}_{j}"]] = (
+                _c01((thick - _P_LO) / p_span_i) if p_span_i > 0 else 0.0
+            )
+            allow = max((t_rib_i - thick) / 2.0, 0.0)
             frac = params.panel_offsets_m[i][j] / allow if allow > 0 else 0.0
             out[_IDX[f"panel_z_{i}_{j}"]] = min(max(frac, -1.0), 1.0)
 

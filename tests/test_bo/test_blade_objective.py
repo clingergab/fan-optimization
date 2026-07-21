@@ -28,7 +28,7 @@ def _feasible() -> BladeParams:
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=_FEASIBLE_GRID,
-        panel_thickness_nom_m=0.0013,
+        panel_thickness_m=((0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013)),
     )
 
 
@@ -56,8 +56,10 @@ def test_deflection_positive():
 
 
 def test_deflection_grows_as_panel_thins():
-    thick = BladeParams(**{**_feasible().to_dict(), "panel_thickness_nom_m": 0.003})
-    thin = BladeParams(**{**_feasible().to_dict(), "panel_thickness_nom_m": 0.0012})
+    grid_thick = tuple((0.003, 0.003, 0.003) for _ in range(4))
+    grid_thin = tuple((0.0012, 0.0012, 0.0012) for _ in range(4))
+    thick = BladeParams(**{**_feasible().to_dict(), "panel_thickness_m": grid_thick})
+    thin = BladeParams(**{**_feasible().to_dict(), "panel_thickness_m": grid_thin})
     assert bobj.blade_panel_deflection_m(thin) > bobj.blade_panel_deflection_m(thick)
 
 

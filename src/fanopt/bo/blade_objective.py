@@ -60,7 +60,7 @@ def blade_panel_deflection_m(params: BladeParams) -> float:
     """
     r_mid = HUB_RADIUS_M + 0.5 * L_RIB_M
     span = max(r_mid * INTER_BLADE_ANGLE_RAD, 1e-6)
-    t = params.panel_thickness_nom_m
+    t = min(v for row in params.panel_thickness_m for v in row)  # thinnest node governs
     return _CLAMPED_PLATE_ALPHA * AERO_PRESSURE_PA * span**4 / (E_PETG_XY_PA * t**3)
 
 

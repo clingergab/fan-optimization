@@ -13,9 +13,10 @@ not just a camber magnitude):
   boss) with ``rib_bow_interp`` (linear pleats vs smooth camber) — the ``)`` generatrix,
 - rib thickness ``t_rib(r)``: ``t_rib_hub_m``, ``t_rib_tip_m`` (thin at the hub — the
   fold constraint binds there),
-- panel aero surface: a ``PANEL_GRID_RADIAL_COUNT × PANEL_GRID_TANGENTIAL_COUNT`` grid
-  of surface-normal offsets ``panel_offsets_m`` (tangential edges pinned to the ribs),
-- ``panel_thickness_nom_m`` (SIMP TO fills within this, bounded ``≤ t_rib``),
+- panel aero surface: two ``PANEL_GRID_RADIAL_COUNT × PANEL_GRID_TANGENTIAL_COUNT`` grids —
+  mean-surface offsets ``panel_offsets_m`` (tangential edges pinned to the ribs) and
+  membrane thickness ``panel_thickness_m`` — which together give the **two faces independent
+  shape** (``top = mean + t/2``, ``bot = mean − t/2``; each ``≤ t_rib`` for folding),
 - ``blade_count`` ∈ {8, 10, 12} (outer bandit).
 
 The geometry helpers and constraint margins here are **fast analytic proxies** for the
@@ -67,6 +68,7 @@ __all__ = [
     "rib_thickness_at",
     "rib_width_at",
     "displacement_at",
+    "panel_thickness_at",
     "layer_spacing_m",
     "folded_stack_height_m",
     "fold_margin_m",
@@ -142,7 +144,7 @@ class BladeParams:
     t_rib_hub_m: float
     t_rib_tip_m: float
     panel_offsets_m: tuple[tuple[float, ...], ...]
-    panel_thickness_nom_m: float
+    panel_thickness_m: tuple[tuple[float, ...], ...]
 
     def __post_init__(self) -> None:
         if self.blade_count not in BLADE_COUNTS:
@@ -160,10 +162,8 @@ class BladeParams:
             )
         self._check("t_rib_hub_m", self.t_rib_hub_m, RIB_THICKNESS_RANGE_M)
         self._check("t_rib_tip_m", self.t_rib_tip_m, RIB_THICKNESS_RANGE_M)
-        self._check(
-            "panel_thickness_nom_m", self.panel_thickness_nom_m, PANEL_THICKNESS_NOM_RANGE_M
-        )
-        self._check_grid()
+        self._check_grid("panel_offsets_m", self.panel_offsets_m, PANEL_OFFSET_RANGE_M)
+        self._check_grid("panel_thickness_m", self.panel_thickness_m, PANEL_THICKNESS_NOM_RANGE_M)
 
     @staticmethod
     def _check(name: str, value: float, rng: tuple[float, float]) -> None:
@@ -171,21 +171,20 @@ class BladeParams:
         if not (lo <= value <= hi):
             raise ValueError(f"{name} = {value} outside range [{lo}, {hi}]")
 
-    def _check_grid(self) -> None:
+    @staticmethod
+    def _check_grid(
+        name: str, grid: tuple[tuple[float, ...], ...], rng: tuple[float, float]
+    ) -> None:
         rows, cols = PANEL_GRID_RADIAL_COUNT, PANEL_GRID_TANGENTIAL_COUNT
-        if len(self.panel_offsets_m) != rows:
-            raise ValueError(
-                f"panel_offsets_m must have {rows} radial rows, got {len(self.panel_offsets_m)}"
-            )
-        lo, hi = PANEL_OFFSET_RANGE_M
-        for i, row in enumerate(self.panel_offsets_m):
+        if len(grid) != rows:
+            raise ValueError(f"{name} must have {rows} radial rows, got {len(grid)}")
+        lo, hi = rng
+        for i, row in enumerate(grid):
             if len(row) != cols:
-                raise ValueError(
-                    f"panel_offsets_m[{i}] must have {cols} tangential points, got {len(row)}"
-                )
+                raise ValueError(f"{name}[{i}] must have {cols} tangential points, got {len(row)}")
             for j, val in enumerate(row):
                 if not (lo <= val <= hi):
-                    raise ValueError(f"panel_offsets_m[{i}][{j}] = {val} outside [{lo}, {hi}]")
+                    raise ValueError(f"{name}[{i}][{j}] = {val} outside [{lo}, {hi}]")
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-friendly dict for the BO ledger / serialisation."""
@@ -196,15 +195,16 @@ class BladeParams:
             "t_rib_hub_m": self.t_rib_hub_m,
             "t_rib_tip_m": self.t_rib_tip_m,
             "panel_offsets_m": [list(row) for row in self.panel_offsets_m],
-            "panel_thickness_nom_m": self.panel_thickness_nom_m,
+            "panel_thickness_m": [list(row) for row in self.panel_thickness_m],
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> BladeParams:
         """Inverse of :meth:`to_dict`. Validates on construction.
 
-        Back-compatible with the pre-enrichment two-knot schema (``rib_bow_mid_m`` /
-        ``rib_bow_tip_m``): those are resampled onto the current knot stations so old
+        Back-compatible with pre-enrichment schemas: the two-knot meridian
+        (``rib_bow_mid_m`` / ``rib_bow_tip_m``) is resampled onto the knot stations, and a
+        scalar ``panel_thickness_nom_m`` is broadcast to a uniform thickness grid — so old
         ``pareto.json`` / ledger rows still load.
         """
         if "rib_bow_knots_m" in d:
@@ -214,6 +214,13 @@ class BladeParams:
             mid, tip = float(d["rib_bow_mid_m"]), float(d["rib_bow_tip_m"])
             knots = tuple(_legacy_rib_z(mid, tip, r) for r in rib_bow_stations())
             interp = "linear"
+        if "panel_thickness_m" in d:
+            thickness = tuple(tuple(float(x) for x in row) for row in d["panel_thickness_m"])
+        else:
+            t = float(d["panel_thickness_nom_m"])
+            thickness = tuple(
+                (t,) * PANEL_GRID_TANGENTIAL_COUNT for _ in range(PANEL_GRID_RADIAL_COUNT)
+            )
         return cls(
             blade_count=int(d["blade_count"]),
             rib_bow_knots_m=knots,
@@ -221,7 +228,7 @@ class BladeParams:
             t_rib_hub_m=float(d["t_rib_hub_m"]),
             t_rib_tip_m=float(d["t_rib_tip_m"]),
             panel_offsets_m=tuple(tuple(float(x) for x in row) for row in d["panel_offsets_m"]),
-            panel_thickness_nom_m=float(d["panel_thickness_nom_m"]),
+            panel_thickness_m=thickness,
         )
 
 
@@ -336,6 +343,32 @@ def displacement_at(params: BladeParams, r: float, v: float) -> float:
     return top * (1.0 - tr) + bot * tr
 
 
+def panel_thickness_at(params: BladeParams, r: float, v: float) -> float:
+    """Panel membrane thickness at radius ``r`` and tangential ``v`` ∈ [-1, 1].
+
+    Bilinear over ``panel_thickness_m``, tangential edges padded by the nearest column (NOT
+    pinned to 0 like the offset grid — thickness stays positive). Paired with
+    :func:`displacement_at` (the mean-surface offset), a free thickness grid gives the two
+    faces **independent** shape: ``top = mean + thickness/2``, ``bot = mean − thickness/2``
+    (a per-node (offset, thickness) is a bijection with a per-node (top, bottom)).
+    """
+    rows, cols = PANEL_GRID_RADIAL_COUNT, PANEL_GRID_TANGENTIAL_COUNT
+    v = min(max(v, -1.0), 1.0)
+    u = _radial_frac(r)
+    fr = u * (rows - 1)
+    i0 = min(int(fr), rows - 2)
+    tr = fr - i0
+    s = (v + 1.0) / 2.0 * (cols + 1)
+    j0 = min(int(s), cols)
+    tt = s - j0
+    ra, rb = params.panel_thickness_m[i0], params.panel_thickness_m[i0 + 1]
+    pa = (ra[0], *ra, ra[-1])
+    pb = (rb[0], *rb, rb[-1])
+    va = pa[j0] * (1.0 - tt) + pa[j0 + 1] * tt
+    vb = pb[j0] * (1.0 - tt) + pb[j0 + 1] * tt
+    return va * (1.0 - tr) + vb * tr
+
+
 def _radial_samples() -> list[float]:
     step = L_RIB_M / (_MARGIN_SAMPLES - 1)
     return [HUB_RADIUS_M + step * k for k in range(_MARGIN_SAMPLES)]
@@ -374,9 +407,11 @@ def containment_margin_m(params: BladeParams) -> float:
     thickness: bigger undulations need a thicker rib — traded against nesting + mass.
     """
     margins: list[float] = []
-    for r, row in zip(panel_radial_stations(), params.panel_offsets_m):
-        allow = (rib_thickness_at(params, r) - params.panel_thickness_nom_m) / 2.0
-        for offset in row:
+    for r, off_row, th_row in zip(
+        panel_radial_stations(), params.panel_offsets_m, params.panel_thickness_m
+    ):
+        for offset, thick in zip(off_row, th_row):
+            allow = (rib_thickness_at(params, r) - thick) / 2.0
             margins.append(allow - abs(offset))
     return min(margins)
 
@@ -396,7 +431,7 @@ def estimate_mass_kg(params: BladeParams) -> float:
         w_rib = rib_width_at(r)
         rib_vol += 2.0 * w_rib * rib_thickness_at(params, r) * dr
         w_panel = max(0.0, r * INTER_BLADE_ANGLE_RAD - 2.0 * w_rib)
-        panel_vol += w_panel * params.panel_thickness_nom_m * dr
+        panel_vol += w_panel * panel_thickness_at(params, r, 0.0) * dr
     boss_vol = math.pi * PIVOT_BOSS_RADIUS_M**2 * params.t_rib_hub_m
     vol_per_blade = rib_vol + panel_vol + boss_vol
     return vol_per_blade * params.blade_count * RHO_PETG_KG_PER_M3

@@ -52,7 +52,7 @@ def _sample(blade_count: int = 8) -> BladeParams:
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=_SAMPLE_GRID,
-        panel_thickness_nom_m=0.0013,
+        panel_thickness_m=((0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013)),
     )
 
 
@@ -73,7 +73,6 @@ def test_invalid_blade_count_raises():
     [
         ("t_rib_hub_m", RIB_THICKNESS_RANGE_M[0] - 0.001),
         ("t_rib_tip_m", RIB_THICKNESS_RANGE_M[1] + 0.001),
-        ("panel_thickness_nom_m", PANEL_THICKNESS_NOM_RANGE_M[1] + 0.001),
     ],
 )
 def test_out_of_range_scalar_field_raises(field, value):
@@ -119,6 +118,13 @@ def test_out_of_range_grid_value_raises():
     kwargs["panel_offsets_m"] = [list(r) for r in _SAMPLE_GRID]
     kwargs["panel_offsets_m"][0][0] = PANEL_OFFSET_RANGE_M[1] + 0.001
     with pytest.raises(ValueError, match="panel_offsets_m"):
+        BladeParams.from_dict(kwargs)
+
+
+def test_out_of_range_thickness_grid_value_raises():
+    kwargs = _sample().to_dict()
+    kwargs["panel_thickness_m"][0][0] = PANEL_THICKNESS_NOM_RANGE_M[1] + 0.001
+    with pytest.raises(ValueError, match="panel_thickness_m"):
         BladeParams.from_dict(kwargs)
 
 

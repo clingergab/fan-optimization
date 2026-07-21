@@ -38,28 +38,33 @@ def _sample(blade_count: int = 10) -> BladeParams:
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=_SAMPLE_GRID,
-        panel_thickness_nom_m=0.0013,
+        panel_thickness_m=((0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013)),
     )
 
 
 def test_n_dims_matches_layout():
-    # K meridian knots + 1 interp + 2 rib thickness + grid + 1 panel thickness + 1 blade_count.
+    # K meridian knots + 1 interp + 2 rib thickness + 2 panel grids (offset + thickness)
+    # + 1 blade_count.
     expected = (
-        RIB_BOW_KNOT_COUNT + 1 + 2 + PANEL_GRID_RADIAL_COUNT * PANEL_GRID_TANGENTIAL_COUNT + 2
+        RIB_BOW_KNOT_COUNT + 1 + 2 + 2 * PANEL_GRID_RADIAL_COUNT * PANEL_GRID_TANGENTIAL_COUNT + 1
     )
     assert codec.N_DIMS == expected
 
 
 def test_grid_var_count():
-    grid_vars = [v for v in codec.SEARCH_SPACE if v.name.startswith("panel_z_")]
-    assert len(grid_vars) == PANEL_GRID_RADIAL_COUNT * PANEL_GRID_TANGENTIAL_COUNT
+    n = PANEL_GRID_RADIAL_COUNT * PANEL_GRID_TANGENTIAL_COUNT
+    offset_vars = [v for v in codec.SEARCH_SPACE if v.name.startswith("panel_z_")]
+    thick_vars = [v for v in codec.SEARCH_SPACE if v.name.startswith("panel_thick_")]
+    assert len(offset_vars) == n  # mean-surface offset grid
+    assert len(thick_vars) == n  # per-node thickness grid (independent faces)
 
 
 def test_leading_and_trailing_names():
     names = [v.name for v in codec.SEARCH_SPACE]
     assert names[:RIB_BOW_KNOT_COUNT] == [f"rib_bow_k{i}" for i in range(RIB_BOW_KNOT_COUNT)]
     assert names[RIB_BOW_KNOT_COUNT] == "rib_bow_interp"
-    assert names[-2:] == ["panel_thickness_k", "blade_count"]
+    assert names[-1] == "blade_count"
+    assert names[-2].startswith("panel_thick_")
 
 
 def test_bounds_shapes():

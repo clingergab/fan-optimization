@@ -22,6 +22,7 @@ from fanopt.geometry.blade import (
     BladeParams,
     RIB_TIP_RADIUS_M,
     displacement_at,
+    panel_thickness_at,
 )
 from fanopt.geometry.schema import HUB_RADIUS_M, INTER_BLADE_ANGLE_RAD, L_RIB_M
 
@@ -58,7 +59,8 @@ def blade_slice_polygons(
     """Cascade cross-section polygons for the solid blade at radial station ``radial_u``.
 
     Sweeps the tangential chord and evaluates ``displacement_at(r, v)`` (v ∈ [-1, 1]) for
-    the mean surface, then offsets ``± panel_thickness_nom/2`` for the two free faces.
+    the mean surface, then offsets ``± panel_thickness_at(r, v)/2`` — a per-sample thickness,
+    so the two faces carry independent shape (not a constant gap).
     Returns ``n_panels`` closed ``(streamwise = z, cross = tangential)`` polygons centred
     on ``cross = 0``, tiled at the cascade pitch — ready for ``build_cascade_slice_mesh``.
     """
@@ -75,7 +77,9 @@ def blade_slice_polygons(
     local = np.linspace(0.0, width, n_samples)
     v_param = 2.0 * local / width - 1.0
     mean = np.array([displacement_at(params, r, float(v)) for v in v_param], dtype=float)
-    half_t = params.panel_thickness_nom_m / 2.0
+    half_t = np.array(
+        [panel_thickness_at(params, r, float(v)) / 2.0 for v in v_param], dtype=float
+    )
     z_top = mean + half_t
     z_bot = mean - half_t
 

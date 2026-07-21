@@ -31,7 +31,7 @@ def _params(grid) -> BladeParams:
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=grid,
-        panel_thickness_nom_m=0.0013,
+        panel_thickness_m=((0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013)),
     )
 
 
@@ -75,7 +75,7 @@ def test_flat_blade_has_uniform_thickness_and_flat_mean():
     p = _params(_FLAT_GRID)
     poly = blade_slice_polygons(p, n_panels=1, n_samples=20)[0]
     z = poly[:, 0]
-    assert (z.max() - z.min()) == pytest.approx(p.panel_thickness_nom_m)
+    assert (z.max() - z.min()) == pytest.approx(p.panel_thickness_m[0][0])  # uniform grid
 
 
 def test_cambered_blade_bows_the_mean_surface():
@@ -92,8 +92,8 @@ def test_edges_pinned_to_zero_camber():
     poly = blade_slice_polygons(p, n_panels=1, n_samples=24)[0]
     n = poly.shape[0] // 2
     bottom_z = poly[:n, 0]  # bottom face left→right
-    assert bottom_z[0] == pytest.approx(-p.panel_thickness_nom_m / 2.0)
-    assert bottom_z[-1] == pytest.approx(-p.panel_thickness_nom_m / 2.0)
+    assert bottom_z[0] == pytest.approx(-p.panel_thickness_m[0][0] / 2.0)
+    assert bottom_z[-1] == pytest.approx(-p.panel_thickness_m[0][0] / 2.0)
 
 
 def test_cascade_centered_on_cross_zero():

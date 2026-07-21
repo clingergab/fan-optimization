@@ -42,7 +42,7 @@ def _sample(blade_count: int = 8) -> BladeParams:
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=_SAMPLE_GRID,
-        panel_thickness_nom_m=0.0013,
+        panel_thickness_m=((0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013)),
     )
 
 

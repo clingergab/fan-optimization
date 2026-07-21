@@ -103,9 +103,10 @@ def sobol_doe(n: int, seed: int = 0) -> np.ndarray:
 
 
 def _blade(
-    grid, *, blade_count=10, t_hub=0.0025, t_tip=0.0035, panel=0.0015,
+    grid, *, blade_count=10, t_hub=0.0025, t_tip=0.0035, panel=0.0015, thick_grid=None,
     bow_knots=(0.005, 0.010, 0.013, 0.017, 0.020), interp="linear",
 ) -> BladeParams:
+    tg = thick_grid or tuple((panel, panel, panel) for _ in range(4))
     return BladeParams(
         blade_count=blade_count,
         rib_bow_knots_m=bow_knots,
@@ -113,7 +114,7 @@ def _blade(
         t_rib_hub_m=t_hub,
         t_rib_tip_m=t_tip,
         panel_offsets_m=grid,
-        panel_thickness_nom_m=panel,
+        panel_thickness_m=tg,
     )
 
 
@@ -132,6 +133,9 @@ def diverse_fallback_designs() -> list[np.ndarray]:
     # dome and a sharp radial pleat/zigzag — the shapes the panel grid can't reach.
     dome = (0.008, 0.016, 0.022, 0.026, 0.028)
     pleat = (0.006, 0.024, 0.008, 0.026, 0.010)
+    # Thickness archetype: thick centre, thin edges = a lens/airfoil ")(" section (both faces
+    # bulge) — reachable now that panel thickness is a free grid, not a scalar.
+    airfoil = tuple((0.0013, 0.0026, 0.0013) for _ in range(4))
     designs = [
         _blade(flat, blade_count=10),
         _blade(camber, blade_count=10),
@@ -140,6 +144,7 @@ def diverse_fallback_designs() -> list[np.ndarray]:
         _blade(camber, blade_count=12, t_hub=0.003, t_tip=0.0045),  # thick/stiff
         _blade(flat, blade_count=8, bow_knots=dome, interp="smooth"),  # deep smooth cup
         _blade(flat, blade_count=8, bow_knots=pleat, interp="linear"),  # radial pleat/zigzag
+        _blade(flat, blade_count=8, t_hub=0.003, t_tip=0.004, thick_grid=airfoil),  # ")(" section
     ]
     return [encode(p) for p in designs]
 

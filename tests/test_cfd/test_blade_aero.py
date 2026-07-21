@@ -33,7 +33,7 @@ def _params() -> BladeParams:
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=_CAMBER,
-        panel_thickness_nom_m=0.0016,
+        panel_thickness_m=((0.0016, 0.0016, 0.0016), (0.0016, 0.0016, 0.0016), (0.0016, 0.0016, 0.0016), (0.0016, 0.0016, 0.0016)),
     )
 
 
