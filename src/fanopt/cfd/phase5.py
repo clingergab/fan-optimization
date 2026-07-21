@@ -131,12 +131,13 @@ class _VerifyWorker:
     workdir: Path
     cfg: VerifyConfig
     su2_bin: str
+    prepare_fn: Callable[[np.ndarray, Path, VerifyConfig], VolumeMeshResult]
 
     def __call__(self, design: tuple[str, np.ndarray, float | None]) -> VerifyResult:
         name, vector, j_slice = design
         d_dir = self.workdir / name
         try:
-            mesh = prepare_verification_case(vector, d_dir, self.cfg)
+            mesh = self.prepare_fn(vector, d_dir, self.cfg)
             hist = run_su2(CFG_NAME, d_dir, self.su2_bin)
             j3d = extract_j_fan_3d(hist, n_cycles=self.cfg.n_cycles)
             return VerifyResult(name, j3d, j_slice, meta={"n_nodes": float(mesh.n_nodes)})
@@ -155,6 +156,9 @@ def run_verification(
     n_workers: int = 1,
     progress: bool = False,
     on_result: Callable[[VerifyResult], None] | None = None,
+    prepare_fn: Callable[
+        [np.ndarray, Path, VerifyConfig], VolumeMeshResult
+    ] = prepare_verification_case,
 ) -> list[VerifyResult]:
     """3D-verify each ``(name, vector, j_fan_slice)`` design; return the results.
 
@@ -164,12 +168,14 @@ def run_verification(
     a live ``tqdm`` bar over the designs (each 3D run takes a while). ``on_result``,
     if given, is called with each :class:`VerifyResult` as it completes — the caller
     uses it to checkpoint partial results so a mid-run crash/disconnect isn't total
-    loss.
+    loss. ``prepare_fn`` builds one design's case (blade → STEP → 3D mesh → cfg); it
+    defaults to the original codec-bound blade, and the redesigned aero-first blade
+    passes :func:`fanopt.cfd.blade_verify.prepare_blade_verification_case` instead.
     """
     su2 = su2_bin or find_su2()
     if su2 is None:
         raise RuntimeError("SU2_CFD not found (set $SU2_RUN or put SU2_CFD on PATH)")
-    worker = _VerifyWorker(workdir, cfg, su2)
+    worker = _VerifyWorker(workdir, cfg, su2, prepare_fn)
     bar = tqdm(total=len(designs), disable=not progress, desc="Phase 5 3D verify", unit="design")
     try:
         if n_workers > 1 and len(designs) > 1:
