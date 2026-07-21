@@ -19,6 +19,7 @@ from fanopt.geometry.blade import (
 )
 from fanopt.geometry.blade_cad import (
     blade_mass_kg,
+    blade_trimesh,
     blade_volume_m3,
     fold_collision_clear,
     fold_collision_volume_m3,
@@ -53,6 +54,19 @@ def _contains_violating() -> BladeParams:
 
 def test_solid_is_valid():
     assert make_blade_solid(_sample()).val().isValid() is True
+
+
+def test_trimesh_shapes_and_indices_valid():
+    V, F = blade_trimesh(_sample())
+    assert V.ndim == 2 and V.shape[1] == 3 and V.shape[0] > 0
+    assert F.ndim == 2 and F.shape[1] == 3 and F.shape[0] > 0
+    assert int(F.max()) < V.shape[0] and int(F.min()) >= 0  # every face indexes a real vertex
+
+
+def test_trimesh_finer_tol_more_triangles():
+    _, coarse = blade_trimesh(_sample(), tol=0.002)
+    _, fine = blade_trimesh(_sample(), tol=0.0002)
+    assert fine.shape[0] >= coarse.shape[0]
 
 
 def test_solid_is_single_body():

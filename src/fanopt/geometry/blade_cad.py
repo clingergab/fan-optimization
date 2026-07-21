@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 
 import cadquery as cq
+import numpy as np
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Sewing
 from OCP.ShapeFix import ShapeFix_Solid
 from OCP.TopoDS import TopoDS
@@ -44,6 +45,7 @@ __all__ = [
     "N_RADIAL_SECTIONS",
     "N_TANGENTIAL_SAMPLES",
     "make_blade_solid",
+    "blade_trimesh",
     "blade_volume_m3",
     "blade_mass_kg",
     "fold_collision_volume_m3",
@@ -163,6 +165,20 @@ def make_blade_solid(params: BladeParams) -> cq.Workplane:
     solid = _sew_solid(_blade_faces(top, bot))
     blade = cq.Workplane("XY").newObject([solid])
     return blade.union(_boss_solid(params))
+
+
+def blade_trimesh(
+    params: BladeParams, tol: float = 0.0005
+) -> tuple[np.ndarray, np.ndarray]:
+    """Triangulated surface of the blade solid as ``(vertices (N,3), faces (M,3))`` arrays.
+
+    Tessellates the CAD solid to a triangle soup for 3D surface plotting (e.g. Plotly
+    ``Mesh3d``). ``tol`` is the chordal deviation in metres — smaller renders finer.
+    """
+    verts, tris = make_blade_solid(params).val().tessellate(tol)
+    vertices = np.array([[v.x, v.y, v.z] for v in verts], dtype=float)
+    faces = np.array(tris, dtype=int)
+    return vertices, faces
 
 
 def blade_volume_m3(params: BladeParams) -> float:
