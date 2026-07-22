@@ -91,6 +91,21 @@ def unsteady_render() -> str:
     return render_unsteady_cfg(mesh_filename="fan3d.su2")
 
 
+def test_unsteady_default_output_files_verbose(unsteady_render: str) -> None:
+    # Default preserves the full snapshot set and emits no OUTPUT_WRT_FREQ (SU2 default cadence).
+    assert "OUTPUT_FILES= ( RESTART, PARAVIEW, SURFACE_CSV )" in unsteady_render
+    assert "OUTPUT_WRT_FREQ" not in unsteady_render
+
+
+def test_unsteady_minimal_output_for_verification() -> None:
+    # A verify-style caller writes a single restart, once — avoids ~240 MB of field dumps.
+    cfg = render_unsteady_cfg(
+        mesh_filename="fan3d.su2", output_files="( RESTART )", output_wrt_freq=10_000_000
+    )
+    assert "OUTPUT_FILES= ( RESTART )" in cfg
+    assert "OUTPUT_WRT_FREQ= 10000000" in cfg
+
+
 def test_unsteady_renders_mach_1e_minus_9(unsteady_render: str) -> None:
     """HIGH-12 lock — render must set MACH_NUMBER to 1e-9, not 0.0064."""
     m = re.search(r"^MACH_NUMBER=\s*([\dEe.+-]+)", unsteady_render, re.MULTILINE)

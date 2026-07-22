@@ -162,8 +162,18 @@ def render_unsteady_cfg(
     n_cycles: int = 5,
     inner_iter: int = 100,
     cfl_number: float = 1.0,
+    output_files: str = "( RESTART, PARAVIEW, SURFACE_CSV )",
+    output_wrt_freq: int | None = None,
 ) -> str:
     """Render `fan3d_unsteady.cfg.j2` with the locked Tier-1 numerics.
+
+    ``output_files`` sets SU2's ``OUTPUT_FILES`` (the volume/surface/restart snapshot dumps).
+    SU2 needs ≥1 entry, but each is written every ``OUTPUT_WRT_FREQ`` time-iterations, so the
+    real disk cost is frequency × file size (~240 MB/run at the default cadence). ``history.csv``
+    (``CONV_FILENAME``) is written regardless. A caller that only needs the force history (e.g.
+    J_fan verification) can pass ``output_files="( RESTART )"`` + a huge ``output_wrt_freq`` to
+    write a single small file and avoid filling the disk. ``output_wrt_freq=None`` omits the
+    line (SU2 default cadence).
 
     Default pitching_omega_y / pitching_ampl_y come from the schema's C11
     lock (negative-y omega, positive-y amplitude). Overriding is allowed
@@ -220,6 +230,8 @@ def render_unsteady_cfg(
             motion_origin_y=motion_origin_y,
             motion_origin_z=motion_origin_z,
             cfl_number=cfl_number,
+            output_files=output_files,
+            output_wrt_freq=output_wrt_freq,
             **timestep_defaults,
         )
     except jinja2.UndefinedError as e:

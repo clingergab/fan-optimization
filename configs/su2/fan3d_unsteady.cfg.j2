@@ -94,7 +94,9 @@ TABULAR_FORMAT= CSV
 CONV_FILENAME= history
 SURFACE_FILENAME= surface_flow
 VOLUME_FILENAME= flow
-OUTPUT_FILES= ( RESTART, PARAVIEW, SURFACE_CSV )
+OUTPUT_FILES= {{ output_files }}
+{% if output_wrt_freq is not none %}OUTPUT_WRT_FREQ= {{ output_wrt_freq }}
+{% endif %}
 HISTORY_OUTPUT= ( ITER, RMS_RES, AERO_COEFF, FLOW_COEFF )
 
 % --- numerics ---

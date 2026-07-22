@@ -74,6 +74,10 @@ def prepare_blade_verification_case(
         marker_farfield=FARFIELD_MARKER,
         n_cycles=cfg.n_cycles,
         inner_iter=cfg.inner_iter,
+        # J_fan only needs history.csv; write a single small restart once (SU2 requires >=1
+        # OUTPUT_FILES entry) instead of ~240 MB of per-timestep field dumps.
+        output_files="( RESTART )",
+        output_wrt_freq=10_000_000,
     )
     (workdir / CFG_NAME).write_text(unsteady, encoding="utf-8")
     return mesh
