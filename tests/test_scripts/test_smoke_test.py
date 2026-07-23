@@ -69,7 +69,7 @@ def test_compute_smoke_summary_reports_mass_cap_status() -> None:
     verify the cap-check field exists and is correctly typed."""
     summary = smoke_test.compute_smoke_summary(_design())
     assert isinstance(summary["total_mass_under_cap"], bool)
-    assert summary["mass_cap_kg"] == 0.120
+    assert summary["mass_cap_kg"] == 0.300
     assert summary["total_mass_kg"] > 0.0
 
 

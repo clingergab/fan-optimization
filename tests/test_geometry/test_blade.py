@@ -239,8 +239,8 @@ def test_fold_margin_is_cap_minus_stack_height():
 
 
 def test_fold_margin_negative_for_fat_stack():
-    # Many thick-ribbed blades → the folded bundle exceeds the ergonomic cap.
-    p = BladeParams(**{**_sample().to_dict(), "blade_count": 12, "t_rib_tip_m": 0.006})
+    # Many maximally-thick-ribbed blades → the folded bundle exceeds the ergonomic cap.
+    p = BladeParams(**{**_sample().to_dict(), "blade_count": 12, "t_rib_tip_m": 0.012})
     assert fold_margin_m(p) < 0.0
 
 
@@ -277,5 +277,6 @@ def test_feasible_true_for_good_design():
 
 
 def test_feasible_false_when_any_constraint_violated():
-    p = BladeParams(**{**_sample().to_dict(), "t_rib_hub_m": 0.006})
+    # 12 max-thick-rib blades bust the fold cap → feasible() is False.
+    p = BladeParams(**{**_sample().to_dict(), "blade_count": 12, "t_rib_tip_m": 0.012})
     assert feasible(p) is False

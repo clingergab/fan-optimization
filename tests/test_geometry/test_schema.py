@@ -166,7 +166,7 @@ def test_deployed_extent_for_10_blades_is_133deg() -> None:
 
 def test_mass_cap_c9() -> None:
     # C9's 100 g relaxed to 120 g (2026-07-21, user-authorized) for more design headroom.
-    assert s.MAX_TOTAL_MASS_KG == 0.120
+    assert s.MAX_TOTAL_MASS_KG == 0.300
 
 
 def test_com_cap() -> None:

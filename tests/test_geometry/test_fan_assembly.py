@@ -126,7 +126,7 @@ def test_total_mass_finite_and_positive_for_canonical() -> None:
     assert total > 0.0
     assert math.isfinite(total)
     # Pin the cap constant exists (C9's 100 g relaxed to 120 g, 2026-07-21).
-    assert MAX_TOTAL_MASS_KG == 0.120
+    assert MAX_TOTAL_MASS_KG == 0.300
 
 
 def test_mass_with_custom_density() -> None:

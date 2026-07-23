@@ -96,11 +96,15 @@ RIB_BOW_INTERP_MODES: tuple[str, ...] = ("linear", "smooth")
 """Radial interpolation between meridian knots: ``linear`` (crisp pleats / zigzag) or
 ``smooth`` (Catmull-Rom dished camber). A categorical BO knob — the optimizer tries both."""
 
-RIB_THICKNESS_RANGE_M: tuple[float, float] = (0.002, 0.006)
-"""Rib z-thickness envelope at hub / tip. 2 mm floor = FDM minimum feature."""
+RIB_THICKNESS_RANGE_M: tuple[float, float] = (0.002, 0.012)
+"""Rib z-thickness envelope at hub / tip. 2 mm floor = FDM minimum feature. Widened to
+12 mm (2026-07-22) so a thick rib frame can give the panel real room to sculpt (thick
+ribs ⇄ chunkier fold + more mass — see MAX_FOLDED_STACK_HEIGHT_M / MAX_TOTAL_MASS_KG)."""
 
-PANEL_THICKNESS_NOM_RANGE_M: tuple[float, float] = (0.0012, 0.003)
-"""Nominal panel membrane thickness (1.2–3 mm). Held ``≤ t_rib`` by containment."""
+PANEL_THICKNESS_NOM_RANGE_M: tuple[float, float] = (0.0012, 0.010)
+"""Nominal panel membrane thickness. Held ``≤ t_rib`` by containment; widened to 10 mm
+(2026-07-22) so the panel cap tracks the rib and the two faces can diverge (independent
+face waves) rather than staying parallel."""
 
 PANEL_GRID_RADIAL_COUNT: int = 4
 """Radial control rows of the panel displacement grid (base→tip; enough for steps)."""
@@ -109,17 +113,20 @@ PANEL_GRID_TANGENTIAL_COUNT: int = 3
 """Interior tangential control points per row. The two rib edges are pinned to 0."""
 
 PANEL_OFFSET_MAX_M: float = (RIB_THICKNESS_RANGE_M[1] - PANEL_THICKNESS_NOM_RANGE_M[0]) / 2.0
-"""±2.4 mm — the largest surface offset that can ever fit inside a rib slab. The
-local containment constraint (thinner rib / thicker panel) is tighter and penalized."""
+"""Largest surface offset that can ever fit inside a rib slab (auto-derived from the rib +
+panel ranges). The local containment constraint (thinner rib / thicker panel) is tighter
+and penalized."""
 
 PANEL_OFFSET_RANGE_M: tuple[float, float] = (-PANEL_OFFSET_MAX_M, PANEL_OFFSET_MAX_M)
 
 FOLD_CLEARANCE_M: float = 0.0004
 """0.4 mm per-interface fold clearance for PETG FDM (§4.5)."""
 
-MAX_FOLDED_STACK_HEIGHT_M: float = 0.035
+MAX_FOLDED_STACK_HEIGHT_M: float = 0.090
 """Ergonomic bound on the folded-bundle thickness (this module's design bound, not a
-locked schema constant). The fan z-stacks like a deck: layer spacing = thickest rib +
+locked schema constant). Widened 35 → 90 mm (2026-07-22) so thick ribs are fold-feasible
+— a deliberately chunkier folded fan, the price of giving the panel room to sculpt. The
+fan z-stacks like a deck: layer spacing = thickest rib +
 clearance, so the folded stack (and the deployed z-stagger) is ``N × layer_spacing``.
 Thick ribs → fat bundle; this is the pressure that keeps ribs thin."""
 

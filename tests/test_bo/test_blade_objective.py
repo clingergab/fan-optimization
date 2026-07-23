@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import math
 
-import numpy as np
 import pytest
 
 from fanopt.bo import blade_objective as bobj
-from fanopt.bo.blade_codec import bounds, clip_to_bounds, decode, encode
+from fanopt.bo.blade_codec import encode
 from fanopt.cfd.blade_aero import BladeAeroResult
-from fanopt.geometry.blade import BladeParams, feasible
+from fanopt.geometry.blade import BladeParams
 
 _FEASIBLE_GRID = (
     (0.0003, 0.0005, 0.0003),
@@ -32,22 +31,6 @@ def _feasible() -> BladeParams:
     )
 
 
-def _infeasible_vector() -> np.ndarray:
-    """A BO vector that *decodes* to an infeasible (mass-over-cap) design.
-
-    The codec is feasible-by-construction for fold + containment and caps rib thickness by
-    mass, but the mass proxy is approximate, so a fraction of decodes still tip over the cap.
-    Search deterministically for one so the objective's infeasible short-circuit is exercised.
-    """
-    low, high = bounds()
-    rng = np.random.default_rng(0)
-    for _ in range(2000):
-        v = clip_to_bounds(low + rng.random(len(low)) * (high - low))
-        if not feasible(decode(v)):
-            return v
-    raise AssertionError("expected some vector to decode to an infeasible design")
-
-
 # --- analytic deflection -----------------------------------------------------
 
 
@@ -66,15 +49,17 @@ def test_deflection_grows_as_panel_thins():
 # --- objective ---------------------------------------------------------------
 
 
-def test_infeasible_penalized_without_su2(tmp_path):
+def test_infeasible_penalized_without_su2(tmp_path, monkeypatch):
     # No su2_bin, no mock: an infeasible design must NOT reach the solver.
+    monkeypatch.setattr(bobj, "feasible", lambda p: False)
     obj = bobj.BladeObjective(out_dir=tmp_path)
-    out = obj(_infeasible_vector())
+    out = obj(encode(_feasible()))
     assert all(math.isnan(v) for v in out)
 
 
-def test_infeasible_writes_marker(tmp_path):
-    bobj.BladeObjective(out_dir=tmp_path)(_infeasible_vector())
+def test_infeasible_writes_marker(tmp_path, monkeypatch):
+    monkeypatch.setattr(bobj, "feasible", lambda p: False)
+    bobj.BladeObjective(out_dir=tmp_path)(encode(_feasible()))
     assert list(tmp_path.glob("designs/*/INFEASIBLE.txt"))
 
 
