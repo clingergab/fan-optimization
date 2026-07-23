@@ -18,6 +18,7 @@ if importlib.util.find_spec("cadquery") is None:  # pragma: no cover - env-depen
 
 from fanopt.bo.blade_codec import bounds, clip_to_bounds, decode
 from fanopt.cfd import blade_verify, phase3
+from fanopt.geometry.blade import BladeParams
 
 
 def _vec(frac: float) -> np.ndarray:
@@ -63,13 +64,13 @@ def test_designs_from_pareto_top_k_truncates():
     assert [d[2] for d in designs] == [3.0, 2.0]
 
 
-def test_designs_from_pareto_carries_vector_and_name():
+def test_designs_from_pareto_carries_params_and_name():
     v = _vec(0.4)
     designs = blade_verify.designs_from_pareto([_pareto_entry(v, 1.0)])
-    name, vector, j_slice = designs[0]
+    name, params, j_slice = designs[0]
     assert name.startswith("00_")
-    assert isinstance(vector, np.ndarray)
-    np.testing.assert_allclose(vector, v)
+    assert isinstance(params, BladeParams)  # absolute params, not a range-dependent vector
+    assert params == decode(v)
     assert j_slice == 1.0
 
 
@@ -94,7 +95,7 @@ def test_load_pareto_round_trip(tmp_path):
 
 def test_prepare_blade_verification_case_builds_mesh_and_cfg(tmp_path):
     cfg = blade_verify.VerifyConfig()
-    mesh = blade_verify.prepare_blade_verification_case(_vec(0.5), tmp_path, cfg)
+    mesh = blade_verify.prepare_blade_verification_case(decode(_vec(0.5)), tmp_path, cfg)
     assert mesh.n_nodes > 0
     assert (tmp_path / blade_verify.MESH_NAME).exists()
     assert (tmp_path / blade_verify.STEP_NAME).exists()

@@ -2,8 +2,8 @@
 
 Re-evaluates the campaign's top Pareto designs with a **3D** unsteady CFD run to check that
 the cheap 2D mid-radius-slice ranking (the :mod:`~fanopt.bo.blade_campaign` screen) survives
-the 3D physics it omits (finite span, tip/root effects). Per design: decode the BO vector
-with the new :mod:`~fanopt.bo.blade_codec` → build the both-face solid
+the 3D physics it omits (finite span, tip/root effects). Per design (from its **absolute**
+``BladeParams``, so the verify is codec-range-independent): build the both-face solid
 (:func:`~fanopt.geometry.blade_cad.make_blade_solid`) → STEP → 3D volume mesh
 (:mod:`~fanopt.cfd.mesh`) → 3D unsteady SU2 → canonical cycle-mean ``J_fan``. Then correlate
 3D vs slice ``J_fan`` (Kendall τ > 0 means the slice preserved the ranking).
@@ -25,9 +25,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import cadquery as cq
-import numpy as np
 
-from fanopt.bo.blade_codec import decode
 from fanopt.cfd.configs import render_unsteady_cfg
 from fanopt.cfd.mesh import (
     FAN_SURFACE_MARKER,
@@ -36,6 +34,7 @@ from fanopt.cfd.mesh import (
     build_volume_mesh,
 )
 from fanopt.cfd.phase5 import VerifyConfig, VerifyResult, run_verification, verify_ranking
+from fanopt.geometry.blade import BladeParams
 from fanopt.geometry.blade_cad import make_blade_solid
 from fanopt.utils.ledger import design_hash
 
@@ -55,15 +54,16 @@ CFG_NAME = "verify.cfg"
 
 
 def prepare_blade_verification_case(
-    vector: np.ndarray, workdir: Path, cfg: VerifyConfig
+    params: BladeParams, workdir: Path, cfg: VerifyConfig
 ) -> VolumeMeshResult:
-    """Decode → build the redesigned blade → STEP → 3D mesh → write the unsteady cfg.
+    """Build the redesigned blade → STEP → 3D mesh → write the unsteady cfg.
 
-    The ``prepare_fn`` hook :func:`fanopt.cfd.phase5.run_verification` calls per design.
-    Signature matches the spine's original codec-bound prep so it drops in directly.
+    Takes the design's **absolute** :class:`BladeParams` (not a BO vector), so the 3D verify
+    is independent of the codec's search-space ranges — widening those for a later campaign
+    can't retro-corrupt a verification of already-found designs. The ``prepare_fn`` hook
+    :func:`fanopt.cfd.phase5.run_verification` calls per design.
     """
     workdir.mkdir(parents=True, exist_ok=True)
-    params = decode(vector)
     solid = make_blade_solid(params)
     step = workdir / STEP_NAME
     cq.exporters.export(solid, str(step))
@@ -85,22 +85,23 @@ def prepare_blade_verification_case(
 
 def designs_from_pareto(
     pareto: list[dict[str, object]], top_k: int | None = None
-) -> list[tuple[str, np.ndarray, float | None]]:
-    """``pareto.json`` records → ``(name, vector, j_fan_slice)`` designs, best ``J_fan`` first.
+) -> list[tuple[str, BladeParams, float | None]]:
+    """``pareto.json`` records → ``(name, params, j_fan_slice)`` designs, best ``J_fan`` first.
 
-    ``top_k`` keeps only the highest-``J_fan`` designs (all if ``None``). Each design's name is
-    ``rank_hash`` — stable across reruns (the hash is the design's, the rank its slice order) so
-    a resumed 3D verification reuses prior per-design scratch. ``j_fan_slice`` is the campaign's
-    2D-slice ``J_fan``, carried through so the spine can correlate it against the 3D value.
+    Carries each design's **absolute** :class:`BladeParams` (from the record's ``params``), NOT
+    its BO vector — so a verification is independent of the codec ranges the vector was encoded
+    under. ``top_k`` keeps only the highest-``J_fan`` designs (all if ``None``). Each name is
+    ``rank_hash`` — stable across reruns. ``j_fan_slice`` is the campaign's 2D-slice ``J_fan``,
+    carried through so the spine can correlate it against the 3D value.
     """
     ranked = sorted(pareto, key=lambda d: float(d["j_fan"]), reverse=True)  # type: ignore[arg-type]
     if top_k is not None:
         ranked = ranked[:top_k]
-    designs: list[tuple[str, np.ndarray, float | None]] = []
+    designs: list[tuple[str, BladeParams, float | None]] = []
     for rank, d in enumerate(ranked):
-        vector = np.asarray(d["vector"], dtype=float)
+        params = BladeParams.from_dict(d["params"])  # type: ignore[arg-type]
         h = design_hash(d["params"])  # type: ignore[arg-type]
-        designs.append((f"{rank:02d}_{h}", vector, float(d["j_fan"])))  # type: ignore[arg-type]
+        designs.append((f"{rank:02d}_{h}", params, float(d["j_fan"])))
     return designs
 
 
