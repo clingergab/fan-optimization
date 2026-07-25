@@ -317,6 +317,42 @@ this reachable without a parameterization change.
 **Trigger:** V1/V1.5 ships and the operator wants to optimize sustained-waving effort,
 not just per-stroke airflow.
 
+### Compliance-based passive feathering — multi-material blade (operator insight 2026-07-24)
+
+**The *material* route to effort asymmetry.** The two-face entry above chases lower net cycle
+work via *geometry*; this pursues the same goal via *material compliance*: a rigid frame + a
+panel that is **stiff on the productive stroke but flexes (feathers) on the return stroke**,
+cutting return-stroke drag like a feathering oar. Concretely, **PETG rib frame** (rigid,
+strong, carries the fold structure) **+ a tuned-TPU panel** — dual-material FDM.
+
+**Why it is NOT "just make the panel floppy":** every V1 result favored *stiffness* — a rigid
+panel transfers the swing into the air; a uniformly floppy one gives way and moves *less* air
+(deflection ~0 in the winning designs). Uniform TPU flexes *both* directions, killing the push
+too. The win only exists if the compliance is **directional/tuned** (graded stiffness, a hinge
+line, anisotropic infill) so it feathers on the return but stays firm on the push.
+
+**Interface bond is the weak point.** PETG (polyester) and TPU (polyurethane elastomer) have
+mediocre FDM interlayer adhesion, and the rib↔panel seam takes *shear* every flex — the load
+that peels a weak bond. Design a **mechanical interlock** (dovetail / interpenetrating fingers
+/ lattice transition zone) so geometry holds them together; don't trust the chemical bond.
+Needs dual-material hardware (AMS / dual extruder).
+
+**Why it's heavy — needs FSI (this is what pushes it to V3):** a compliant panel *deforms
+under the airflow, which changes the airflow* — aero and structure become **coupled
+(fluid–structure interaction)**. V1's whole pipeline runs aero on a *rigid* geometry (the
+"No FSI" lock, §2.3), so this needs FSI co-simulation (CFD↔FEA in a loop, or a monolithic FSI
+solver) — machinery we don't have. It shares the **panel-compliance → as-loaded aero shape**
+coupling channel with the V1.5 staggered loop's static-deflection step, but goes further
+(dynamic, per-stroke). Design space also grows (which regions which material, graded-stiffness
+maps, interface geometry).
+
+**Classification:** multi-material → **V3** per the Out-of-scope entry below (V1 *and* V2 stay
+single-material PETG). But it's the compliance sibling of the V2 effort-asymmetry entries and
+worth prototyping the moment an FSI toolchain + dual-material FDM are both in hand.
+
+**Trigger:** V1/V1.5 ships, the operator wants to attack sustained-swing effort via material
+compliance, and a multi-material FDM toolchain is available.
+
 ### Porosity / vent sweet-spot for wind-per-effort (operator insight 2026-07-19)
 
 V1's solid-surface parameterization forbids through-holes (they leak airflow, so a solid
@@ -360,5 +396,5 @@ Items that are not in the V1 or V2 roadmap, queued for either a V3 effort or a r
 
 - **Active electronic flow control** — embedded micro-blowers or piezo actuators in the panel cutouts. Adds power + control complexity; out of V2 scope.
 - **Multi-DOF wrist motion** — current model assumes pure +y wrist rotation (flexion). Real waving has yaw + pitch + roll components. V3 could extend the SU2 unsteady cfg to support compound rotations.
-- **Multi-material printing** — TPU membranes, dual-extruder panels. V1 explicitly rejects this (single-material PETG except the steel/brass pin); V2 stays single-material. V3 could revisit if multi-material AMS toolchains improve.
+- **Multi-material printing** — TPU membranes, dual-extruder panels. V1 explicitly rejects this (single-material PETG except the steel/brass pin); V2 stays single-material. V3 could revisit if multi-material AMS toolchains improve. Most compelling driver: **Compliance-based passive feathering** (Optional section above) — a tuned-TPU panel as the *material* route to effort asymmetry; needs FSI tooling + a mechanical rib↔panel interlock (PETG/TPU bond is weak).
 - **Adjoint-based aero shape optimization on the panel envelope** — V1 uses generative parametric design (4-layer hybrid); V3 could couple SU2 continuous adjoint to the Layer 1 envelope spline directly for a finer-grained gradient-based refinement of the top-1 Pareto design.
