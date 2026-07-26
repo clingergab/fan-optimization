@@ -159,9 +159,12 @@ Consequence: the plane-momentum-flux fallback is not needed; cycle-mean CFz is t
    killed after the first 3, but decisively) spans **flat −3.1e11 → gentle_dish +7.4e11**
    whole-fan cycle-mean CFz (range_frac ≈ 1.4) — the wave hugely moves wind; optimizing is
    worth it. Non-obvious: gentle_dish > deep_dish (deeper isn't better), so shape matters
-   non-trivially. **Fidelity study (2a — does coarse-3D preserve the fine ranking):** pending
-   a reliable run — the local Mac keeps killing multi-hour CFD, so this belongs on Colab (where
-   the campaign runs anyway). The analysis code (`bo/redo_validation`) is done + tested.
+   non-trivially. **Fidelity study (2a — does coarse-3D preserve the fine ranking):** the local
+   Mac killed every multi-hour CFD attempt (3×), so this runs on **Colab** via
+   `notebooks/colab_stage2_probe.ipynb` (idempotent, resumable; clones `main`; runs the same
+   8-design sweep + a 4-design fine subset and prints both the 2b headroom and 2a fidelity
+   verdicts). The analysis code (`bo/redo_validation`) is done + tested; only the fine-tier CFD
+   numbers await a Colab run.
 5. **Unified coarse→fine 3D BO** on the corrected, trusted objective — Stage 3 (not yet built).
 
 **Estimate:** ~2–3 weeks wall-clock to a genuinely optimized, verified blade, compressible to
