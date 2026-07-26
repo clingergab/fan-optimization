@@ -165,7 +165,19 @@ Consequence: the plane-momentum-flux fallback is not needed; cycle-mean CFz is t
    8-design sweep + a 4-design fine subset and prints both the 2b headroom and 2a fidelity
    verdicts). The analysis code (`bo/redo_validation`) is done + tested; only the fine-tier CFD
    numbers await a Colab run.
-5. **Unified coarse→fine 3D BO** on the corrected, trusted objective — Stage 3 (not yet built).
+5. **Unified coarse→fine 3D BO** on the corrected, trusted objective — Stage 3.
+   - **3.A machinery — ✅ BUILT.** `bo/distributed_campaign.py` is the async shared-ledger
+     distributed loop: N Colab sessions share one Drive ledger (`evaluations.jsonl`, stores the
+     design *vector* so any session reconstructs `x`), each refits the GP on the **combined**
+     data (backbone `fit_gp`/`propose_candidates`, TuRBO), and **claims** designs via atomic
+     marker files so none is evaluated twice — cold-start Sobol DoE sliced round-robin, per-
+     session acquisition seed so sessions diverge. `Blade3DObjective` wires in unchanged (it's
+     injected). CLI: `scripts/run_blade_campaign_distributed.py` (one per session); notebook:
+     `notebooks/colab_stage3_campaign.ipynb`. Tested (coordination = no duplicate designs,
+     resumability, whole-fan objective) without CFD via a synthetic objective.
+   - **3.B run — pending.** Launch one session per Colab runtime at the fidelity the 2a probe
+     selects (the `VerifyConfig` tier is a CLI/notebook parameter, finalized once 2a lands).
+   - **3.C analysis — pending.** `pareto_from_ledger` → fine-3D confirm the top designs → V1 pick.
 
 **Estimate:** ~2–3 weeks wall-clock to a genuinely optimized, verified blade, compressible to
 ~3–5 active days with the async-distributed + cheap-eval + TuRBO setup. This is the cost of the
