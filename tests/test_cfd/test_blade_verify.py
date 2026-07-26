@@ -38,7 +38,9 @@ def _pareto_entry(vec: np.ndarray, j_fan: float) -> dict[str, object]:
 
 def _fake_su2_writing(series):
     def fake_run(cmd, cwd, stdout, stderr, env):
-        lines = ["Time_Iter,CFx"] + [f"{t},{v}" for t, v in enumerate(series)]
+        # 3D thrust axis is CFz; tile to >= 3 cycles x 200 steps so the period guard passes.
+        full = (list(series) * (600 // len(series) + 1))[:600]
+        lines = ["Time_Iter,CFz"] + [f"{t},{v}" for t, v in enumerate(full)]
         (Path(cwd) / "history.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
         class R:
