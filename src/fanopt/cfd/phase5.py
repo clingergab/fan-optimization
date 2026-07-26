@@ -28,7 +28,7 @@ from fanopt.bo.codec import decode
 from fanopt.bo.inertia import NEUTRAL_LAYER4
 from fanopt.cfd.configs import render_unsteady_cfg
 from fanopt.cfd.correlation import kendall_tau, pearson_r2, spearman_rho
-from fanopt.cfd.j_fan import reduce_cycles
+from fanopt.cfd.j_fan import STEPS_PER_CYCLE, reduce_cycles
 from fanopt.cfd.mesh import (
     FAN_SURFACE_MARKER,
     FARFIELD_MARKER,
@@ -36,7 +36,7 @@ from fanopt.cfd.mesh import (
     VolumeMeshResult,
     build_volume_mesh,
 )
-from fanopt.cfd.parsers import parse_su2_unsteady_force_series
+from fanopt.cfd.parsers import _THRUST_Z_CANDIDATES, parse_su2_unsteady_force_series
 from fanopt.cfd.phase3 import find_su2, run_su2
 from fanopt.geometry.assembly_cad import make_vunit_blade
 from fanopt.geometry.fields import Layer2Params
@@ -114,14 +114,26 @@ def prepare_verification_case(
     return mesh
 
 
-def extract_j_fan_3d(history_csv: Path, *, n_cycles: int = _DEMO_CYCLES) -> float:
-    """Cycle-mean 3D J_fan from an unsteady history.csv (discard cycle 1)."""
-    series = parse_su2_unsteady_force_series(history_csv)
-    steps_per_cycle = series.size // n_cycles
-    if steps_per_cycle < 1:
-        raise ValueError(f"series too short ({series.size}) for {n_cycles} cycles")
-    usable = series[: steps_per_cycle * n_cycles]
-    return reduce_cycles(usable, steps_per_cycle=steps_per_cycle, n_discard=1).j_fan
+def extract_j_fan_3d(
+    history_csv: Path, *, n_cycles: int = _DEMO_CYCLES, steps_per_cycle: int = STEPS_PER_CYCLE
+) -> float:
+    """Cycle-mean 3D J_fan from an unsteady history.csv (discard cycle 1).
+
+    The 3D user-ward thrust is +z (CFz): the blade spans +x, pitches about +y, and pushes
+    air in ±z. The parser's DEFAULT force column is CFx-first — correct for the 2D slice
+    (where the plunge axis x IS user-ward), WRONG for 3D — so CFz is forced here. The period
+    is the ``dt = T/200`` lock (:data:`STEPS_PER_CYCLE`), NOT inferred from ``series.size``:
+    a diverged / early-terminated run is caught and raised instead of silently reshaped into
+    misaligned cycles that would launder a garbage value into the ranking.
+    """
+    series = parse_su2_unsteady_force_series(history_csv, force_candidates=_THRUST_Z_CANDIDATES)
+    expected = n_cycles * steps_per_cycle
+    if series.size < expected:
+        raise ValueError(
+            f"{history_csv}: {series.size} time steps < expected {expected} "
+            f"({n_cycles}×{steps_per_cycle}) — run incomplete or diverged"
+        )
+    return reduce_cycles(series[-expected:], steps_per_cycle=steps_per_cycle, n_discard=1).j_fan
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,10 @@
 # Blade Architecture — Design Review & Redesign Proposal
 
+> ✅ **This is ADR-0003, ACCEPTED — the current blade geometry.** Unaffected by the 2026-07-26
+> optimization pivot (ADR-0004): the audit confirmed the CAD faithfully honors the wave/camber/
+> thickness; only the *scoring* layer around it was broken. One change since: `N_RADIAL_SECTIONS`
+> 12→40 (finer meridian). ADR index: **`docs/adr/README.md`**.
+
 **Date:** 2026-07-19 · **Status:** decision document (operator-driven). Triggered by a
 design review of the Phase-5-verified blades: the geometry that scored highest on
 airflow is aggressive/self-intersecting, the panel is *thicker* than the ribs, and

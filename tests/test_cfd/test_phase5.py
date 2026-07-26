@@ -33,7 +33,9 @@ def _write(path: Path, text: str) -> Path:
 
 def _fake_su2_writing(series):
     def fake_run(cmd, cwd, stdout, stderr, env):
-        lines = ["Time_Iter,CFx"] + [f"{t},{v}" for t, v in enumerate(series)]
+        # 3D thrust axis is CFz; tile to >= 3 cycles x 200 steps so the period guard passes.
+        full = (list(series) * (600 // len(series) + 1))[:600]
+        lines = ["Time_Iter,CFz"] + [f"{t},{v}" for t, v in enumerate(full)]
         (Path(cwd) / "history.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
         class R:
@@ -48,18 +50,29 @@ def _fake_su2_writing(series):
 
 
 def test_extract_j_fan_3d_cycle_mean(tmp_path):
-    # 3 cycles x 4 steps; per-cycle CFx = [10, 2, 4]; discard cycle 0 -> mean(2,4)=3.
-    lines = ["Time_Iter,CFx"]
+    # 3 cycles x 4 steps; per-cycle CFz = [10, 2, 4]; discard cycle 0 -> mean(2,4)=3.
+    lines = ["Time_Iter,CFz"]
     for t, v in enumerate([10.0] * 4 + [2.0] * 4 + [4.0] * 4):
         lines.append(f"{t},{v}")
     h = _write(tmp_path / "u.csv", "\n".join(lines) + "\n")
-    assert phase5.extract_j_fan_3d(h, n_cycles=3) == pytest.approx(3.0)
+    assert phase5.extract_j_fan_3d(h, n_cycles=3, steps_per_cycle=4) == pytest.approx(3.0)
+
+
+def test_extract_j_fan_3d_uses_cfz_not_cfx(tmp_path):
+    # Both columns present: CFx (spanwise, ignore) and CFz (thrust). Must read CFz.
+    lines = ["Time_Iter,CFx,CFz"]
+    for t in range(8):
+        lines.append(f"{t},999.0,{5.0 if t < 4 else 7.0}")
+    h = _write(tmp_path / "u.csv", "\n".join(lines) + "\n")
+    # 2 cycles x 4 steps; discard cycle 0 -> mean of cycle 1 CFz = 7.0 (NOT 999 = CFx).
+    assert phase5.extract_j_fan_3d(h, n_cycles=2, steps_per_cycle=4) == pytest.approx(7.0)
 
 
 def test_extract_j_fan_3d_rejects_too_short(tmp_path):
-    h = _write(tmp_path / "u.csv", "Time_Iter,CFx\n0,1.0\n")
-    with pytest.raises(ValueError, match="too short"):
-        phase5.extract_j_fan_3d(h, n_cycles=3)
+    # A diverged/early-terminated run must raise, not silently reshape into misaligned cycles.
+    h = _write(tmp_path / "u.csv", "Time_Iter,CFz\n0,1.0\n")
+    with pytest.raises(ValueError, match="incomplete or diverged"):
+        phase5.extract_j_fan_3d(h, n_cycles=3, steps_per_cycle=4)
 
 
 def test_verify_ranking_preserved_when_correlated():
@@ -205,9 +218,9 @@ def _make_fake_su2(tmp_path: Path) -> str:
     s = tmp_path / "fake_su2"
     s.write_text(
         "#!/bin/sh\n"
-        "printf 'Time_Iter,CFx\\n' > history.csv\n"
+        "printf 'Time_Iter,CFz\\n' > history.csv\n"
         "i=0\n"
-        "while [ $i -lt 120 ]; do printf '%d,5\\n' $i >> history.csv; i=$((i+1)); done\n"
+        "while [ $i -lt 600 ]; do printf '%d,5\\n' $i >> history.csv; i=$((i+1)); done\n"
     )
     s.chmod(0o755)
     return str(s)

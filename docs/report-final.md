@@ -1,5 +1,10 @@
 # Topology Optimization and Aerodynamic Shape Optimization for a 3D-Printed Folding Fan
 
+> ⚠️ **This is ADR-0001, SUPERSEDED (historical reference).** This R11 comprehensive plan was
+> superseded by V1-slim (ADR-0002) for V1 scope, and the optimization approach is now governed by
+> **ADR-0004** (3D-objective redo). For "what is the current design decision?" start at
+> **`docs/adr/README.md`**. Read this doc for background/rationale only.
+
 ## Comprehensive Design, Optimization, and Fabrication Guide
 
 **Date:** 2026-05-12

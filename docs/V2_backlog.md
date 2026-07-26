@@ -390,6 +390,24 @@ directional_asymmetry_score(design) :=
 
 Pick the candidate with highest R² on the Phase 6 dataset. The score is dimensionless; β carries dimensional scaling to J_fan units.
 
+### Heterogeneous per-position blade shaping (operator insight 2026-07-26)
+
+**Idea:** once we optimize a blade *as a unit of the whole fan* (the 2026-07-26 pivot moved the
+objective to whole-fan wind via a 3D periodic-cascade × `blade_count` — see ADR-0004,
+`docs/adr/0004-optimization-3d-objective-redo.md`), a further question opens: the end-of-sector blades have free
+edges the packed middle blades don't, so a **heterogeneous fan** (different shapes per angular
+position) could capture edge/interaction effects a uniform fan leaves on the table.
+
+**Why it's deferred (measure-then-decide, V2.5+):** it breaks the cheap periodicity — different
+blades means you can't simulate one and tile it, so you need a **full deployed-fan sim** (~N× the
+mesh, ~5–15 h/eval → a BO loop becomes infeasible), plus N× the design space and N distinct
+printed parts, for a likely **second-order** gain (end effects touch ~2 of 8–12 blades). **Do
+not build speculatively.** The revisit trigger is a full-sector *verification* sim (needed anyway
+for final validation): measure how much the end blades' optimal shape actually differs from the
+middle. Negligible → dead; large → earns a V2.5+ effort. Relates to the `directional_asymmetry`
+and `Asymmetric-stroke physics in J_fan` items above (both about squeezing more directed wind
+from the same stroke).
+
 ## Out-of-scope (V3+ or research)
 
 Items that are not in the V1 or V2 roadmap, queued for either a V3 effort or a research follow-on.

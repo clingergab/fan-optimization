@@ -53,8 +53,13 @@ __all__ = [
     "fold_collision_clear",
 ]
 
-N_RADIAL_SECTIONS: int = 12
-"""Radial cross-sections lofted along the blade (polyhedral approximation density)."""
+N_RADIAL_SECTIONS: int = 40
+"""Radial cross-sections lofted along the blade (polyhedral approximation density).
+
+40 (not 12): the meridian is faceted between these stations, so a coarse count chops a
+``smooth`` (Catmull-Rom) rib into a straight-segment zigzag — indistinguishable from
+``linear`` and, worse, feeding the CFD spurious sharp edges that can drive divergence. 40
+resolves the curve for both render AND verification (mass shifts <0.5%)."""
 
 N_TANGENTIAL_SAMPLES: int = 12
 """Tangential samples per cross-section across the wedge."""

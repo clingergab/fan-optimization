@@ -1,5 +1,13 @@
 # Plan V1-Slim — Zoned TO + ASO Fan Optimization (proposed revision)
 
+> ⚠️ **This is ADR-0002, SUPERSEDED IN PART.** Its 2D-slice optimization approach is **INVALID**
+> — a pipeline audit found the 2D objective is blind to the rib meridian wave (the dominant 3D
+> wind lever) and the 3D verification measured the wrong force axis (CFx, not CFz); no design was
+> ever optimized for wind, and all 2D/3D result data is discarded. **Current optimization
+> approach → ADR-0004** (`docs/adr/0004-optimization-3d-objective-redo.md`). For "what is current"
+> across all topics, start at **`docs/adr/README.md`**. The sections below are retained for
+> history but do NOT reflect the current approach; the geometry/kinematics locks still hold.
+
 **Status:** DRAFT for review. Does not modify `docs/report-final.md` (locked plan).
 This is a proposed slimmed successor derived from the 2026-07-02 design conversation.
 If accepted, we decide which locks in `report-final.md` it supersedes (with your
