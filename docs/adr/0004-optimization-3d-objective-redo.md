@@ -148,14 +148,21 @@ Consequence: the plane-momentum-flux fallback is not needed; cycle-mean CFz is t
   claims non-overlapping batches. That's real distributed optimization, not blind parallelism.
 
 ### Sequence ("do it right — no more cut corners")
-1. **Fix the pipeline.** B1 ✓, N2 ✓, N_RADIAL=40 ✓. Remaining: **B3** (periodic cascade ×
-   blade_count), **B4** (bow-aware fold), plus opportunistic N3/N6.
-2. **N1 existential test** (in progress) — does the scoop make net wind; which metric.
-3. **Second audit pass** on the fixes + the seams flagged uncertain (geometry-space consistency,
-   blade_count downstream, the objective path).
-4. **3D shape-space probe** — confirm 3D wind varies enough with design to be worth optimizing
-   (the old "~0.8–1.1T plateau" was measured on the wrong axis — re-establish it).
-5. **Unified coarse→fine 3D BO** on the corrected, trusted objective.
+1. **Fix the pipeline.** ✅ B1, N2, N_RADIAL=40, **B3** (whole-fan = per-blade × blade_count;
+   periodic-cascade interaction deferred per the user), **B4** (bow-aware fold + codec cap),
+   **N3/N6**. New objective: `bo/blade_objective_3d.Blade3DObjective` on `cfd/blade_aero_3d`.
+2. **N1 existential test.** ✅ RESOLVED — see above (concept works, metric = cycle-mean CFz).
+3. **Adversarial verification.** ✅ Two passes (a 15-agent review + a focused re-verifier);
+   3 confirmed issues fixed (headroom sign-cancellation, the CFz-guard test, the codec fold-cap
+   fallback bound) and re-confirmed. 1482 tests green.
+4. **3D shape-space probe (2b).** ✅ **Headroom confirmed:** an 8-design wave-sweep (local Mac
+   killed after the first 3, but decisively) spans **flat −3.1e11 → gentle_dish +7.4e11**
+   whole-fan cycle-mean CFz (range_frac ≈ 1.4) — the wave hugely moves wind; optimizing is
+   worth it. Non-obvious: gentle_dish > deep_dish (deeper isn't better), so shape matters
+   non-trivially. **Fidelity study (2a — does coarse-3D preserve the fine ranking):** pending
+   a reliable run — the local Mac keeps killing multi-hour CFD, so this belongs on Colab (where
+   the campaign runs anyway). The analysis code (`bo/redo_validation`) is done + tested.
+5. **Unified coarse→fine 3D BO** on the corrected, trusted objective — Stage 3 (not yet built).
 
 **Estimate:** ~2–3 weeks wall-clock to a genuinely optimized, verified blade, compressible to
 ~3–5 active days with the async-distributed + cheap-eval + TuRBO setup. This is the cost of the
