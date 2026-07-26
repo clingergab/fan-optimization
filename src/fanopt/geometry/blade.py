@@ -33,6 +33,7 @@ shape at all.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -65,11 +66,13 @@ __all__ = [
     "panel_radial_stations",
     "rib_bow_stations",
     "rib_z_at",
+    "rib_meridian_extent_m",
     "rib_thickness_at",
     "rib_width_at",
     "displacement_at",
     "panel_thickness_at",
     "layer_spacing_m",
+    "folded_rib_bow_extent_m",
     "folded_stack_height_m",
     "fold_margin_m",
     "containment_margin_m",
@@ -294,6 +297,21 @@ def _catmull_rom(ys: list[float], seg: int, t: float) -> float:
     )
 
 
+def _meridian_z(knots: Sequence[float], interp: str, r: float) -> float:
+    """Meridian height at ``r`` from knots + interp alone (no :class:`BladeParams`)."""
+    r = min(max(r, HUB_RADIUS_M), RIB_TIP_RADIUS_M)
+    xs = [HUB_RADIUS_M, *rib_bow_stations()]
+    ys = [0.0, *knots]
+    # Locate the segment [i, i+1] containing r (xs is strictly increasing).
+    seg = 0
+    while seg < len(xs) - 2 and r > xs[seg + 1]:
+        seg += 1
+    t = (r - xs[seg]) / (xs[seg + 1] - xs[seg])
+    if interp == "smooth":
+        return _catmull_rom(ys, seg, t)
+    return ys[seg] * (1.0 - t) + ys[seg + 1] * t
+
+
 def rib_z_at(params: BladeParams, r: float) -> float:
     """Out-of-plane height of the ``)`` rib meridian at radius ``r`` (0 at the boss).
 
@@ -302,17 +320,18 @@ def rib_z_at(params: BladeParams, r: float) -> float:
     revolved about the pivot axis nests when folded, so the meridian is the fold-free lever
     for radial camber / pleats — amplitude bounded only by the bow range and mass.
     """
-    r = min(max(r, HUB_RADIUS_M), RIB_TIP_RADIUS_M)
-    xs = [HUB_RADIUS_M, *rib_bow_stations()]
-    ys = [0.0, *params.rib_bow_knots_m]
-    # Locate the segment [i, i+1] containing r (xs is strictly increasing).
-    seg = 0
-    while seg < len(xs) - 2 and r > xs[seg + 1]:
-        seg += 1
-    t = (r - xs[seg]) / (xs[seg + 1] - xs[seg])
-    if params.rib_bow_interp == "smooth":
-        return _catmull_rom(ys, seg, t)
-    return ys[seg] * (1.0 - t) + ys[seg + 1] * t
+    return _meridian_z(params.rib_bow_knots_m, params.rib_bow_interp, r)
+
+
+def rib_meridian_extent_m(knots: Sequence[float], interp: str) -> float:
+    """Peak-to-trough extent ``max z(r) − min z(r)`` of the meridian from knots + interp.
+
+    Independent of :class:`BladeParams`, so the codec can compute a design's exact bow extent
+    (including Catmull-Rom overshoot) to cap rib thickness bow-aware *before* a full
+    ``BladeParams`` exists. This is the true fold-relevant out-of-plane extent.
+    """
+    z = [_meridian_z(knots, interp, r) for r in _radial_samples()]
+    return max(z) - min(z)
 
 
 def rib_thickness_at(params: BladeParams, r: float) -> float:
@@ -391,9 +410,30 @@ def layer_spacing_m(params: BladeParams) -> float:
     return max(params.t_rib_hub_m, params.t_rib_tip_m) + FOLD_CLEARANCE_M
 
 
+def folded_rib_bow_extent_m(params: BladeParams) -> float:
+    """Peak-to-trough out-of-plane extent of the rib meridian ``max z(r) − min z(r)``.
+
+    The meridian rises up to ~30 mm on the **same z axis the fan folds on**, so it adds to
+    the folded stack — a Catmull-Rom overshoot below 0 widens the extent further.
+    """
+    return rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
+
+
 def folded_stack_height_m(params: BladeParams) -> float:
-    """Folded-bundle thickness ``blade_count × layer_spacing`` (= the deployed z-stagger)."""
-    return params.blade_count * layer_spacing_m(params)
+    """Folded-bundle z-extent, **bow-aware**.
+
+    Nested dishes: ``(N−1)·layer_spacing`` between blade bases + the top blade's full
+    footprint ``bow_extent + t_rib_max``. The old proxy was ``N·layer_spacing`` and ignored
+    ``bow_extent`` entirely, so "feasible by construction" was FALSE for bowed ribs — a deep-
+    bow design could exceed the real fold cap and be unprintable. The CAD swept-volume boolean
+    remains the authoritative no-collision check.
+    """
+    t_rib_max = max(params.t_rib_hub_m, params.t_rib_tip_m)
+    return (
+        (params.blade_count - 1) * layer_spacing_m(params)
+        + folded_rib_bow_extent_m(params)
+        + t_rib_max
+    )
 
 
 def fold_margin_m(params: BladeParams) -> float:
@@ -429,16 +469,31 @@ def estimate_mass_kg(params: BladeParams) -> float:
     A fast analytic proxy for the mass cap in-loop; the meshed CAD solid is
     authoritative. Panel tangential width is one blade slot minus its two edge ribs;
     the small extra area from panel undulation is neglected in this proxy.
+
+    Integration is **trapezoidal** (endpoints half-weighted) over the ``_MARGIN_SAMPLES``
+    stations — the earlier left-Riemann sum weighted all 21 samples by a full ``dr`` over a
+    20-interval span, a systematic +5% overcount. The rib/panel ride the **bowed** meridian,
+    so each station's radial length element is scaled by the local arc factor
+    ``ds/dr = √(1 + (dz/dr)²)`` — a big bow now correctly costs mass.
     """
     samples = _radial_samples()
-    dr = L_RIB_M / (_MARGIN_SAMPLES - 1)
+    n = len(samples)
+    dr = L_RIB_M / (n - 1)
+    z = [rib_z_at(params, r) for r in samples]
     rib_vol = 0.0
     panel_vol = 0.0
-    for r in samples:
+    for k, r in enumerate(samples):
+        trap = 0.5 if k in (0, n - 1) else 1.0  # trapezoidal endpoint weight
+        if k == 0:
+            arc = math.hypot(dr, z[1] - z[0]) / dr
+        elif k == n - 1:
+            arc = math.hypot(dr, z[-1] - z[-2]) / dr
+        else:
+            arc = math.hypot(2.0 * dr, z[k + 1] - z[k - 1]) / (2.0 * dr)
         w_rib = rib_width_at(r)
-        rib_vol += 2.0 * w_rib * rib_thickness_at(params, r) * dr
+        rib_vol += trap * 2.0 * w_rib * rib_thickness_at(params, r) * arc * dr
         w_panel = max(0.0, r * INTER_BLADE_ANGLE_RAD - 2.0 * w_rib)
-        panel_vol += w_panel * panel_thickness_at(params, r, 0.0) * dr
+        panel_vol += trap * w_panel * panel_thickness_at(params, r, 0.0) * arc * dr
     boss_vol = math.pi * PIVOT_BOSS_RADIUS_M**2 * params.t_rib_hub_m
     vol_per_blade = rib_vol + panel_vol + boss_vol
     return vol_per_blade * params.blade_count * RHO_PETG_KG_PER_M3

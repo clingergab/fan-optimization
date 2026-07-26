@@ -40,6 +40,7 @@ from fanopt.geometry.blade import (
     BladeParams,
     estimate_mass_kg,
     panel_radial_stations,
+    rib_meridian_extent_m,
 )
 from fanopt.geometry.schema import BLADE_COUNTS, HUB_RADIUS_M, L_RIB_M, MAX_TOTAL_MASS_KG
 
@@ -113,14 +114,19 @@ def _mass_thickness_cap_m(blade_count: int) -> float:
     return a
 
 
-def rib_thickness_cap_m(blade_count: int) -> float:
+def rib_thickness_cap_m(blade_count: int, bow_extent_m: float | None = None) -> float:
     """Thickest rib (m) that both **folds** and keeps **mass ≤ cap** for ``blade_count``.
 
-    ``min`` of the fold cap (``N·(t+c) ≤ stack``), the mass cap, and the rib range max —
-    so more blades ⇒ thinner ribs, and the design is fold + mass feasible by construction.
+    ``min`` of the **bow-aware** fold cap, the mass cap, and the rib range max — so more
+    blades ⇒ thinner ribs, and the design is fold + mass feasible by construction. Fold model
+    (matches :func:`fanopt.geometry.blade.folded_stack_height_m`):
+    ``(N−1)·(t+c) + bow_extent + t ≤ MAX`` ⇒ ``t ≤ (MAX − (N−1)·c − bow) / N``. ``decode``
+    passes the design's EXACT ``bow_extent_m`` (incl. Catmull-Rom overshoot) so the cap is
+    tight and feasible-by-construction; ``None`` falls back to the conservative full-range bow.
     """
     lo, hi = RIB_THICKNESS_RANGE_M
-    fold_cap = MAX_FOLDED_STACK_HEIGHT_M / blade_count - FOLD_CLEARANCE_M
+    bow = (RIB_BOW_RANGE_M[1] - RIB_BOW_RANGE_M[0]) if bow_extent_m is None else bow_extent_m
+    fold_cap = (MAX_FOLDED_STACK_HEIGHT_M - (blade_count - 1) * FOLD_CLEARANCE_M - bow) / blade_count
     cap = min(fold_cap, _mass_thickness_cap_m(blade_count), hi)
     return min(max(cap, lo), hi)
 
@@ -197,8 +203,16 @@ def decode(vec: np.ndarray) -> BladeParams:
     blade_count: int = _decode_categorical(
         float(arr[_IDX["blade_count"]]), SEARCH_SPACE[_IDX["blade_count"]]
     )
-    # Rib thickness: knob → [T_MIN, fold cap].
-    t_cap = rib_thickness_cap_m(blade_count)
+    # Bow decoded first so the fold cap below uses the design's EXACT bow extent (B4).
+    interp = _decode_categorical(
+        float(arr[_IDX["rib_bow_interp"]]), SEARCH_SPACE[_IDX["rib_bow_interp"]]
+    )
+    knots = tuple(
+        min(max(float(arr[_IDX[f"rib_bow_k{i}"]]), RIB_BOW_RANGE_M[0]), RIB_BOW_RANGE_M[1])
+        for i in range(RIB_BOW_KNOT_COUNT)
+    )
+    # Rib thickness: knob → [T_MIN, bow-aware fold cap].
+    t_cap = rib_thickness_cap_m(blade_count, rib_meridian_extent_m(knots, interp))
     t_hub = _T_LO + _c01(float(arr[_IDX["t_rib_hub_k"]])) * (t_cap - _T_LO)
     t_tip = _T_LO + _c01(float(arr[_IDX["t_rib_tip_k"]])) * (t_cap - _T_LO)
 
@@ -220,14 +234,6 @@ def decode(vec: np.ndarray) -> BladeParams:
         offsets.append(tuple(off_row))
         thicks.append(tuple(th_row))
 
-    interp = _decode_categorical(
-        float(arr[_IDX["rib_bow_interp"]]), SEARCH_SPACE[_IDX["rib_bow_interp"]]
-    )
-    knots = tuple(
-        min(max(float(arr[_IDX[f"rib_bow_k{i}"]]), RIB_BOW_RANGE_M[0]), RIB_BOW_RANGE_M[1])
-        for i in range(RIB_BOW_KNOT_COUNT)
-    )
-
     return BladeParams(
         blade_count=blade_count,
         rib_bow_knots_m=knots,
@@ -246,7 +252,10 @@ def encode(params: BladeParams) -> np.ndarray:
         out[_IDX[f"rib_bow_k{i}"]] = params.rib_bow_knots_m[i]
     out[_IDX["rib_bow_interp"]] = float(RIB_BOW_INTERP_MODES.index(params.rib_bow_interp)) + 0.5
 
-    t_cap = rib_thickness_cap_m(params.blade_count)
+    # Same bow-aware cap decode used, so encode(decode(v)) round-trips the thickness knob.
+    t_cap = rib_thickness_cap_m(
+        params.blade_count, rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
+    )
     t_span = t_cap - _T_LO
     out[_IDX["t_rib_hub_k"]] = _c01((params.t_rib_hub_m - _T_LO) / t_span) if t_span > 0 else 0.0
     out[_IDX["t_rib_tip_k"]] = _c01((params.t_rib_tip_m - _T_LO) / t_span) if t_span > 0 else 0.0

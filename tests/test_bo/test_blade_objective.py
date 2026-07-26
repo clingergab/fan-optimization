@@ -46,6 +46,19 @@ def test_deflection_grows_as_panel_thins():
     assert bobj.blade_panel_deflection_m(thin) > bobj.blade_panel_deflection_m(thick)
 
 
+def test_deflection_responds_to_non_thinnest_nodes():
+    # N3: the proxy must respond to the WHOLE thickness field, not just the single thinnest
+    # node. Both grids share the same global-min (0.0012) but differ in the OTHER nodes; the
+    # old min()-based proxy would return identical values, the area-weighted mean must not.
+    zeros = tuple((0.0, 0.0, 0.0) for _ in range(4))
+    base = {**_feasible().to_dict(), "panel_offsets_m": zeros}
+    g_a = ((0.0012, 0.0018, 0.0018), (0.0018, 0.0018, 0.0018), (0.0018, 0.0018, 0.0018), (0.0018, 0.0018, 0.0018))
+    g_b = ((0.0012, 0.0014, 0.0014), (0.0014, 0.0014, 0.0014), (0.0014, 0.0014, 0.0014), (0.0014, 0.0014, 0.0014))
+    a = BladeParams(**{**base, "panel_thickness_m": g_a})
+    b = BladeParams(**{**base, "panel_thickness_m": g_b})  # same min, thinner elsewhere
+    assert bobj.blade_panel_deflection_m(b) > bobj.blade_panel_deflection_m(a)
+
+
 # --- objective ---------------------------------------------------------------
 
 

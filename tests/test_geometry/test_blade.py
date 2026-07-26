@@ -15,6 +15,7 @@ from fanopt.geometry.blade import (
     RIB_THICKNESS_RANGE_M,
     RIB_TIP_RADIUS_M,
     BladeParams,
+    folded_rib_bow_extent_m,
     containment_margin_m,
     displacement_at,
     estimate_mass_kg,
@@ -228,9 +229,25 @@ def test_layer_spacing_is_thickest_rib_plus_clearance():
     assert layer_spacing_m(p) == pytest.approx(p.t_rib_tip_m + FOLD_CLEARANCE_M)
 
 
-def test_folded_stack_height_is_count_times_spacing():
+def test_folded_stack_height_is_bow_aware():
     p = _sample()
-    assert folded_stack_height_m(p) == pytest.approx(p.blade_count * layer_spacing_m(p))
+    expected = (
+        (p.blade_count - 1) * layer_spacing_m(p)
+        + folded_rib_bow_extent_m(p)
+        + max(p.t_rib_hub_m, p.t_rib_tip_m)
+    )
+    assert folded_stack_height_m(p) == pytest.approx(expected)
+
+
+def test_bowed_rib_folds_taller_than_flat():
+    # B4: a big rib bow adds to the folded stack; the old formula ignored it entirely.
+    base = _sample().to_dict()
+    flat = BladeParams.from_dict({**base, "rib_bow_knots_m": [0.0005] * 5, "rib_bow_interp": "linear"})
+    bowed = BladeParams.from_dict(
+        {**base, "rib_bow_knots_m": [0.006, 0.014, 0.022, 0.028, 0.030], "rib_bow_interp": "linear"}
+    )
+    assert folded_rib_bow_extent_m(bowed) > 0.02
+    assert folded_stack_height_m(bowed) > folded_stack_height_m(flat) + 0.02
 
 
 def test_fold_margin_is_cap_minus_stack_height():
@@ -259,6 +276,16 @@ def test_containment_margin_negative_when_offset_exceeds_rib():
 
 def test_estimate_mass_positive():
     assert estimate_mass_kg(_sample()) > 0.0
+
+
+def test_bowed_rib_weighs_more_than_flat():
+    # N6: mass integrates along the bowed meridian arc (ds > dr), so a big bow costs mass.
+    base = _sample().to_dict()
+    flat = BladeParams.from_dict({**base, "rib_bow_knots_m": [0.0005] * 5, "rib_bow_interp": "linear"})
+    bowed = BladeParams.from_dict(
+        {**base, "rib_bow_knots_m": [0.006, 0.014, 0.022, 0.028, 0.030], "rib_bow_interp": "linear"}
+    )
+    assert estimate_mass_kg(bowed) > estimate_mass_kg(flat)
 
 
 def test_estimate_mass_scales_with_blade_count():

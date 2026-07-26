@@ -81,16 +81,28 @@ analytic (does not use N_RADIAL), so this hit only 3D verification.
   construction" is false for bowed ribs (the designs B2 makes the optimizer chase). Fix:
   `(N-1)·spacing + bow_max + t_rib`, and rebuild the codec cap on the corrected formula.
 
-### Existential (must resolve empirically before committing compute) — "N1"
-The implemented J_fan is the **cycle-mean** of a surface force. For a symmetric ±40° pitch the
-cycle-mean of a *rigid* blade may cancel to ≈0 (productive ≈ return). Net wind comes from
-fore-aft **asymmetry** (a cambered scoop moves more air one way — feathering, a V2 idea, would
-add more). So the open question is not just "which metric" but **"does the rigid aero-first
-scoop produce measurable net wind at all?"** `reduce_cycles` also computes a rectified
-`j_fan_peak` that `extract_j_fan_3d` discarded. **In progress:** the N1 discriminator (flat vs
-rib-dish scoop vs panel-camber, scored by cycle-mean CFz *and* peak *and* per-cycle) answers
-whether the concept works and which metric is live. If cycle-mean CFz is near-zero for all,
-switch to `j_fan_peak` or wire up the unused plane-momentum-flux path.
+### Existential — "N1" — ✅ RESOLVED 2026-07-26: concept works, metric = cycle-mean CFz
+The open question was whether a *rigid* blade under symmetric ±40° pitch produces measurable
+**net** wind (the cycle-mean can cancel to ≈0), and which reduction (cycle-mean vs rectified
+peak) is the live signal. The N1 discriminator (flat vs rib-dish scoop vs panel-camber, CFz-
+corrected pipeline at N_RADIAL=40) answered all of it:
+
+| design | cycle-mean CFz | peak | per-cycle |
+|---|---|---|---|
+| flat | −3.9e10 (≈0) | 7.8e11 | [−4.1e10, −3.7e10] |
+| panel_camber | −2.7e10 (≈0) | 8.5e11 | [−3.1e10, −2.3e10] |
+| **rib_dish** | **+1.38e11** | 9.5e11 | [+1.24e11, +1.51e11] |
+
+- **The rigid scoop makes net wind:** rib_dish's cycle-mean CFz is clearly positive and
+  per-cycle-consistent (converged), vs flat ≈0. The aero-first concept is validated.
+- **Metric = cycle-mean CFz** (not peak). It cleanly discriminates — positive for the scoop, ≈0
+  for symmetric/flat, which is *physically* the net directed wind. Peak is a poor discriminator
+  (all ~8–9e11, dominated by instantaneous stroke force, not net wind). `Blade3DObjective`
+  defaults to `metric="mean"`.
+- **The rib wave is the lever:** rib_dish (+1.38e11) ≫ panel_camber (−2.7e10), confirming the
+  meridian is the dominant wind mechanism — exactly what the 2D slice was blind to.
+
+Consequence: the plane-momentum-flux fallback is not needed; cycle-mean CFz is the objective.
 
 ### Non-blocking (real, tolerable for a relative ranking; fix opportunistically)
 - **N3** — `deflection_m` is degenerate (one of ~30 DOFs, `const/t³` of the thinnest node;

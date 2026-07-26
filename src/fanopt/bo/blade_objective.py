@@ -29,10 +29,10 @@ from fanopt.geometry.blade import (
     BladeParams,
     estimate_mass_kg,
     feasible,
+    panel_radial_stations,
 )
 from fanopt.geometry.schema import (
     E_PETG_XY_PA,
-    HUB_RADIUS_M,
     INTER_BLADE_ANGLE_RAD,
     L_RIB_M,
 )
@@ -51,17 +51,25 @@ _CLAMPED_PLATE_ALPHA: float = 0.0138  # max-deflection coefficient, clamped rect
 
 
 def blade_panel_deflection_m(params: BladeParams) -> float:
-    """Analytic panel tip deflection (m) — a clamped plate under uniform aero pressure.
+    """Panel-floppiness proxy (m) — area-weighted mean clamped-plate deflection over the grid.
 
-    ``δ_max = α · p · b⁴ / (E · t³)`` with ``b`` the mid-radius tangential span and ``t``
-    the nominal panel thickness. A cheap structural proxy (the panel is rib-supported and
-    stiff, so this is small); it gives the optimizer a "thinner → more deflection" gradient
-    without an FE solve. Full FE / shell fidelity is a V1.5 refinement.
+    Per node ``δ ∝ α · p · span(r)⁴ / (E · t(r,v)³)`` with ``span(r) = r · Δθ`` the local
+    tangential span, area-weighted (span × radial-strip) and averaged over the whole
+    ``panel_thickness_m`` grid — so it responds to the **entire** thickness field and the
+    radial span growth (outer nodes flex more), not just the single thinnest node (the earlier
+    degenerate form). A soft Pareto proxy; real structure is Phase-2 TO's job.
     """
-    r_mid = HUB_RADIUS_M + 0.5 * L_RIB_M
-    span = max(r_mid * INTER_BLADE_ANGLE_RAD, 1e-6)
-    t = min(v for row in params.panel_thickness_m for v in row)  # thinnest node governs
-    return _CLAMPED_PLATE_ALPHA * AERO_PRESSURE_PA * span**4 / (E_PETG_XY_PA * t**3)
+    stations = panel_radial_stations()
+    dr = L_RIB_M / (len(stations) - 1)
+    total_defl = 0.0
+    total_area = 0.0
+    for r, th_row in zip(stations, params.panel_thickness_m):
+        span = max(r * INTER_BLADE_ANGLE_RAD, 1e-6)
+        area = span * dr  # radial-strip area weight
+        for t in th_row:
+            total_defl += area * _CLAMPED_PLATE_ALPHA * AERO_PRESSURE_PA * span**4 / (E_PETG_XY_PA * t**3)
+            total_area += area
+    return total_defl / total_area
 
 
 @dataclass(frozen=True)
