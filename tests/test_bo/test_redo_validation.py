@@ -46,3 +46,19 @@ def test_varied_field_has_headroom():
 def test_headroom_ignores_nonfinite():
     h = headroom([1.0e12, np.nan, 1.0e12])
     assert h.n == 2 and h.cv == pytest.approx(0.0)
+
+
+def test_headroom_stable_at_near_zero_mean():
+    # Signed CFz can straddle zero (mean ≈ 0). The old std/|mean| form exploded to ~1e11 CV
+    # and always flagged headroom; the fix must give a sane finite spread and judge from the
+    # actual spread, not the cancelling mean.
+    h = headroom([-1.4e11, 1.4e11, -0.1e11, 0.1e11])  # mean = 0 exactly
+    assert abs(h.mean) < 1.0e9  # confirms the mean cancels
+    assert h.cv < 10.0  # sane (the old form gave ~1e11)
+    assert h.has_headroom is True  # real spread → a gradient exists to climb
+
+
+def test_tight_plateau_has_no_headroom_regardless_of_offset():
+    # A near-constant plateau (small spread) has no headroom, even near zero / negative — the
+    # exact case the old form false-positived when the mean sat near zero.
+    assert headroom([-3.00e10, -3.10e10, -2.90e10, -3.05e10]).has_headroom is False

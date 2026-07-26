@@ -114,6 +114,12 @@ def _mass_thickness_cap_m(blade_count: int) -> float:
     return a
 
 
+# Upper bound on the rib meridian's out-of-plane extent for any codec-emittable design. Uniform
+# Catmull-Rom overshoots the knot hull by up to ~25% of the knot span (empirically 1.25× at the
+# range corners); 1.3× is a safe upper bound for the bow-blind (bow_extent_m=None) fold cap.
+_MAX_MERIDIAN_EXTENT_M: float = 1.3 * (RIB_BOW_RANGE_M[1] - RIB_BOW_RANGE_M[0])
+
+
 def rib_thickness_cap_m(blade_count: int, bow_extent_m: float | None = None) -> float:
     """Thickest rib (m) that both **folds** and keeps **mass ≤ cap** for ``blade_count``.
 
@@ -122,10 +128,12 @@ def rib_thickness_cap_m(blade_count: int, bow_extent_m: float | None = None) -> 
     (matches :func:`fanopt.geometry.blade.folded_stack_height_m`):
     ``(N−1)·(t+c) + bow_extent + t ≤ MAX`` ⇒ ``t ≤ (MAX − (N−1)·c − bow) / N``. ``decode``
     passes the design's EXACT ``bow_extent_m`` (incl. Catmull-Rom overshoot) so the cap is
-    tight and feasible-by-construction; ``None`` falls back to the conservative full-range bow.
+    tight and feasible-by-construction; ``None`` falls back to ``_MAX_MERIDIAN_EXTENT_M`` — a
+    true UPPER bound on the extent (so the cap is a genuine fold-safe lower bound, since it
+    decreases in bow). The nominal knot span alone is NOT safe: a smooth meridian overshoots it.
     """
     lo, hi = RIB_THICKNESS_RANGE_M
-    bow = (RIB_BOW_RANGE_M[1] - RIB_BOW_RANGE_M[0]) if bow_extent_m is None else bow_extent_m
+    bow = _MAX_MERIDIAN_EXTENT_M if bow_extent_m is None else bow_extent_m
     fold_cap = (MAX_FOLDED_STACK_HEIGHT_M - (blade_count - 1) * FOLD_CLEARANCE_M - bow) / blade_count
     cap = min(fold_cap, _mass_thickness_cap_m(blade_count), hi)
     return min(max(cap, lo), hi)

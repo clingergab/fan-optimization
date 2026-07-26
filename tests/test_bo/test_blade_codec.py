@@ -129,3 +129,15 @@ def test_var_categorical_needs_choices():
 def test_var_rejects_bad_kind():
     with pytest.raises(ValueError, match="continuous|categorical"):
         codec.Var("x", 0.0, 1.0, kind="ordinal")
+
+
+def test_none_fallback_cap_is_fold_safe_for_smooth_overshoot():
+    # L1: the bow_extent=None fallback must be a fold-SAFE lower bound — even for the worst
+    # Catmull-Rom overshoot, cap(None) must not exceed cap(exact extent) (never over-optimistic,
+    # which would certify an unfoldable rib). The nominal knot span alone is NOT a safe bound.
+    from fanopt.geometry.blade import rib_meridian_extent_m
+
+    worst = [0.03, 0.03, 0.0, 0.0, 0.03]  # empirical worst-overshoot knot corner (smooth)
+    exact = rib_meridian_extent_m(worst, "smooth")
+    for n in (8, 10, 12):
+        assert codec.rib_thickness_cap_m(n, None) <= codec.rib_thickness_cap_m(n, exact) + 1e-12

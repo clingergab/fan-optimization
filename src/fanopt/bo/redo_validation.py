@@ -60,22 +60,29 @@ class Headroom:
 
     n: int
     mean: float
-    cv: float  # coefficient of variation std/|mean|
-    range_frac: float  # (max − min)/|mean|
+    cv: float  # std / largest-magnitude value (scale-stable spread)
+    range_frac: float  # (max − min) / largest-magnitude value
     has_headroom: bool
 
 
-def headroom(j_fans: np.ndarray, *, cv_threshold: float = 0.1) -> Headroom:
-    """Spread of finite 3D-wind values; ``has_headroom`` iff ``CV ≥ cv_threshold``.
+def headroom(j_fans: np.ndarray, *, spread_threshold: float = 0.15) -> Headroom:
+    """Relative spread of finite 3D-wind values; ``has_headroom`` iff ``range_frac ≥ threshold``.
 
-    A near-constant plateau (small CV) means the objective is design-insensitive and a long
-    optimization buys little — surface that *before* spending the compute, not after.
+    The objective is the **signed** cycle-mean CFz (N1: flat ≈ −4e10, scoop ≈ +1.4e11), so a
+    probe set can straddle zero and the mean can cancel to ≈0 — dividing by ``|mean|`` (the old
+    form) then makes CV explode and falsely flag a flat plateau as having headroom. Instead we
+    scale by the **largest-magnitude value**, which cannot cancel: ``range_frac = ptp / max|v|``
+    measures whether the best design is meaningfully different from the worst. A near-constant
+    plateau → small ``range_frac`` → no headroom, on the correct axis, before spending compute.
+
+    (This measures *relative variation* — that a gradient exists to climb. Whether the best
+    design's absolute wind clears the flat-panel baseline is the separate V1 baseline check.)
     """
     v = np.asarray([x for x in np.asarray(j_fans, dtype=float) if np.isfinite(x)], dtype=float)
     if v.size < 2:
         return Headroom(int(v.size), float(v.mean()) if v.size else 0.0, 0.0, 0.0, False)
     mean = float(v.mean())
-    denom = abs(mean) if mean != 0.0 else 1.0
-    cv = float(v.std() / denom)
-    range_frac = float((v.max() - v.min()) / denom)
-    return Headroom(int(v.size), mean, cv, range_frac, bool(cv >= cv_threshold))
+    scale = max(abs(float(v.max())), abs(float(v.min())), 1e-30)
+    cv = float(v.std() / scale)
+    range_frac = float((v.max() - v.min()) / scale)
+    return Headroom(int(v.size), mean, cv, range_frac, bool(range_frac >= spread_threshold))
