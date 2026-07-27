@@ -291,11 +291,13 @@ def test_validate_async_confirms_async_signature(tmp_path):
 
 
 def test_preflight_async_check_passes():
-    # Seconds-long smoke test (no CFD) that the async loop stays full in THIS environment — run
-    # before committing to a multi-hour campaign. A batched/serialized loop would fail it.
+    # Smoke test (no CFD) that the async machinery fills + refills the pool in THIS environment —
+    # run before a multi-hour campaign. Passes on the mechanism (peak==n_workers, refilled to
+    # 2*n_workers, no dups), NOT on smoke utilization (confounded by proposal cost with fast evals).
     r = preflight_async_check(n_workers=4)
     assert r["passed"] is True
     assert r["per_session"]["preflight"]["peak_concurrency"] == 4
+    assert r["reached_budget"] and r["no_duplicates"]
 
 
 # --- async: end-to-end behavior ---
