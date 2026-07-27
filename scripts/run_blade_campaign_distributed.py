@@ -23,7 +23,9 @@ from fanopt.bo.distributed_campaign import (
     DistributedConfig,
     ObjectiveFn,
     pareto_from_ledger,
+    run_async_session,
     run_distributed_session,
+    validate_async,
 )
 from fanopt.cfd.phase3 import find_su2
 from fanopt.cfd.phase5 import VerifyConfig
@@ -52,7 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DistributedConfig().claim_ttl_seconds,
         help="steal a claim older than this (s); MUST exceed worst-case eval wall time",
     )
-    p.add_argument("--max-iters", type=int, default=100_000)
+    p.add_argument(
+        "--sync",
+        action="store_true",
+        help="use the synchronous batch loop instead of the default async-per-worker loop",
+    )
+    p.add_argument("--max-iters", type=int, default=100_000, help="sync loop only")
     return p
 
 
@@ -90,16 +97,36 @@ def main(argv: list[str] | None = None, objective_fn: ObjectiveFn | None = None)
         poll_seconds=args.poll_seconds,
         claim_ttl_seconds=args.claim_ttl,
     )
-    x, _ = run_distributed_session(
-        objective_fn,
-        shared,
-        cfg,
-        session_id=args.session_id,
-        session_index=args.session_index,
-        n_sessions=args.n_sessions,
-        max_iters=args.max_iters,
-        on_batch=lambda n: print(f"[{args.session_id}] +{n} evaluated", flush=True),
-    )
+    if args.sync:
+        x, _ = run_distributed_session(
+            objective_fn,
+            shared,
+            cfg,
+            session_id=args.session_id,
+            session_index=args.session_index,
+            n_sessions=args.n_sessions,
+            max_iters=args.max_iters,
+            on_batch=lambda n: print(f"[{args.session_id}] +{n} evaluated", flush=True),
+        )
+    else:
+        x, _ = run_async_session(
+            objective_fn,
+            shared,
+            cfg,
+            session_id=args.session_id,
+            session_index=args.session_index,
+            n_sessions=args.n_sessions,
+            on_event=lambda e: print(
+                f"[{args.session_id}] done {e['design_hash'][:8]} "
+                f"({e['source']}, inflight_at_dispatch={e['inflight_at_dispatch']})",
+                flush=True,
+            ),
+        )
+        v = validate_async(shared, args.n_workers)
+        print(
+            f"[{args.session_id}] ASYNC CHECK: worker utilization={v['utilization']:.0%} "
+            f"over {v['n_evals']} evals; is_async={v['is_async']}; per-session={v['per_session']}"
+        )
     front = pareto_from_ledger(shared)
     print(f"[{args.session_id}] ledger has {len(x)} evals; {len(front)} on the Pareto front")
     return 0

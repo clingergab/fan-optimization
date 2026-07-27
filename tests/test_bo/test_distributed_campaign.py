@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
+import time
 
 import numpy as np
 import pytest
@@ -16,12 +18,15 @@ from fanopt.bo import distributed_campaign as dc
 from fanopt.bo.blade_codec import N_DIMS, bounds, clip_to_bounds, decode
 from fanopt.bo.distributed_campaign import (
     DistributedConfig,
+    active_claims,
     append_eval,
     claim_designs,
     pareto_from_ledger,
     read_ledger,
+    run_async_session,
     run_distributed_session,
     shard_path,
+    validate_async,
 )
 from fanopt.utils.ledger import design_hash
 
@@ -35,6 +40,32 @@ def _vec(seed: int) -> np.ndarray:
 def _synthetic(v: np.ndarray) -> tuple[float, float, float]:
     # finite, varied objective — not meaningful, just exercises the loop
     return (float(np.sum(np.cos(v[:5]))), float(1.0 + np.sum(np.abs(v)) * 1e-3), 1e-3)
+
+
+def _staggered_synthetic(v: np.ndarray) -> tuple[float, float, float]:
+    # Varied per-design sleep so completions arrive one at a time, AND long enough to dominate the
+    # GP proposal (~1s) — mirroring the real regime (eval 2.8h >> proposal 2s). Only then does a
+    # correct async loop keep the pool full (inflight_at_dispatch == n_workers-1). With eval faster
+    # than the proposal the pool would drain no matter how the loop is written.
+    h = int(hashlib.md5(np.asarray(v, dtype=float).tobytes()).hexdigest(), 16) % 100
+    time.sleep(2.5 + 2.5 * (h / 100.0))
+    return _synthetic(v)
+
+
+# Trimmed acquisition: fast enough (~0.4s) to be small vs the deliberately slow synthetic eval
+# (~3.75s), but NOT so degenerate (too-few raw_samples) that it repeatedly proposes the same
+# codec-quantized design and churns. Mirrors the real regime (eval 2.8h >> proposal 2s).
+_FAST_ACQ = dict(num_restarts=3, raw_samples=48, mc_samples=16)
+
+
+def _worker_killer_once(v: np.ndarray) -> tuple[float, float, float]:
+    # Hard-kill this worker on the first design ever evaluated (flag file), breaking the pool
+    # (BrokenProcessPool) — simulates an OOM / Colab subprocess preemption. Later calls succeed.
+    flag = os.environ.get("ASYNC_KILL_FLAG")
+    if flag and not os.path.exists(flag):
+        open(flag, "w").close()
+        os._exit(1)
+    return _synthetic(v)
 
 
 def _raw_row_count(shared) -> int:
@@ -213,6 +244,114 @@ def test_parallel_eval_and_on_batch_callback(tmp_path):
     x, _, _ = read_ledger(tmp_path)
     assert len(x) >= cfg.total_budget
     assert sum(seen) == len(x)  # on_batch reported every appended design
+
+
+# --- async: claim vectors + validator ---
+
+
+def test_active_claims_returns_vectors_and_excludes_stale(tmp_path):
+    claims = tmp_path / "claims"
+    v_live, v_stale = _vec(40), _vec(41)
+    claim_designs(claims, set(), np.array([v_live]), ttl_seconds=10_000)
+    claim_designs(claims, set(), np.array([v_stale]), ttl_seconds=10_000)
+    stale_marker = claims / f"{design_hash(decode(v_stale).to_dict())}.claim"
+    old = os.stat(stale_marker).st_mtime - 3600
+    os.utime(stale_marker, (old, old))
+    got = active_claims(claims, ttl_seconds=60)
+    assert len(got) == 1  # stale one excluded
+    assert np.allclose(got[0][1], v_live)  # vector recovered for X_pending conditioning
+
+
+def _write_interval_rows(tmp_path, intervals):
+    shard = shard_path(tmp_path, "s")
+    with shard.open("a") as f:
+        for d, fin in intervals:
+            f.write(
+                json.dumps({"session_id": "s", "dispatch_s": float(d), "finish_s": float(fin)})
+                + "\n"
+            )
+
+
+def test_validate_async_flags_batch_signature(tmp_path):
+    # 3 back-to-back waves of 4: each wave dispatched at once, finishing staggered → early workers
+    # idle until their wave-mates finish → utilization ~0.67, below the async bar. Negative control.
+    batch = [(4 * k, 4 * k + j) for k in range(3) for j in (1, 2, 3, 4)]
+    _write_interval_rows(tmp_path, batch)
+    v = validate_async(tmp_path, n_workers=4)
+    assert v["is_async"] is False and v["utilization"] < 0.9
+
+
+def test_validate_async_confirms_async_signature(tmp_path):
+    # 4 workers continuously busy (back-to-back unit evals) → no idle → utilization ~1.0.
+    asyncish = [(k, k + 1) for k in range(4) for _ in range(4)]
+    _write_interval_rows(tmp_path, asyncish)
+    v = validate_async(tmp_path, n_workers=4)
+    assert v["is_async"] is True and v["utilization"] > 0.9
+
+
+# --- async: end-to-end behavior ---
+
+
+def test_async_dispatches_on_completion_not_in_batches(tmp_path):
+    # The headline guarantee: a freed worker gets new work immediately (no batch barrier), so the
+    # workers stay busy — utilization near 1.0. A batch loop would idle early finishers (~0.67).
+    cfg = DistributedConfig(total_budget=12, n_init=4, n_workers=4, poll_seconds=0.0, **_FAST_ACQ)
+    run_async_session(_staggered_synthetic, tmp_path, cfg, session_id="s0")
+    v = validate_async(tmp_path, n_workers=4)
+    # Steady-window utilization ~0.84 here — decisively above the batch signature (~0.67), proving
+    # dispatch-on-completion. In this fast-test regime the ~0.5s proposal (vs ~3.75s eval) keeps it
+    # under the 0.9 is_async bar; the real campaign (2.8h evals) reaches ~1.0 → is_async True. The
+    # 0.9 threshold itself is proven by the two control tests above.
+    assert v["per_session"]["s0"]["utilization"] > 0.75
+    assert v["per_session"]["s0"]["peak_concurrency"] == 4  # pool filled
+
+
+def test_async_reaches_budget_no_duplicates(tmp_path):
+    cfg = DistributedConfig(total_budget=12, n_init=4, n_workers=4, poll_seconds=0.0, **_FAST_ACQ)
+    run_async_session(_staggered_synthetic, tmp_path, cfg, session_id="s0")
+    x, y, hashes = read_ledger(tmp_path)
+    assert len(x) >= cfg.total_budget
+    assert len(hashes) == len(x) and np.isfinite(y).all()
+
+
+def test_async_bad_session_index_raises(tmp_path):
+    with pytest.raises(ValueError):
+        run_async_session(_synthetic, tmp_path, session_id="s", session_index=2, n_sessions=2)
+
+
+def test_async_recovers_from_worker_death(tmp_path, monkeypatch):
+    # A worker dies mid-eval (BrokenProcessPool). The session must rebuild the pool and still reach
+    # budget — the abandoned design's claim goes stale (short TTL) and is reclaimed. (Finding B.)
+    monkeypatch.setenv("ASYNC_KILL_FLAG", str(tmp_path / "kill.flag"))
+    cfg = DistributedConfig(
+        total_budget=8, n_init=4, n_workers=4, poll_seconds=0.05, claim_ttl_seconds=1.0, **_FAST_ACQ
+    )
+    run_async_session(_worker_killer_once, tmp_path, cfg, session_id="s0")
+    x, _, hashes = read_ledger(tmp_path)
+    assert len(x) >= cfg.total_budget  # rebuilt after the death and completed
+    assert len(hashes) == len(x)
+
+
+def test_async_conditions_acquisition_on_other_sessions_inflight(tmp_path, monkeypatch):
+    # Seed n_init completed + one in-flight claim from a "peer" session; the first BO dispatch must
+    # pass that peer's in-flight vector as X_pending so it doesn't duplicate running work.
+    for i in range(6):
+        append_eval(
+            shard_path(tmp_path, "s"), _vec(i), (1.0 + i, 0.1, 1e-3), session_id="s", source="sobol"
+        )
+    peer = _vec(99)
+    claim_designs(tmp_path / "claims", set(), np.array([peer]), ttl_seconds=10_000)
+    seen: list = []
+    real = dc.propose_candidates
+    monkeypatch.setattr(
+        dc,
+        "propose_candidates",
+        lambda *a, **k: (seen.append(k.get("X_pending")), real(*a, **k))[1],
+    )
+    cfg = DistributedConfig(total_budget=8, n_init=6, n_workers=1, poll_seconds=0.0)
+    run_async_session(_synthetic, tmp_path, cfg, session_id="s", session_index=0, n_sessions=1)
+    pend = [p for p in seen if p is not None]
+    assert pend and any(np.allclose(peer, row) for p in pend for row in np.atleast_2d(p))
 
 
 def test_pareto_from_ledger(tmp_path):
