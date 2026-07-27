@@ -173,20 +173,31 @@ Consequence: the plane-momentum-flux fallback is not needed; cycle-mean CFz is t
      policy is **explore+rank on coarse, then fine-confirm the top cluster** (3.C), never trust
      the coarse #1 outright.
 5. **Unified coarse→fine 3D BO** on the corrected, trusted objective — Stage 3.
-   - **3.A machinery — ✅ BUILT.** `bo/distributed_campaign.py` is the async shared-ledger
-     distributed loop: N Colab sessions share one Drive ledger (`evaluations.jsonl`, stores the
-     design *vector* so any session reconstructs `x`), each refits the GP on the **combined**
-     data (backbone `fit_gp`/`propose_candidates`, TuRBO), and **claims** designs via atomic
-     marker files so none is evaluated twice — cold-start Sobol DoE sliced round-robin, per-
-     session acquisition seed so sessions diverge. `Blade3DObjective` wires in unchanged (it's
-     injected). CLI: `scripts/run_blade_campaign_distributed.py` (one per session); notebook:
-     `notebooks/colab_stage3_campaign.ipynb`. Tested (coordination = no duplicate designs,
-     resumability, whole-fan objective) without CFD via a synthetic objective.
+   - **3.A machinery — ✅ BUILT (async).** `bo/distributed_campaign.py` — N Colab sessions share
+     one Drive ledger (per-session shards, deduped on read; stores the design *vector*) and refit
+     the GP on the **combined** data (backbone `fit_gp`/`propose_candidates`, TuRBO), claiming
+     designs via atomic marker files so none runs twice. The campaign loop is
+     **`run_async_session` (dispatch-on-completion)**: the instant one eval finishes, refit and
+     dispatch one new design to that freed worker, conditioning on all in-flight designs
+     (`X_pending`) so it doesn't duplicate running work. No batch barrier (workers never idle) and
+     each proposal sees every completed eval → near-sequential sample-efficiency at full parallel
+     throughput. This resolves the parallelism-vs-quality tension: q≈36 (3×12) is fine because
+     async proposals are always informed. `validate_async` reports worker **utilization** (async
+     ≈1.0, batch lower) — the notebook prints the verdict so a silent degradation to batching is
+     caught on Colab. Robust to Colab drops: stale-claim reclaim, DoE mop-up, pool rebuild on
+     worker death, resumable from the ledger. CLI `scripts/run_blade_campaign_distributed.py`
+     (`--sync` keeps the batch loop); notebook `notebooks/colab_stage3_campaign.ipynb`. Two
+     adversarial review passes; tested end-to-end (no CFD) via a synthetic objective.
    - **Fidelity policy — LOCKED (2a).** Campaign eval tier = **coarse** `VerifyConfig(n_cycles=3,
      inner_iter=30)`; **fine** `(5, 60)` reserved for the 3.C top-cluster confirmation. Coarse
      preserves the fine ranking (τ=1.0), so it's the exploration tier.
-   - **3.B run — pending.** Launch one session per Colab runtime (coarse tier) all pointed at one
-     shared Drive dir. `--claim-ttl` must exceed the coarse per-eval wall time.
+   - **Eval cost — profiled, irreducible.** Coarse ≈ 2.8 h/eval (fine ≈ 3.9 h); mesh gen = 4 s and
+     SU2 startup = 3 s, so ~all of it is the unsteady near-incompressible (MACH=1e-9) solve over
+     ~600 timesteps — no fixable overhead. Only levers are fewer timesteps/cycles (already at the
+     validated coarse floor) or the C12 MACH lock (would need re-validation). So width is not the
+     dial: **3×12 async, budget 300 ≈ 24–28 h** on L4 (resumable). `--claim-ttl` > 4 h.
+   - **3.B run — pending.** Launch `notebooks/colab_stage3_campaign.ipynb` in 3 Colab sessions
+     (`SESSION_INDEX` 0/1/2, `N_SESSIONS=3`, same Drive `SHARED_DIR`).
    - **3.C analysis — pending.** `pareto_from_ledger` → fine-3D confirm the top designs → V1 pick.
 
 **Estimate:** ~2–3 weeks wall-clock to a genuinely optimized, verified blade, compressible to
