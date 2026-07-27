@@ -155,17 +155,39 @@ Consequence: the plane-momentum-flux fallback is not needed; cycle-mean CFz is t
 3. **Adversarial verification.** ✅ Two passes (a 15-agent review + a focused re-verifier);
    3 confirmed issues fixed (headroom sign-cancellation, the CFz-guard test, the codec fold-cap
    fallback bound) and re-confirmed. 1482 tests green.
-4. **3D shape-space probe (2b).** ✅ **Headroom confirmed:** an 8-design wave-sweep (local Mac
-   killed after the first 3, but decisively) spans **flat −3.1e11 → gentle_dish +7.4e11**
-   whole-fan cycle-mean CFz (range_frac ≈ 1.4) — the wave hugely moves wind; optimizing is
-   worth it. Non-obvious: gentle_dish > deep_dish (deeper isn't better), so shape matters
-   non-trivially. **Fidelity study (2a — does coarse-3D preserve the fine ranking):** the local
-   Mac killed every multi-hour CFD attempt (3×), so this runs on **Colab** via
-   `notebooks/colab_stage2_probe.ipynb` (idempotent, resumable; clones `main`; runs the same
-   8-design sweep + a 4-design fine subset and prints both the 2b headroom and 2a fidelity
-   verdicts). The analysis code (`bo/redo_validation`) is done + tested; only the fine-tier CFD
-   numbers await a Colab run.
-5. **Unified coarse→fine 3D BO** on the corrected, trusted objective — Stage 3 (not yet built).
+4. **3D shape-space probe (2a + 2b).** ✅ **DONE on Colab L4** (2026-07-26, full 8-design sweep +
+   4-design fine subset via `notebooks/colab_stage2_probe.ipynb`).
+   - **2b headroom — confirmed decisively (range_frac 1.88).** Whole-fan cycle-mean CFz spans
+     **mid_bump / hub_heavy −2.0e12 → tip_heavy +1.79e12**, a ~3.8e12-wide, non-monotonic
+     landscape. Findings: **tip_heavy is the best wave (+1.79e12, ~2.6× gentle_dish)** — tip-
+     loading the meridian is the strongest lever; **a mid-radius bump or hub-loaded wave makes
+     net wind in the WRONG direction** (−2e12); gentle_dish (+6.9e11) > deep_dish (+4.2e11)
+     (deeper isn't better); zigzag/smooth ≈ +4–5e11; flat ≈ −3.3e11. The wave is decisively the
+     dominant wind lever — exactly what the 2D slice was blind to. (Cold-start campaign, so these
+     are confidence/sanity, not seeds.)
+   - **2a fidelity — coarse-3D is a valid screening tier (Kendall τ = 1.0, zero rank
+     inversions).** On the {flat, gentle_dish, deep_dish, zigzag} subset, coarse
+     (`VerifyConfig(n_cycles=3, inner_iter=30)`) and fine (`n_cycles=5, inner_iter=60`) rank
+     identically. Caveat: n=4 (6 pairwise) and coarse can't resolve designs within ~15% of each
+     other (zigzag vs deep_dish sit ~2% apart at coarse, cleanly separated at fine) — so the
+     policy is **explore+rank on coarse, then fine-confirm the top cluster** (3.C), never trust
+     the coarse #1 outright.
+5. **Unified coarse→fine 3D BO** on the corrected, trusted objective — Stage 3.
+   - **3.A machinery — ✅ BUILT.** `bo/distributed_campaign.py` is the async shared-ledger
+     distributed loop: N Colab sessions share one Drive ledger (`evaluations.jsonl`, stores the
+     design *vector* so any session reconstructs `x`), each refits the GP on the **combined**
+     data (backbone `fit_gp`/`propose_candidates`, TuRBO), and **claims** designs via atomic
+     marker files so none is evaluated twice — cold-start Sobol DoE sliced round-robin, per-
+     session acquisition seed so sessions diverge. `Blade3DObjective` wires in unchanged (it's
+     injected). CLI: `scripts/run_blade_campaign_distributed.py` (one per session); notebook:
+     `notebooks/colab_stage3_campaign.ipynb`. Tested (coordination = no duplicate designs,
+     resumability, whole-fan objective) without CFD via a synthetic objective.
+   - **Fidelity policy — LOCKED (2a).** Campaign eval tier = **coarse** `VerifyConfig(n_cycles=3,
+     inner_iter=30)`; **fine** `(5, 60)` reserved for the 3.C top-cluster confirmation. Coarse
+     preserves the fine ranking (τ=1.0), so it's the exploration tier.
+   - **3.B run — pending.** Launch one session per Colab runtime (coarse tier) all pointed at one
+     shared Drive dir. `--claim-ttl` must exceed the coarse per-eval wall time.
+   - **3.C analysis — pending.** `pareto_from_ledger` → fine-3D confirm the top designs → V1 pick.
 
 **Estimate:** ~2–3 weeks wall-clock to a genuinely optimized, verified blade, compressible to
 ~3–5 active days with the async-distributed + cheap-eval + TuRBO setup. This is the cost of the
