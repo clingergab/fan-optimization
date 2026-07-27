@@ -109,6 +109,25 @@ def main(argv: list[str] | None = None, objective_fn: ObjectiveFn | None = None)
             on_batch=lambda n: print(f"[{args.session_id}] +{n} evaluated", flush=True),
         )
     else:
+        # LIVE async check: print a verdict on every completion — so batching is caught within the
+        # first wave (~one eval in), NOT after the whole multi-day run. `busy` is how many workers
+        # were running when this design was dispatched; == n_workers means the freed slot was
+        # refilled immediately (async). Utilization firms up once >n_workers evals have landed.
+        def _on_event(e: dict) -> None:
+            busy = e["inflight_at_dispatch"] + 1
+            v = validate_async(shared, args.n_workers)
+            tag = (
+                "async"
+                if v["is_async"]
+                else ("warming up" if v["n_evals"] <= args.n_workers else "BATCHING?")
+            )
+            print(
+                f"[{args.session_id}] done {e['design_hash'][:8]} ({e['source']}) — "
+                f"{busy}/{args.n_workers} workers busy at dispatch | "
+                f"utilization={v['utilization']:.0%} n={v['n_evals']} -> {tag}",
+                flush=True,
+            )
+
         x, _ = run_async_session(
             objective_fn,
             shared,
@@ -116,15 +135,11 @@ def main(argv: list[str] | None = None, objective_fn: ObjectiveFn | None = None)
             session_id=args.session_id,
             session_index=args.session_index,
             n_sessions=args.n_sessions,
-            on_event=lambda e: print(
-                f"[{args.session_id}] done {e['design_hash'][:8]} "
-                f"({e['source']}, inflight_at_dispatch={e['inflight_at_dispatch']})",
-                flush=True,
-            ),
+            on_event=_on_event,
         )
         v = validate_async(shared, args.n_workers)
         print(
-            f"[{args.session_id}] ASYNC CHECK: worker utilization={v['utilization']:.0%} "
+            f"[{args.session_id}] FINAL ASYNC CHECK: worker utilization={v['utilization']:.0%} "
             f"over {v['n_evals']} evals; is_async={v['is_async']}; per-session={v['per_session']}"
         )
     front = pareto_from_ledger(shared)
