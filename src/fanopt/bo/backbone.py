@@ -250,6 +250,7 @@ def propose_candidates(
     raw_samples: int = 128,
     mc_samples: int = 128,
     incumbent_objective: int = 0,
+    X_pending: np.ndarray | None = None,
 ) -> np.ndarray:
     """Propose ``batch_size`` designs by maximizing qLogNEHVI (optionally in a TR).
 
@@ -261,11 +262,20 @@ def propose_candidates(
     For ``batch_size > 1`` the q points are optimized **greedily** (sequential
     fantasizing) rather than jointly — near-identical quality but peak memory ~q×
     lower, which keeps an over-provisioned batch (``q = 2·N_WORKERS``) from OOMing.
+
+    ``X_pending`` (original-space designs currently being evaluated by this or another
+    session) is conditioned into the acquisition so an async loop proposes a point that
+    complements in-flight work instead of duplicating it.
     """
     low = np.asarray(low, dtype=float)
     high = np.asarray(high, dtype=float)
     xn = _normalize(x, low, high)
     y = np.atleast_2d(np.asarray(y_max, dtype=float))
+    pending_n = (
+        _normalize(X_pending, low, high)
+        if X_pending is not None and len(np.atleast_2d(X_pending))
+        else None
+    )
 
     sampler = SobolQMCNormalSampler(sample_shape=torch.Size([mc_samples]))
     acqf = qLogNoisyExpectedHypervolumeImprovement(
@@ -274,6 +284,7 @@ def propose_candidates(
         X_baseline=xn,
         sampler=sampler,
         prune_baseline=True,
+        X_pending=pending_n,
     )
 
     if tr_state is not None:
