@@ -22,6 +22,7 @@ from fanopt.bo.distributed_campaign import (
     append_eval,
     claim_designs,
     pareto_from_ledger,
+    preflight_async_check,
     read_ledger,
     run_async_session,
     run_distributed_session,
@@ -287,6 +288,14 @@ def test_validate_async_confirms_async_signature(tmp_path):
     _write_interval_rows(tmp_path, asyncish)
     v = validate_async(tmp_path, n_workers=4)
     assert v["is_async"] is True and v["utilization"] > 0.9
+
+
+def test_preflight_async_check_passes():
+    # Seconds-long smoke test (no CFD) that the async loop stays full in THIS environment — run
+    # before committing to a multi-hour campaign. A batched/serialized loop would fail it.
+    r = preflight_async_check(n_workers=4)
+    assert r["passed"] is True
+    assert r["per_session"]["preflight"]["peak_concurrency"] == 4
 
 
 # --- async: end-to-end behavior ---

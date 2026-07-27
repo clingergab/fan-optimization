@@ -32,6 +32,7 @@ from __future__ import annotations
 import contextlib
 import datetime as _dt
 import json
+import tempfile
 import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, as_completed, wait
@@ -72,6 +73,7 @@ __all__ = [
     "run_distributed_session",
     "run_async_session",
     "validate_async",
+    "preflight_async_check",
 ]
 
 LEDGER_GLOB = "evaluations_*.jsonl"
@@ -547,7 +549,7 @@ def run_async_session(
         if h in known:
             if source == "bo":  # push the acquisition off this already-known design next time
                 avoid.append(vector)
-                del avoid[:-2 * cfg.n_workers]  # bound the conditioning set
+                del avoid[: -2 * cfg.n_workers]  # bound the conditioning set
             return "retry"
         if not _claim_one(claims, h, cfg.claim_ttl_seconds, vector):
             return "retry"  # a peer claimed it between our read and now
@@ -702,3 +704,43 @@ def validate_async(shared_dir: Path | str, n_workers: int) -> dict:
         # async keeps utilization high in the steady window; a batch loop idles workers → < ~0.9
         "is_async": bool(n >= n_workers and verdict >= 0.9),
     }
+
+
+def _smoke_objective(v: np.ndarray) -> tuple[float, float, float]:
+    """Fast, per-design-staggered synthetic eval for the pre-flight (no CFD). The stagger makes
+    completions arrive one at a time; the ~3 s sleep dominates the GP proposal so a correctly-async
+    loop keeps the pool full (mirrors the real regime, eval >> proposal), giving a clean verdict."""
+    a = np.asarray(v, dtype=float)
+    time.sleep(2.5 + 1.5 * float(np.abs(np.sin(np.sum(a)))))
+    return (float(np.sum(np.cos(a[:5]))), float(1.0 + np.sum(np.abs(a)) * 1e-3), 1e-3)
+
+
+def preflight_async_check(n_workers: int, *, seed: int = 0) -> dict:
+    """Quick smoke test (seconds, no CFD) that the async loop dispatches-on-completion in THIS
+    environment — run it BEFORE the multi-hour campaign so a broken/degenerate async loop is caught
+    up front, not after wasting the run.
+
+    Runs ``run_async_session`` on a fast synthetic objective in a throwaway dir with ``n_workers``
+    workers and a ``2·n_workers`` budget, then returns the :func:`validate_async` report plus a
+    ``passed`` flag: the pool filled (peak == n_workers) and stayed busy (steady utilization > 0.75,
+    decisively above the batch signature ~0.67). Takes ~15–25 s for n_workers=12.
+    """
+    budget = 2 * n_workers
+    with tempfile.TemporaryDirectory() as d:
+        cfg = DistributedConfig(
+            total_budget=budget,
+            n_init=n_workers,
+            n_workers=n_workers,
+            seed=seed,
+            poll_seconds=0.0,
+            num_restarts=2,
+            raw_samples=16,
+            mc_samples=16,
+        )
+        run_async_session(_smoke_objective, d, cfg, session_id="preflight")
+        report = validate_async(d, n_workers)
+    ps = report["per_session"].get("preflight", {})
+    report["passed"] = bool(
+        ps.get("peak_concurrency") == n_workers and ps.get("utilization", 0.0) > 0.75
+    )
+    return report
