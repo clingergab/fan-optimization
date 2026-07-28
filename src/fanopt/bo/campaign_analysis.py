@@ -18,7 +18,14 @@ import numpy as np
 
 from fanopt.bo.blade_codec import decode
 
-__all__ = ["load_rows", "pareto_indices", "campaign_report", "find_shards", "shape_summary"]
+__all__ = [
+    "load_rows",
+    "pareto_indices",
+    "campaign_report",
+    "find_shards",
+    "shape_summary",
+    "top_designs_shapes",
+]
 
 # 5 rib-bow knots run hub->tip; bucket the wave's peak location into a coarse surface "type"
 _PEAK_BUCKET = {0: "hub", 1: "hub", 2: "mid", 3: "tip", 4: "tip"}
@@ -245,6 +252,42 @@ def shape_summary(shard_files: list[str | Path]) -> dict:
         "mean_amplitude_mm": float(np.mean([x["amplitude_mm"] for x in recs])),
         "records": recs,
     }
+
+
+def top_designs_shapes(shard_files: list[str | Path], k: int = 8) -> list[dict]:
+    """Decode the top-``k`` designs by J_fan and show their actual surface shape (the rib-bow wave
+    knots hub->tip, peak location, interp, blade_count) — 'what do the winners look like?'"""
+    rows = load_rows(shard_files)
+    by_hash: dict[str, dict] = {}
+    for r in rows:
+        by_hash.setdefault(r.get("design_hash"), r)
+    finite = sorted(
+        (
+            r
+            for r in by_hash.values()
+            if isinstance(r.get("j_fan"), (int | float)) and np.isfinite(r["j_fan"])
+        ),
+        key=lambda r: -r["j_fan"],
+    )
+    out: list[dict] = []
+    for r in finite[:k]:
+        try:
+            p = decode(np.array(r["vector"], dtype=float)).to_dict()
+        except (KeyError, ValueError, TypeError):
+            continue
+        knots = p.get("rib_bow_knots_m") or []
+        out.append(
+            {
+                "j_fan": float(r["j_fan"]),
+                "mass_g": float(r["mass_kg"] * 1e3),
+                "peak": _PEAK_BUCKET.get(int(np.argmax(knots)), "?") if knots else "?",
+                "interp": p.get("rib_bow_interp"),
+                "blade_count": p.get("blade_count"),
+                "knots_mm": [round(kk * 1e3, 1) for kk in knots],
+                "hash": r.get("design_hash", "")[:8],
+            }
+        )
+    return out
 
 
 def find_shards(root: str | Path, pattern: str = "blade_campaign*") -> dict[str, list[str]]:

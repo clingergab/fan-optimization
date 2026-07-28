@@ -13,6 +13,7 @@ from fanopt.bo.campaign_analysis import (
     load_rows,
     pareto_indices,
     shape_summary,
+    top_designs_shapes,
 )
 
 
@@ -139,6 +140,29 @@ def test_shape_summary_buckets_surface_types(tmp_path):
     assert sum(s["peak_counts"].values()) == 9
     assert set(s["peak_counts"]) <= {"hub", "mid", "tip"}
     assert "early_peak_dist" in s and "late_peak_dist" in s  # convergence check present
+
+
+def test_top_designs_shapes_decodes_winners(tmp_path):
+    low, high = bounds()
+    rng = np.random.default_rng(1)
+    rows = []
+    for i in range(6):
+        v = (low + rng.random(N_DIMS) * (high - low)).tolist()
+        rows.append(
+            {
+                "design_hash": f"h{i}",
+                "vector": v,
+                "j_fan": 1e12 + i * 1e11,
+                "mass_kg": 0.09,
+                "deflection_m": 1e-3,
+                "timestamp_iso": f"t{i}",
+            }
+        )
+    _write(tmp_path / "evaluations_A.jsonl", rows)
+    top = top_designs_shapes([tmp_path / "evaluations_A.jsonl"], k=3)
+    assert len(top) == 3
+    assert top[0]["j_fan"] >= top[1]["j_fan"] >= top[2]["j_fan"]  # sorted desc
+    assert len(top[0]["knots_mm"]) == 5 and top[0]["peak"] in ("hub", "mid", "tip")
 
 
 def test_load_rows_skips_torn_lines(tmp_path):

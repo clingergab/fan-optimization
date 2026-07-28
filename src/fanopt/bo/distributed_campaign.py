@@ -95,6 +95,9 @@ class DistributedConfig:
     mc_samples: int = 128
     n_workers: int = 1
     use_trust_region: bool = True
+    explore_fraction: float = 0.0  # in the BO phase, this fraction of dispatches are space-filling
+    # Sobol draws (pure exploration) instead of acquisition-driven — a hedge against premature
+    # convergence, so the search keeps probing new regions, not only refining the current best.
     poll_seconds: float = 5.0  # sleep when there's nothing to claim (another session took it)
     claim_ttl_seconds: float = (
         # Steal a claim older than this (its session died). MUST exceed the worst-case eval wall
@@ -508,6 +511,11 @@ def run_async_session(
     avoid: list[np.ndarray] = []  # designs whose acqf-optimum decoded to an already-known design;
     # fed back as X_pending so the acquisition is pushed to a genuinely NEW design instead of
     # re-proposing the same optimum (codec quantization maps a region to one design → livelock).
+    bo_dispatches = [0]  # counts BO-phase attempts, for the explore/exploit schedule
+    explore_sobol = (
+        Sobol(d=N_DIMS, seed=cfg.seed + 9973 + session_index) if cfg.explore_fraction > 0 else None
+    )
+    explore_every = round(1 / cfg.explore_fraction) if cfg.explore_fraction > 0 else 0
 
     def dispatch_one(pool: ProcessPoolExecutor) -> str:
         """Propose+claim+submit one design. 'ok' | 'retry' (raced) | 'stop' (budget / DoE-wait)."""
@@ -525,26 +533,35 @@ def run_async_session(
                 return "stop"  # every DoE point is claimed/done; wait for it to reach the ledger
             vector, source = cand[0], "sobol"
         else:
-            pending = [v for h, v in active if v is not None and h not in hashes] + avoid
-            y_norm, _, _ = normalize_objectives(_y_max(y_raw))
-            ref = infer_reference_point(y_norm)
-            torch.manual_seed((session_index + 1) * 100_003 + len(x) + len(inflight) + len(avoid))
-            model = fit_gp(x, y_norm, low, high)
-            cand = propose_candidates(
-                model,
-                x,
-                y_norm,
-                low,
-                high,
-                ref,
-                batch_size=1,
-                tr_state=tr if cfg.use_trust_region else None,
-                num_restarts=cfg.num_restarts,
-                raw_samples=cfg.raw_samples,
-                mc_samples=cfg.mc_samples,
-                X_pending=np.array(pending) if pending else None,
-            )
-            vector, source = clip_to_bounds(cand[0]), "bo"
+            bo_dispatches[0] += 1
+            if explore_sobol is not None and bo_dispatches[0] % explore_every == 0:
+                # pure exploration: a space-filling Sobol draw, NOT acquisition-driven — keeps the
+                # search probing new regions instead of only refining the incumbent.
+                unit = explore_sobol.random(1)[0]
+                vector, source = clip_to_bounds(low + unit * (high - low)), "explore"
+            else:
+                pending = [v for h, v in active if v is not None and h not in hashes] + avoid
+                y_norm, _, _ = normalize_objectives(_y_max(y_raw))
+                ref = infer_reference_point(y_norm)
+                torch.manual_seed(
+                    (session_index + 1) * 100_003 + len(x) + len(inflight) + len(avoid)
+                )
+                model = fit_gp(x, y_norm, low, high)
+                cand = propose_candidates(
+                    model,
+                    x,
+                    y_norm,
+                    low,
+                    high,
+                    ref,
+                    batch_size=1,
+                    tr_state=tr if cfg.use_trust_region else None,
+                    num_restarts=cfg.num_restarts,
+                    raw_samples=cfg.raw_samples,
+                    mc_samples=cfg.mc_samples,
+                    X_pending=np.array(pending) if pending else None,
+                )
+                vector, source = clip_to_bounds(cand[0]), "bo"
         h = _hof(vector)
         if h in known:
             if source == "bo":  # push the acquisition off this already-known design next time

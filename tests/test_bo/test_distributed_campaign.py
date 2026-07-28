@@ -330,6 +330,25 @@ def test_async_bad_session_index_raises(tmp_path):
         run_async_session(_synthetic, tmp_path, session_id="s", session_index=2, n_sessions=2)
 
 
+def test_async_explore_fraction_injects_exploration(tmp_path):
+    # With explore_fraction>0, some BO-phase dispatches are space-filling Sobol (source="explore"),
+    # so the search keeps probing new regions instead of only refining the incumbent.
+    for i in range(8):
+        append_eval(
+            shard_path(tmp_path, "s"), _vec(i), (1.0, 0.1, 1e-3), session_id="s", source="sobol"
+        )
+    cfg = DistributedConfig(
+        total_budget=16, n_init=8, n_workers=2, poll_seconds=0.0, explore_fraction=0.5, **_FAST_ACQ
+    )
+    run_async_session(_synthetic, tmp_path, cfg, session_id="s")
+    srcs = [
+        json.loads(ln)["source"]
+        for ln in shard_path(tmp_path, "s").read_text().splitlines()
+        if ln.strip()
+    ]
+    assert "explore" in srcs  # exploration was interleaved with BO
+
+
 def test_async_recovers_from_worker_death(tmp_path, monkeypatch):
     # A worker dies mid-eval (BrokenProcessPool). The session must rebuild the pool and still reach
     # budget — the abandoned design's claim goes stale (short TTL) and is reclaimed. (Finding B.)
