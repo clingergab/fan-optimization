@@ -52,7 +52,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--metric", default="mean", choices=("mean", "peak"), help="ADR-0004: mean")
     p.add_argument("--n-cycles", type=int, default=None, help="VerifyConfig override (fidelity)")
     p.add_argument("--inner-iter", type=int, default=None, help="VerifyConfig override (fidelity)")
-    p.add_argument("--cfd-out", type=Path, default=None, help="CFD scratch dir; default shared/cfd")
+    p.add_argument(
+        "--cfd-out",
+        type=Path,
+        default=None,
+        help="CFD scratch dir; default shared/cfd. Use LOCAL disk (e.g. /content/cfd) — "
+        "SU2 does heavy small-file I/O that is very slow on a Drive FUSE mount.",
+    )
+    p.add_argument(
+        "--drive-diag",
+        action="store_true",
+        help="persist each design's full CFD output to Drive (out_dir/designs copied per "
+        "success). OFF by default: that per-design Drive copytree is O(N) and lags "
+        "the sync of the small ledger/claim files coordination depends on.",
+    )
     p.add_argument("--poll-seconds", type=float, default=5.0)
     p.add_argument(
         "--claim-ttl",
@@ -89,7 +102,8 @@ def main(argv: list[str] | None = None, objective_fn: ObjectiveFn | None = None)
         objective_fn = Blade3DObjective(
             out_dir=args.cfd_out or (shared / "cfd"),
             su2_bin=su2_bin,
-            diag_dir=shared,
+            # diag on Drive only if asked; otherwise diag==workdir (local) so no per-design copytree
+            diag_dir=shared if args.drive_diag else None,
             metric=args.metric,
             cfg=_verify_config(args),
         )
