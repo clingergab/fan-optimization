@@ -25,6 +25,7 @@ __all__ = [
     "find_shards",
     "shape_summary",
     "top_designs_shapes",
+    "failed_designs",
 ]
 
 # 5 rib-bow knots run hub->tip; bucket the wave's peak location into a coarse surface "type"
@@ -285,6 +286,36 @@ def top_designs_shapes(shard_files: list[str | Path], k: int = 8) -> list[dict]:
                 "blade_count": p.get("blade_count"),
                 "knots_mm": [round(kk * 1e3, 1) for kk in knots],
                 "hash": r.get("design_hash", "")[:8],
+            }
+        )
+    return out
+
+
+def failed_designs(shard_files: list[str | Path]) -> list[dict]:
+    """The designs that FAILED (NaN objective — infeasible geometry or a diverged CFD run), with
+    their decoded shape and full vector, so you can see which failed and re-render them."""
+    rows = load_rows(shard_files)
+    by_hash: dict[str, dict] = {}
+    for r in rows:
+        by_hash.setdefault(r.get("design_hash"), r)
+    out: list[dict] = []
+    for r in by_hash.values():
+        j = r.get("j_fan")
+        if isinstance(j, (int | float)) and np.isfinite(j):
+            continue  # succeeded
+        try:
+            p = decode(np.array(r["vector"], dtype=float)).to_dict()
+        except (KeyError, ValueError, TypeError):
+            p = {}
+        knots = p.get("rib_bow_knots_m") or []
+        out.append(
+            {
+                "hash": r.get("design_hash", "")[:8],
+                "source": r.get("source"),
+                "peak": _PEAK_BUCKET.get(int(np.argmax(knots)), "?") if knots else "?",
+                "blade_count": p.get("blade_count"),
+                "knots_mm": [round(k * 1e3, 1) for k in knots],
+                "vector": r.get("vector"),
             }
         )
     return out

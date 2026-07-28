@@ -9,6 +9,7 @@ import numpy as np
 from fanopt.bo.blade_codec import N_DIMS, bounds
 from fanopt.bo.campaign_analysis import (
     campaign_report,
+    failed_designs,
     find_shards,
     load_rows,
     pareto_indices,
@@ -163,6 +164,36 @@ def test_top_designs_shapes_decodes_winners(tmp_path):
     assert len(top) == 3
     assert top[0]["j_fan"] >= top[1]["j_fan"] >= top[2]["j_fan"]  # sorted desc
     assert len(top[0]["knots_mm"]) == 5 and top[0]["peak"] in ("hub", "mid", "tip")
+
+
+def test_failed_designs_lists_only_nan(tmp_path):
+    low, high = bounds()
+    rng = np.random.default_rng(2)
+    v_ok = (low + rng.random(N_DIMS) * (high - low)).tolist()
+    v_bad = (low + rng.random(N_DIMS) * (high - low)).tolist()
+    _write(
+        tmp_path / "evaluations_A.jsonl",
+        [
+            {
+                "design_hash": "ok",
+                "vector": v_ok,
+                "j_fan": 2e12,
+                "mass_kg": 0.09,
+                "deflection_m": 1e-3,
+            },
+            {
+                "design_hash": "bad",
+                "vector": v_bad,
+                "j_fan": float("nan"),
+                "mass_kg": float("nan"),
+                "deflection_m": float("nan"),
+                "source": "bo",
+            },
+        ],
+    )
+    fails = failed_designs([tmp_path / "evaluations_A.jsonl"])
+    assert [f["hash"] for f in fails] == ["bad"]
+    assert len(fails[0]["vector"]) == N_DIMS  # vector kept so the failure can be re-rendered
 
 
 def test_load_rows_skips_torn_lines(tmp_path):

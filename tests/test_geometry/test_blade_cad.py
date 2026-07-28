@@ -21,6 +21,7 @@ from fanopt.geometry.blade_cad import (
     blade_mass_kg,
     blade_trimesh,
     blade_volume_m3,
+    export_blade_step,
     fold_collision_clear,
     fold_collision_volume_m3,
     make_blade_solid,
@@ -42,8 +43,19 @@ def _sample(blade_count: int = 8) -> BladeParams:
         t_rib_hub_m=0.0025,
         t_rib_tip_m=0.0035,
         panel_offsets_m=_SAMPLE_GRID,
-        panel_thickness_m=((0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013)),
+        panel_thickness_m=(
+            (0.0013, 0.0013, 0.0013),
+            (0.0013, 0.0013, 0.0013),
+            (0.0013, 0.0013, 0.0013),
+            (0.0013, 0.0013, 0.0013),
+        ),
     )
+
+
+def test_export_blade_step_writes_a_file(tmp_path):
+    fp = tmp_path / "blade.step"
+    export_blade_step(_sample(), str(fp))
+    assert fp.exists() and fp.stat().st_size > 0  # a real STEP file (for 3D rendering)
 
 
 def _contains_violating() -> BladeParams:

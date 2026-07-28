@@ -46,6 +46,7 @@ __all__ = [
     "N_RADIAL_SECTIONS",
     "N_TANGENTIAL_SAMPLES",
     "make_blade_solid",
+    "export_blade_step",
     "blade_trimesh",
     "blade_volume_m3",
     "blade_mass_kg",
@@ -115,9 +116,7 @@ def _quad(a: cq.Vector, b: cq.Vector, c: cq.Vector, d: cq.Vector) -> list[cq.Fac
     return [_tri(a, b, c), _tri(a, c, d)]
 
 
-def _blade_faces(
-    top: list[list[cq.Vector]], bot: list[list[cq.Vector]]
-) -> list[cq.Face]:
+def _blade_faces(top: list[list[cq.Vector]], bot: list[list[cq.Vector]]) -> list[cq.Face]:
     """Closed triangulated boundary: top + bottom surfaces, tangential walls, radial caps."""
     ni, nj = N_RADIAL_SECTIONS, N_TANGENTIAL_SAMPLES
     faces: list[cq.Face] = []
@@ -147,14 +146,12 @@ def _sew_solid(faces: list[cq.Face]) -> cq.Solid:
 def _boss_solid(params: BladeParams) -> cq.Workplane:
     """Pivot boss: a ``PIVOT_BOSS_OD_M`` cylinder one layer tall, pin hole subtracted."""
     s = layer_spacing_m(params)
-    boss = (
+    boss = cq.Workplane("XY").circle(PIVOT_BOSS_RADIUS_M).extrude(s).translate((0.0, 0.0, -s / 2.0))
+    hole = (
         cq.Workplane("XY")
-        .circle(PIVOT_BOSS_RADIUS_M)
-        .extrude(s)
-        .translate((0.0, 0.0, -s / 2.0))
-    )
-    hole = cq.Workplane("XY").circle(PIVOT_PIN_DIAMETER_M / 2.0).extrude(2.0 * s).translate(
-        (0.0, 0.0, -s)
+        .circle(PIVOT_PIN_DIAMETER_M / 2.0)
+        .extrude(2.0 * s)
+        .translate((0.0, 0.0, -s))
     )
     return boss.cut(hole)
 
@@ -173,9 +170,13 @@ def make_blade_solid(params: BladeParams) -> cq.Workplane:
     return blade.union(_boss_solid(params))
 
 
-def blade_trimesh(
-    params: BladeParams, tol: float = 0.0005
-) -> tuple[np.ndarray, np.ndarray]:
+def export_blade_step(params: BladeParams, path: str) -> str:
+    """Write one blade design to a STEP file (open in any CAD viewer to 3D-render). Returns path."""
+    cq.exporters.export(make_blade_solid(params), str(path))
+    return str(path)
+
+
+def blade_trimesh(params: BladeParams, tol: float = 0.0005) -> tuple[np.ndarray, np.ndarray]:
     """Triangulated surface of the blade solid as ``(vertices (N,3), faces (M,3))`` arrays.
 
     Tessellates the CAD solid to a triangle soup for 3D surface plotting (e.g. Plotly
