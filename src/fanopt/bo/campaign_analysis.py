@@ -11,11 +11,17 @@ from __future__ import annotations
 
 import glob
 import json
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
 
-__all__ = ["load_rows", "pareto_indices", "campaign_report", "find_shards"]
+from fanopt.bo.blade_codec import decode
+
+__all__ = ["load_rows", "pareto_indices", "campaign_report", "find_shards", "shape_summary"]
+
+# 5 rib-bow knots run hub->tip; bucket the wave's peak location into a coarse surface "type"
+_PEAK_BUCKET = {0: "hub", 1: "hub", 2: "mid", 3: "tip", 4: "tip"}
 
 
 def load_rows(shard_files: list[str | Path]) -> list[dict]:
@@ -180,6 +186,65 @@ def campaign_report(shard_files: list[str | Path], *, top_k: int = 10) -> dict:
         for cap in (100.0,)
     }
     return report
+
+
+def shape_summary(shard_files: list[str | Path]) -> dict:
+    """Decode designs into their SURFACE SHAPE (rib-bow wave) and report the type distribution,
+    which types perform best, and whether the run converged onto one type over time.
+
+    Answers "what shapes did we explore, is the pool skewed to one type, and did later designs
+    drift toward a particular shape?" — the coverage check for whether a continuation would keep
+    exploiting one region vs genuinely exploring. Each design's ``type`` = (wave-peak location
+    hub/mid/tip, interp). Requires the geometry codec (``decode``).
+    """
+    rows = load_rows(shard_files)
+    by_hash: dict[str, dict] = {}
+    for r in rows:
+        by_hash.setdefault(r.get("design_hash"), r)
+    finite = sorted(
+        (
+            r
+            for r in by_hash.values()
+            if isinstance(r.get("j_fan"), (int | float)) and np.isfinite(r["j_fan"])
+        ),
+        key=lambda r: r.get("timestamp_iso", ""),
+    )
+    recs: list[dict] = []
+    for r in finite:
+        try:
+            p = decode(np.array(r["vector"], dtype=float)).to_dict()
+        except (KeyError, ValueError, TypeError):
+            continue
+        knots = p.get("rib_bow_knots_m") or []
+        if not knots:
+            continue
+        recs.append(
+            {
+                "j_fan": float(r["j_fan"]),
+                "peak": _PEAK_BUCKET.get(int(np.argmax(knots)), "?"),
+                "interp": p.get("rib_bow_interp"),
+                "amplitude_mm": (max(knots) - min(knots)) * 1e3,
+                "blade_count": p.get("blade_count"),
+                "knots_mm": [k * 1e3 for k in knots],
+            }
+        )
+    if not recs:
+        return {"n": 0}
+    by_peak: dict[str, list[float]] = {}
+    for x in recs:
+        by_peak.setdefault(x["peak"], []).append(x["j_fan"])
+    third = max(1, len(recs) // 3)
+    return {
+        "n": len(recs),
+        "type_counts": dict(Counter(f"{x['peak']}/{x['interp']}" for x in recs)),
+        "peak_counts": dict(Counter(x["peak"] for x in recs)),
+        "peak_mean_jfan": {k: float(np.mean(v)) for k, v in by_peak.items()},
+        "blade_counts": dict(Counter(x["blade_count"] for x in recs)),
+        "early_peak_dist": dict(Counter(x["peak"] for x in recs[:third])),
+        "late_peak_dist": dict(Counter(x["peak"] for x in recs[-third:])),
+        "mean_amplitude_mm": float(np.mean([x["amplitude_mm"] for x in recs])),
+        "records": recs,
+    }
 
 
 def find_shards(root: str | Path, pattern: str = "blade_campaign*") -> dict[str, list[str]]:
