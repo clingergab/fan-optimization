@@ -82,27 +82,56 @@ def campaign_report(shard_files: list[str | Path], *, top_k: int = 10) -> dict:
         "max": float(mass.max() * 1e3),
     }
 
-    # progression: running-best J_fan in EVALUATION ORDER (by timestamp) — is it learning or flat?
+    # PROGRESSION — the honest "is it learning?" signals, not just the (monotone) running-best.
     order = sorted(range(len(finite)), key=lambda i: finite[i].get("timestamp_iso", ""))
-    running_best: list[float] = []
-    best = -np.inf
-    improvements = 0
-    for i in order:
-        if j[i] > best:
-            best = float(j[i])
-            improvements += 1
+    j_by_time = [float(j[i]) for i in order]
+    running_best, best, improvements = [], -np.inf, 0
+    for v in j_by_time:
+        if v > best:
+            best, improvements = v, improvements + 1
         running_best.append(best)
+    win = max(5, len(j_by_time) // 15)
+    rolling_mean = [
+        float(np.mean(j_by_time[max(0, i - win + 1) : i + 1])) for i in range(len(j_by_time))
+    ]
+    n = len(j_by_time)
+    quartile_means = (
+        [float(np.mean(j_by_time[k * n // 4 : (k + 1) * n // 4])) for k in range(4)]
+        if n >= 4
+        else []
+    )
+    # per-session trajectories (fragmentation: each session learned only on its OWN history)
+    by_session: dict[str, dict] = {}
+    for r in finite:
+        by_session.setdefault(r.get("session_id", "?"), []).append(r)
+    session_stats: dict[str, dict] = {}
+    for s, rs in by_session.items():
+        rs = sorted(rs, key=lambda r: r.get("timestamp_iso", ""))
+        seq = [float(r["j_fan"]) for r in rs]
+        h = len(seq) // 2
+        session_stats[s] = {
+            "n": len(seq),
+            "j_series": seq,
+            "first_half_mean": float(np.mean(seq[:h])) if h else None,
+            "second_half_mean": float(np.mean(seq[h:])) if h else None,
+            "best": max(seq),
+        }
     report["progression"] = {
-        "running_best": running_best,  # by evaluation order
+        "j_by_time": j_by_time,
+        "running_best": running_best,
+        "rolling_mean": rolling_mean,
+        "rolling_window": win,
+        "quartile_means": quartile_means,  # mean J_fan per quarter of the run — rising = learning
         "n_new_bests": improvements,
-        "first_best": running_best[0] if running_best else None,
-        "final_best": running_best[-1] if running_best else None,
+        "by_session": session_stats,
     }
-    # did BO beat the random DoE? (best among sobol vs best among bo)
+    # BO vs DoE by MEAN (learning = consistently better proposals), not just the lucky best
     sob = [r["j_fan"] for r in finite if r.get("source") == "sobol"]
     bo = [r["j_fan"] for r in finite if r.get("source") == "bo"]
     report["sobol_best"] = max(sob) if sob else None
     report["bo_best"] = max(bo) if bo else None
+    report["sobol_mean"] = float(np.mean(sob)) if sob else None
+    report["bo_mean"] = float(np.mean(bo)) if bo else None
 
     obj = np.column_stack([j, mass, defl])
     pf = pareto_indices(obj)
@@ -132,6 +161,24 @@ def campaign_report(shard_files: list[str | Path], *, top_k: int = 10) -> dict:
         ),
         key=lambda d: -d["j_fan"],
     )[:top_k]
+    # mass-cap-eligible best (C9 <100 g): the top-J_fan designs are often too heavy — the V1 pick
+    # must come from designs under the cap, so surface the best ones that actually qualify.
+    report["top_under_mass_cap"] = {
+        f"{cap}g": sorted(
+            (
+                {
+                    "j_fan": float(j[i]),
+                    "mass_g": float(mass[i] * 1e3),
+                    "source": finite[i].get("source"),
+                    "design_hash": finite[i].get("design_hash", "")[:8],
+                }
+                for i in range(len(finite))
+                if mass[i] * 1e3 <= cap
+            ),
+            key=lambda d: -d["j_fan"],
+        )[:top_k]
+        for cap in (100.0,)
+    }
     return report
 
 
