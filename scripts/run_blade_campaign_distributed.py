@@ -42,6 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--n-workers", type=int, default=1, help="CFD evals in parallel per session")
     p.add_argument("--seed", type=int, default=0, help="shared Sobol seed")
+    p.add_argument(
+        "--explore-fraction",
+        type=float,
+        default=0.0,
+        help="fraction of BO-phase dispatches that are space-filling exploration (e.g. 0.25)",
+    )
     p.add_argument("--su2-bin", default=None, help="SU2_CFD path; default = auto-discover")
     p.add_argument("--metric", default="mean", choices=("mean", "peak"), help="ADR-0004: mean")
     p.add_argument("--n-cycles", type=int, default=None, help="VerifyConfig override (fidelity)")
@@ -94,6 +100,7 @@ def main(argv: list[str] | None = None, objective_fn: ObjectiveFn | None = None)
         batch_size=args.batch_size,
         seed=args.seed,
         n_workers=args.n_workers,
+        explore_fraction=args.explore_fraction,
         poll_seconds=args.poll_seconds,
         claim_ttl_seconds=args.claim_ttl,
     )
