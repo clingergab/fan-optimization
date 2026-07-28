@@ -6,7 +6,14 @@ import json
 
 import numpy as np
 
-from fanopt.bo.campaign_analysis import campaign_report, find_shards, load_rows, pareto_indices
+from fanopt.bo.blade_codec import N_DIMS, bounds
+from fanopt.bo.campaign_analysis import (
+    campaign_report,
+    find_shards,
+    load_rows,
+    pareto_indices,
+    shape_summary,
+)
 
 
 def _write(path, rows):
@@ -107,6 +114,31 @@ def test_find_shards_surfaces_duplicate_folders(tmp_path):
         _write(d / "evaluations_colab-0.jsonl", [_row("h1", 1.0e12, 0.09, 1e-3)])
     found = find_shards(tmp_path)
     assert len(found) == 2  # both the real folder and the duplicate are surfaced
+
+
+def test_shape_summary_buckets_surface_types(tmp_path):
+    low, high = bounds()
+    rng = np.random.default_rng(0)
+    rows = []
+    for i in range(9):
+        v = (low + rng.random(N_DIMS) * (high - low)).tolist()
+        rows.append(
+            {
+                "design_hash": f"h{i}",
+                "vector": v,
+                "j_fan": 1e12 + i * 1e11,
+                "mass_kg": 0.09,
+                "deflection_m": 1e-3,
+                "source": "bo",
+                "timestamp_iso": f"t{i:02d}",
+            }
+        )
+    _write(tmp_path / "evaluations_A.jsonl", rows)
+    s = shape_summary([tmp_path / "evaluations_A.jsonl"])
+    assert s["n"] == 9
+    assert sum(s["peak_counts"].values()) == 9
+    assert set(s["peak_counts"]) <= {"hub", "mid", "tip"}
+    assert "early_peak_dist" in s and "late_peak_dist" in s  # convergence check present
 
 
 def test_load_rows_skips_torn_lines(tmp_path):
