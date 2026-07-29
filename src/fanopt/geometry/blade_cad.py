@@ -25,9 +25,11 @@ from OCP.ShapeFix import ShapeFix_Solid
 from OCP.TopoDS import TopoDS
 
 from fanopt.geometry.blade import (
+    BLADE_ROOT_RADIUS_M,
     RIB_TIP_RADIUS_M,
     BladeParams,
     displacement_at,
+    half_width_at,
     layer_spacing_m,
     panel_thickness_at,
     rib_thickness_at,
@@ -35,7 +37,6 @@ from fanopt.geometry.blade import (
     rib_z_at,
 )
 from fanopt.geometry.schema import (
-    HUB_RADIUS_M,
     INTER_BLADE_ANGLE_RAD,
     PIVOT_BOSS_RADIUS_M,
     PIVOT_PIN_DIAMETER_M,
@@ -65,41 +66,46 @@ resolves the curve for both render AND verification (mass shifts <0.5%)."""
 N_TANGENTIAL_SAMPLES: int = 12
 """Tangential samples per cross-section across the wedge."""
 
-_ALPHA_RAD: float = INTER_BLADE_ANGLE_RAD / 2.0
-# Panel spans inward to the boss edge so the blade merges with the boss cylinder.
-_R_INNER_M: float = PIVOT_BOSS_RADIUS_M
+# The trapezoid planform starts at the pivot centre (r=0) so the blade root overlaps the boss.
+_R_INNER_M: float = BLADE_ROOT_RADIUS_M
 _FOLD_INTERSECT_EPS_M3: float = 1e-12  # numeric floor: below this = "clear"
 _SEW_TOLERANCE_M: float = 1e-7
 
 
-def _half_thickness_m(params: BladeParams, r: float, theta: float) -> float:
-    """Local half material thickness: the rib (thick) near the wedge edges, else panel.
+def _half_thickness_m(params: BladeParams, r: float, v: float) -> float:
+    """Local half material thickness at radius ``r`` and tangential fraction ``v`` ∈ [-1, 1].
 
-    A rib exists only in ``r ≥ HUB_RADIUS_M`` and within ``rib_width`` (arc) of an edge;
-    the hub region and the wedge interior carry the thinner panel membrane.
+    **Ribbed**: a rib rail (thick) runs within ``rib_width`` (tangential distance) of each
+    trapezoid edge; the interior carries the thinner panel membrane. **Uniform**: no rails —
+    the whole width is the panel sheet.
     """
-    if r >= HUB_RADIUS_M:
-        edge_arc = r * (_ALPHA_RAD - abs(theta))
-        if edge_arc <= rib_width_at(r):
+    if not params.uniform:
+        edge_dist = half_width_at(r) * (1.0 - abs(v))  # y-distance to the nearest edge
+        if edge_dist <= rib_width_at(r):
             return rib_thickness_at(params, r) / 2.0
-    return panel_thickness_at(params, r, theta / _ALPHA_RAD) / 2.0
+    return panel_thickness_at(params, r, v) / 2.0
 
 
 def _surface_grids(
     params: BladeParams,
 ) -> tuple[list[list[cq.Vector]], list[list[cq.Vector]]]:
-    """Top and bottom surface point grids ``[radial][tangential]`` (both faces free)."""
+    """Top and bottom surface point grids ``[radial][tangential]`` (both faces free).
+
+    Cartesian trapezoid: a cross-section at radius ``x = r`` spans ``y ∈ [-w(r), +w(r)]`` where
+    ``w = half_width_at(r)`` grows linearly root→tip (NOT the retired ``y = r·sin θ`` sector).
+    """
     top: list[list[cq.Vector]] = []
     bot: list[list[cq.Vector]] = []
     for i in range(N_RADIAL_SECTIONS):
         r = _R_INNER_M + (RIB_TIP_RADIUS_M - _R_INNER_M) * i / (N_RADIAL_SECTIONS - 1)
+        w = half_width_at(r)
         top_row: list[cq.Vector] = []
         bot_row: list[cq.Vector] = []
         for j in range(N_TANGENTIAL_SAMPLES + 1):
-            th = -_ALPHA_RAD + 2.0 * _ALPHA_RAD * j / N_TANGENTIAL_SAMPLES
-            mean = rib_z_at(params, r) + displacement_at(params, r, th / _ALPHA_RAD)
-            h = _half_thickness_m(params, r, th)
-            x, y = r * math.cos(th), r * math.sin(th)
+            v = -1.0 + 2.0 * j / N_TANGENTIAL_SAMPLES
+            mean = rib_z_at(params, r) + displacement_at(params, r, v)
+            h = _half_thickness_m(params, r, v)
+            x, y = r, v * w
             top_row.append(cq.Vector(x, y, mean + h))
             bot_row.append(cq.Vector(x, y, mean - h))
         top.append(top_row)

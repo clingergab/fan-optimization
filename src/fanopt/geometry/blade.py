@@ -39,9 +39,6 @@ from typing import Any
 
 from fanopt.geometry.schema import (
     BLADE_COUNTS,
-    HUB_RADIUS_M,
-    INTER_BLADE_ANGLE_RAD,
-    L_RIB_M,
     MAX_TOTAL_MASS_KG,
     PIVOT_BOSS_RADIUS_M,
     RHO_PETG_KG_PER_M3,
@@ -53,6 +50,7 @@ __all__ = [
     "RIB_BOW_RANGE_M",
     "RIB_BOW_KNOT_COUNT",
     "RIB_BOW_INTERP_MODES",
+    "RIB_MODES",
     "RIB_THICKNESS_RANGE_M",
     "PANEL_THICKNESS_NOM_RANGE_M",
     "PANEL_GRID_RADIAL_COUNT",
@@ -62,7 +60,11 @@ __all__ = [
     "FOLD_CLEARANCE_M",
     "MAX_FOLDED_STACK_HEIGHT_M",
     "RIB_TIP_RADIUS_M",
+    "BLADE_ROOT_RADIUS_M",
+    "ROOT_HALF_WIDTH_M",
+    "TIP_HALF_WIDTH_M",
     "BladeParams",
+    "half_width_at",
     "panel_radial_stations",
     "rib_bow_stations",
     "rib_z_at",
@@ -71,6 +73,7 @@ __all__ = [
     "rib_width_at",
     "displacement_at",
     "panel_thickness_at",
+    "blade_z_envelope_m",
     "layer_spacing_m",
     "folded_rib_bow_extent_m",
     "folded_stack_height_m",
@@ -99,15 +102,22 @@ RIB_BOW_INTERP_MODES: tuple[str, ...] = ("linear", "smooth")
 """Radial interpolation between meridian knots: ``linear`` (crisp pleats / zigzag) or
 ``smooth`` (Catmull-Rom dished camber). A categorical BO knob — the optimizer tries both."""
 
+RIB_MODES: tuple[str, ...] = ("ribbed", "uniform")
+"""Blade topology family (categorical BO knob). ``ribbed`` = a thick rib rail down each
+tangential edge carrying a thinner contained panel between them (design A). ``uniform`` =
+a single-thickness sheet with NO rib rails, free to wave across its whole width (design B);
+nesting is governed by the fold stack-height constraint instead of rib containment."""
+
 RIB_THICKNESS_RANGE_M: tuple[float, float] = (0.002, 0.012)
 """Rib z-thickness envelope at hub / tip. 2 mm floor = FDM minimum feature. Widened to
 12 mm (2026-07-22) so a thick rib frame can give the panel real room to sculpt (thick
 ribs ⇄ chunkier fold + more mass — see MAX_FOLDED_STACK_HEIGHT_M / MAX_TOTAL_MASS_KG)."""
 
-PANEL_THICKNESS_NOM_RANGE_M: tuple[float, float] = (0.0012, 0.010)
-"""Nominal panel membrane thickness. Held ``≤ t_rib`` by containment; widened to 10 mm
-(2026-07-22) so the panel cap tracks the rib and the two faces can diverge (independent
-face waves) rather than staying parallel."""
+PANEL_THICKNESS_NOM_RANGE_M: tuple[float, float] = (0.003, 0.010)
+"""Nominal panel membrane thickness. Floor raised to 3 mm (2026-07-29 trapezoid redesign):
+3 mm is the printable base-panel minimum for both design families (ribbed panel-between-rails
+and the uniform no-rib sheet). Held ``≤ t_rib`` by containment in ribbed mode; in uniform mode
+the sheet IS the blade, so the fold stack-height constraint bounds it instead."""
 
 PANEL_GRID_RADIAL_COUNT: int = 4
 """Radial control rows of the panel displacement grid (base→tip; enough for steps)."""
@@ -133,8 +143,26 @@ fan z-stacks like a deck: layer spacing = thickest rib +
 clearance, so the folded stack (and the deployed z-stagger) is ``N × layer_spacing``.
 Thick ribs → fat bundle; this is the pressure that keeps ribs thin."""
 
-RIB_TIP_RADIUS_M: float = HUB_RADIUS_M + L_RIB_M
-"""0.185 m — outer rib radius (hub + rib radial extent)."""
+RIB_TIP_RADIUS_M: float = 0.220
+"""0.220 m — blade tip radius = 22 cm blade length (2026-07-29 trapezoid redesign).
+
+The live blade length is governed here, NOT by ``schema.L_BLADE_M`` (a dead no-op for live
+geometry) nor ``schema.L_RIB_M`` (which still drives the legacy plano-convex / rib-TO stack
+at the retired 185 mm; decoupled here to keep this length change inside the live blade)."""
+
+BLADE_ROOT_RADIUS_M: float = 0.0
+"""Root radius. The trapezoid planform starts at the pivot centre (r = 0) so the blade root
+overlaps the pivot boss and unions into ONE solid (not a tangent-but-separate part)."""
+
+ROOT_HALF_WIDTH_M: float = PIVOT_BOSS_RADIUS_M
+"""6 mm — root tangential half-width. Root width = 12 mm = boss diameter, so the root meets
+the boss exactly and the union is a single solid."""
+
+TIP_HALF_WIDTH_M: float = 0.0255
+"""25.5 mm — tip tangential half-width. Tip width = 51 mm ≈ flush-tile width at the 13.3°
+deploy pitch over a 220 mm span, so adjacent deployed tips sit gapless."""
+
+_BLADE_SPAN_M: float = RIB_TIP_RADIUS_M - BLADE_ROOT_RADIUS_M
 
 _MARGIN_SAMPLES: int = 21  # radial sampling for the nesting constraint
 
@@ -155,6 +183,9 @@ class BladeParams:
     t_rib_tip_m: float
     panel_offsets_m: tuple[tuple[float, ...], ...]
     panel_thickness_m: tuple[tuple[float, ...], ...]
+    uniform: bool = False
+    """``False`` = ribbed (A): rib rails + contained panel. ``True`` = uniform (B): a single
+    no-rib sheet that waves freely and nests via the fold constraint (see :data:`RIB_MODES`)."""
 
     def __post_init__(self) -> None:
         if self.blade_count not in BLADE_COUNTS:
@@ -206,6 +237,7 @@ class BladeParams:
             "t_rib_tip_m": self.t_rib_tip_m,
             "panel_offsets_m": [list(row) for row in self.panel_offsets_m],
             "panel_thickness_m": [list(row) for row in self.panel_thickness_m],
+            "uniform": self.uniform,
         }
 
     @classmethod
@@ -239,41 +271,53 @@ class BladeParams:
             t_rib_tip_m=float(d["t_rib_tip_m"]),
             panel_offsets_m=tuple(tuple(float(x) for x in row) for row in d["panel_offsets_m"]),
             panel_thickness_m=thickness,
+            uniform=bool(d.get("uniform", False)),
         )
 
 
 def _radial_frac(r: float) -> float:
-    """Radial position normalized to [0, 1] over the rib span (hub → tip), clamped."""
-    return min(max((r - HUB_RADIUS_M) / L_RIB_M, 0.0), 1.0)
+    """Radial position normalized to [0, 1] over the blade span (root r=0 → tip), clamped."""
+    return min(max((r - BLADE_ROOT_RADIUS_M) / _BLADE_SPAN_M, 0.0), 1.0)
+
+
+def half_width_at(r: float) -> float:
+    """Trapezoid tangential half-width at radius ``r`` (linear root→tip).
+
+    The planform is a Cartesian trapezoid, NOT a pie-slice sector: half-width grows linearly
+    from :data:`ROOT_HALF_WIDTH_M` at the root (r=0, = boss radius) to :data:`TIP_HALF_WIDTH_M`
+    at the tip. A point at tangential fraction ``v ∈ [-1, 1]`` sits at ``y = v · half_width(r)``,
+    ``x = r`` — decoupling width from ``r · angle`` (the retired sector assumption).
+    """
+    u = _radial_frac(r)
+    return ROOT_HALF_WIDTH_M + (TIP_HALF_WIDTH_M - ROOT_HALF_WIDTH_M) * u
 
 
 def panel_radial_stations() -> list[float]:
-    """Radii of the panel grid's radial control rows (hub → tip, evenly spaced)."""
+    """Radii of the panel grid's radial control rows (root → tip, evenly spaced)."""
     n = PANEL_GRID_RADIAL_COUNT
-    return [HUB_RADIUS_M + (RIB_TIP_RADIUS_M - HUB_RADIUS_M) * i / (n - 1) for i in range(n)]
+    return [BLADE_ROOT_RADIUS_M + _BLADE_SPAN_M * i / (n - 1) for i in range(n)]
 
 
 def rib_bow_stations() -> list[float]:
-    """Radii of the meridian's free knots — evenly spaced hub(exclusive)→tip.
+    """Radii of the meridian's free knots — evenly spaced root(exclusive)→tip.
 
-    The hub itself is pinned to ``z = 0`` (the blade meets the boss), so the ``K`` knots
-    sit at ``hub + (i+1)/K · span`` for ``i in 0..K-1`` (the last is the tip). ``K = 2``
-    would land on (mid, tip) — the original two-segment meridian.
+    The root itself is pinned to ``z = 0`` (the blade meets the boss), so the ``K`` knots
+    sit at ``root + (i+1)/K · span`` for ``i in 0..K-1`` (the last is the tip).
     """
     k = RIB_BOW_KNOT_COUNT
-    return [HUB_RADIUS_M + (RIB_TIP_RADIUS_M - HUB_RADIUS_M) * (i + 1) / k for i in range(k)]
+    return [BLADE_ROOT_RADIUS_M + _BLADE_SPAN_M * (i + 1) / k for i in range(k)]
 
 
 def _legacy_rib_z(mid: float, tip: float, r: float) -> float:
-    """Old two-segment meridian z at ``r``: (hub, 0) → (mid_radius, ``mid``) → (tip, ``tip``).
+    """Old two-segment meridian z at ``r``: (root, 0) → (mid_radius, ``mid``) → (tip, ``tip``).
 
     Used only by :meth:`BladeParams.from_dict` to resample pre-enrichment designs onto the
     current knot stations.
     """
-    mid_radius = HUB_RADIUS_M + 0.5 * L_RIB_M
-    r = min(max(r, HUB_RADIUS_M), RIB_TIP_RADIUS_M)
+    mid_radius = BLADE_ROOT_RADIUS_M + 0.5 * _BLADE_SPAN_M
+    r = min(max(r, BLADE_ROOT_RADIUS_M), RIB_TIP_RADIUS_M)
     if r <= mid_radius:
-        return mid * (r - HUB_RADIUS_M) / (mid_radius - HUB_RADIUS_M)
+        return mid * (r - BLADE_ROOT_RADIUS_M) / (mid_radius - BLADE_ROOT_RADIUS_M)
     t = (r - mid_radius) / (RIB_TIP_RADIUS_M - mid_radius)
     return mid * (1.0 - t) + tip * t
 
@@ -299,8 +343,8 @@ def _catmull_rom(ys: list[float], seg: int, t: float) -> float:
 
 def _meridian_z(knots: Sequence[float], interp: str, r: float) -> float:
     """Meridian height at ``r`` from knots + interp alone (no :class:`BladeParams`)."""
-    r = min(max(r, HUB_RADIUS_M), RIB_TIP_RADIUS_M)
-    xs = [HUB_RADIUS_M, *rib_bow_stations()]
+    r = min(max(r, BLADE_ROOT_RADIUS_M), RIB_TIP_RADIUS_M)
+    xs = [BLADE_ROOT_RADIUS_M, *rib_bow_stations()]
     ys = [0.0, *knots]
     # Locate the segment [i, i+1] containing r (xs is strictly increasing).
     seg = 0
@@ -347,10 +391,14 @@ def rib_width_at(r: float) -> float:
 
 
 def displacement_at(params: BladeParams, r: float, v: float) -> float:
-    """Panel mean-surface offset (from the rib mean surface) at radius ``r`` and
-    tangential ``v`` ∈ [-1, 1]. Bilinear over the offset grid with the two rib edges
-    (v = ±1) pinned to 0, so the panel blends into the frame. This free grid is what
-    lets the optimizer discover camber, a base→tip zigzag, louvers, etc.
+    """Panel mean-surface offset (from the meridian mean surface) at radius ``r`` and
+    tangential ``v`` ∈ [-1, 1]. Bilinear over the offset grid. This free grid is what lets the
+    optimizer discover camber, a base→tip zigzag, louvers, etc.
+
+    **Ribbed** (``uniform=False``): the two rib edges (v = ±1) are pinned to 0 so the panel
+    blends into the frame. **Uniform** (``uniform=True``): there is no rib frame, so the edges
+    are UNPINNED — padded by the nearest interior column instead of 0 — so the no-rib sheet can
+    wave/angle right out to its tangential edges, the same freedom the ribbed panel has inside.
     """
     rows, cols = PANEL_GRID_RADIAL_COUNT, PANEL_GRID_TANGENTIAL_COUNT
     v = min(max(v, -1.0), 1.0)
@@ -358,12 +406,17 @@ def displacement_at(params: BladeParams, r: float, v: float) -> float:
     fr = u * (rows - 1)
     i0 = min(int(fr), rows - 2)
     tr = fr - i0
-    # Tangential stations include the pinned edges: cols + 2 evenly spaced over [-1, 1].
+    # Tangential stations: cols + 2 points evenly spaced over [-1, 1] (interior + two edges).
     s = (v + 1.0) / 2.0 * (cols + 1)
     j0 = min(int(s), cols)
     tt = s - j0
-    top_row = (0.0, *params.panel_offsets_m[i0], 0.0)
-    bot_row = (0.0, *params.panel_offsets_m[i0 + 1], 0.0)
+    ra, rb = params.panel_offsets_m[i0], params.panel_offsets_m[i0 + 1]
+    if params.uniform:
+        top_row = (ra[0], *ra, ra[-1])  # edges follow the nearest interior column (unpinned)
+        bot_row = (rb[0], *rb, rb[-1])
+    else:
+        top_row = (0.0, *ra, 0.0)  # edges pinned to the rib frame
+        bot_row = (0.0, *rb, 0.0)
     top = top_row[j0] * (1.0 - tt) + top_row[j0 + 1] * tt
     bot = bot_row[j0] * (1.0 - tt) + bot_row[j0 + 1] * tt
     return top * (1.0 - tr) + bot * tr
@@ -396,18 +449,47 @@ def panel_thickness_at(params: BladeParams, r: float, v: float) -> float:
 
 
 def _radial_samples() -> list[float]:
-    step = L_RIB_M / (_MARGIN_SAMPLES - 1)
-    return [HUB_RADIUS_M + step * k for k in range(_MARGIN_SAMPLES)]
+    step = _BLADE_SPAN_M / (_MARGIN_SAMPLES - 1)
+    return [BLADE_ROOT_RADIUS_M + step * k for k in range(_MARGIN_SAMPLES)]
+
+
+def blade_z_envelope_m(params: BladeParams) -> float:
+    """Full local material thickness in z, relative to the meridian mean surface (m).
+
+    This is the per-layer footprint that sets the fold pitch (``layer_spacing``). It is the
+    span from the highest top surface to the lowest bottom surface, measured off the meridian:
+
+    - **Ribbed**: the rib rails sit at ``±t_rib/2`` and (by containment) enclose the panel, so
+      the envelope is the thickest rib. Panel nodes are included defensively.
+    - **Uniform**: there are no rails, so the envelope is the panel's own top-to-bottom spread
+      ``max(offset + t/2) − min(offset − t/2)`` — a wavier / thicker no-rib sheet folds fatter,
+      which is exactly the pressure that keeps design B nesting under the stack-height cap.
+
+    Panel-aware (was rib-only): design B (no ribs) now folds correctly.
+    """
+    tops: list[float] = []
+    bots: list[float] = []
+    for off_row, th_row in zip(params.panel_offsets_m, params.panel_thickness_m, strict=True):
+        for off, thick in zip(off_row, th_row, strict=True):
+            tops.append(off + thick / 2.0)
+            bots.append(off - thick / 2.0)
+    if not params.uniform:
+        rib_max = max(params.t_rib_hub_m, params.t_rib_tip_m)
+        tops.append(rib_max / 2.0)
+        bots.append(-rib_max / 2.0)
+    return max(tops) - min(bots)
 
 
 def layer_spacing_m(params: BladeParams) -> float:
-    """Z-stack layer spacing set by the boss = thickest rib + clearance.
+    """Z-stack layer spacing = the blade's local material envelope + clearance.
 
-    The fan folds by z-stacking (a deck), so adjacent blades sit one layer apart on
-    the pin. The spacing must clear the thickest rib section (``t_rib`` is linear, so
-    the max is at an endpoint) at every radius, since the blades are rigid.
+    The fan folds by z-stacking (a deck), so adjacent blades sit one layer apart on the pin.
+    The spacing must clear the thickest section at every radius. This is
+    :func:`blade_z_envelope_m` — panel-aware, so it equals the thickest rib for a ribbed blade
+    and the panel's own thickness spread for a uniform no-rib blade. The boss is one layer tall,
+    so boss height = ``max(rib, panel) + clearance`` too.
     """
-    return max(params.t_rib_hub_m, params.t_rib_tip_m) + FOLD_CLEARANCE_M
+    return blade_z_envelope_m(params) + FOLD_CLEARANCE_M
 
 
 def folded_rib_bow_extent_m(params: BladeParams) -> float:
@@ -423,16 +505,14 @@ def folded_stack_height_m(params: BladeParams) -> float:
     """Folded-bundle z-extent, **bow-aware**.
 
     Nested dishes: ``(N−1)·layer_spacing`` between blade bases + the top blade's full
-    footprint ``bow_extent + t_rib_max``. The old proxy was ``N·layer_spacing`` and ignored
-    ``bow_extent`` entirely, so "feasible by construction" was FALSE for bowed ribs — a deep-
-    bow design could exceed the real fold cap and be unprintable. The CAD swept-volume boolean
-    remains the authoritative no-collision check.
+    footprint ``bow_extent + envelope``. The top-blade footprint is the panel-aware
+    :func:`blade_z_envelope_m` (was rib-only ``t_rib_max``), so a uniform no-rib blade's own
+    thickness spread counts. The CAD swept-volume boolean remains the authoritative check.
     """
-    t_rib_max = max(params.t_rib_hub_m, params.t_rib_tip_m)
     return (
         (params.blade_count - 1) * layer_spacing_m(params)
         + folded_rib_bow_extent_m(params)
-        + t_rib_max
+        + blade_z_envelope_m(params)
     )
 
 
@@ -448,11 +528,17 @@ def fold_margin_m(params: BladeParams) -> float:
 def containment_margin_m(params: BladeParams) -> float:
     """Min over grid nodes of ``(t_rib(r) − panel_nom)/2 − |offset|``. ≥ 0 ⇒ contained.
 
-    The cambered/undulating panel membrane must fit inside the rib thickness envelope
-    so it can never poke out and strike a neighbour (§4.1 rule 2). Bilinear extrema sit
-    at the control nodes, so checking the nodes is exact. Couples panel relief to rib
+    **Ribbed**: the cambered/undulating panel membrane must fit inside the rib thickness
+    envelope so it can never poke out and strike a neighbour (§4.1 rule 2). Bilinear extrema
+    sit at the control nodes, so checking the nodes is exact. Couples panel relief to rib
     thickness: bigger undulations need a thicker rib — traded against nesting + mass.
+
+    **Uniform**: there is no rib frame to contain the panel within — the sheet *is* the blade.
+    Its nesting is governed by the fold stack-height constraint instead, so this returns
+    :func:`fold_margin_m` (the panel-nesting fold margin) rather than a rib-containment margin.
     """
+    if params.uniform:
+        return fold_margin_m(params)
     margins: list[float] = []
     for r, off_row, th_row in zip(
         panel_radial_stations(), params.panel_offsets_m, params.panel_thickness_m
@@ -464,24 +550,22 @@ def containment_margin_m(params: BladeParams) -> float:
 
 
 def estimate_mass_kg(params: BladeParams) -> float:
-    """Coarse assembly-mass estimate (kg): (2 ribs + panel + boss) × blade_count × ρ_PETG.
+    """Coarse assembly-mass estimate (kg): (material + boss) × blade_count × ρ_PETG.
 
-    A fast analytic proxy for the mass cap in-loop; the meshed CAD solid is
-    authoritative. Panel tangential width is one blade slot minus its two edge ribs;
-    the small extra area from panel undulation is neglected in this proxy.
+    A fast analytic proxy for the mass cap in-loop; the meshed CAD solid is authoritative.
+    Tangential width is the trapezoid ``2·half_width(r)`` (NOT the retired ``r·angle`` sector):
+    **ribbed** carries two edge rails + the interior panel; **uniform** carries the full-width
+    sheet with no rails. The small extra area from panel undulation is neglected in this proxy.
 
     Integration is **trapezoidal** (endpoints half-weighted) over the ``_MARGIN_SAMPLES``
-    stations — the earlier left-Riemann sum weighted all 21 samples by a full ``dr`` over a
-    20-interval span, a systematic +5% overcount. The rib/panel ride the **bowed** meridian,
-    so each station's radial length element is scaled by the local arc factor
-    ``ds/dr = √(1 + (dz/dr)²)`` — a big bow now correctly costs mass.
+    stations. The material rides the **bowed** meridian, so each station's radial length element
+    is scaled by the local arc factor ``ds/dr = √(1 + (dz/dr)²)`` — a big bow costs mass.
     """
     samples = _radial_samples()
     n = len(samples)
-    dr = L_RIB_M / (n - 1)
+    dr = _BLADE_SPAN_M / (n - 1)
     z = [rib_z_at(params, r) for r in samples]
-    rib_vol = 0.0
-    panel_vol = 0.0
+    material_vol = 0.0
     for k, r in enumerate(samples):
         trap = 0.5 if k in (0, n - 1) else 1.0  # trapezoidal endpoint weight
         if k == 0:
@@ -490,12 +574,16 @@ def estimate_mass_kg(params: BladeParams) -> float:
             arc = math.hypot(dr, z[-1] - z[-2]) / dr
         else:
             arc = math.hypot(2.0 * dr, z[k + 1] - z[k - 1]) / (2.0 * dr)
-        w_rib = rib_width_at(r)
-        rib_vol += trap * 2.0 * w_rib * rib_thickness_at(params, r) * arc * dr
-        w_panel = max(0.0, r * INTER_BLADE_ANGLE_RAD - 2.0 * w_rib)
-        panel_vol += trap * w_panel * panel_thickness_at(params, r, 0.0) * arc * dr
-    boss_vol = math.pi * PIVOT_BOSS_RADIUS_M**2 * params.t_rib_hub_m
-    vol_per_blade = rib_vol + panel_vol + boss_vol
+        full_width = 2.0 * half_width_at(r)
+        if params.uniform:
+            material_vol += trap * full_width * panel_thickness_at(params, r, 0.0) * arc * dr
+        else:
+            w_rib = rib_width_at(r)
+            material_vol += trap * 2.0 * w_rib * rib_thickness_at(params, r) * arc * dr
+            w_panel = max(0.0, full_width - 2.0 * w_rib)
+            material_vol += trap * w_panel * panel_thickness_at(params, r, 0.0) * arc * dr
+    boss_vol = math.pi * PIVOT_BOSS_RADIUS_M**2 * layer_spacing_m(params)
+    vol_per_blade = material_vol + boss_vol
     return vol_per_blade * params.blade_count * RHO_PETG_KG_PER_M3
 
 

@@ -6,28 +6,32 @@ to a **fold- and containment-feasible** blade, so the BO searches a space where 
 designs are valid instead of penalizing a mostly-infeasible space (uniform sampling of
 raw physical thickness/offsets is almost never feasible). Concretely:
 
-- **rib thickness** is a knob in ``[0, 1]`` mapped to ``[T_MIN, cap(blade_count)]`` where
-  ``cap`` is the thickest rib that still folds under the stack-height limit for that blade
-  count — so the fold constraint holds by construction;
-- **panel thickness** is a knob mapped to ``[P_MIN, min(rib)]`` — so ``panel ≤ rib`` always;
+- **rib thickness** is a knob in ``[0, 1]`` mapped to ``[T_MIN, fold_cap(blade_count, bow)]``
+  where ``fold_cap`` is the thickest per-layer z-envelope that still folds under the stack-
+  height limit for that blade count — so the fold constraint holds by construction;
+- **panel thickness** is a knob mapped to ``[P_MIN, min(rib)]`` — so ``panel ≤ rib`` always
+  (ribbed); the **uniform** (no-rib) family instead bounds each node's ``|offset| + t/2`` by
+  half the fold envelope so the wavy sheet nests by construction;
 - **panel offsets** are knobs in ``[-1, 1]`` scaled by the *local* containable envelope
-  ``(t_rib(r) − panel)/2`` — so the panel never pokes past the rib.
+  ``(t_rib(r) − panel)/2`` (ribbed) or the nesting envelope (uniform).
 
-``rib_bow`` (unconstrained) and ``blade_count`` (categorical) stay direct. Mass is not
-forced here (it depends on the whole design); it stays a soft check in the objective, and
-is rarely violated once ribs are fold-thinned. ``decode(encode(p))`` round-trips any
-feasible ``p``.
+``rib_bow`` (unconstrained) and ``blade_count`` / ``rib_mode`` (categorical) stay direct. Mass
+is **not** forced here — it depends on the whole design and stays a purely soft check in the
+objective. (The fold cap is intentionally mass-free: at the 22 cm trapezoid a mass ceiling
+would collapse the rib range to a point for 10–12 blades. Mass-cap reconciliation is a
+separate operator decision; see ``MAX_TOTAL_MASS_KG`` / audit N8.) ``decode(encode(p))``
+round-trips any feasible ``p``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any
 
 import numpy as np
 
 from fanopt.geometry.blade import (
+    BLADE_ROOT_RADIUS_M,
     FOLD_CLEARANCE_M,
     MAX_FOLDED_STACK_HEIGHT_M,
     PANEL_GRID_RADIAL_COUNT,
@@ -36,18 +40,20 @@ from fanopt.geometry.blade import (
     RIB_BOW_INTERP_MODES,
     RIB_BOW_KNOT_COUNT,
     RIB_BOW_RANGE_M,
+    RIB_MODES,
     RIB_THICKNESS_RANGE_M,
+    RIB_TIP_RADIUS_M,
     BladeParams,
-    estimate_mass_kg,
     panel_radial_stations,
     rib_meridian_extent_m,
 )
-from fanopt.geometry.schema import BLADE_COUNTS, HUB_RADIUS_M, L_RIB_M, MAX_TOTAL_MASS_KG
+from fanopt.geometry.schema import BLADE_COUNTS
 
 __all__ = [
     "Var",
     "SEARCH_SPACE",
     "N_DIMS",
+    "fold_envelope_cap_m",
     "rib_thickness_cap_m",
     "encode",
     "decode",
@@ -79,63 +85,36 @@ class Var:
             raise ValueError(f"var {self.name!r} needs high > low; got [{self.low}, {self.high}]")
 
 
-@lru_cache(maxsize=None)
-def _mass_thickness_cap_m(blade_count: int) -> float:
-    """Max uniform rib thickness (m) keeping the mass proxy ≤ the cap for this blade count.
-
-    Evaluated at the heaviest panel a given rib allows (``min(rib, P_HI)``, flat), so any
-    lighter panel is safe too. Binary search on the monotone mass–thickness relation.
-    """
-    lo, hi = RIB_THICKNESS_RANGE_M
-    flat = tuple((0.0,) * PANEL_GRID_TANGENTIAL_COUNT for _ in range(PANEL_GRID_RADIAL_COUNT))
-
-    def mass(t: float) -> float:
-        heavy = tuple((min(t, _P_HI),) * PANEL_GRID_TANGENTIAL_COUNT for _ in range(PANEL_GRID_RADIAL_COUNT))
-        return estimate_mass_kg(
-            BladeParams(
-                blade_count=blade_count,
-                rib_bow_knots_m=(0.0,) * RIB_BOW_KNOT_COUNT, rib_bow_interp="linear",
-                t_rib_hub_m=t, t_rib_tip_m=t, panel_offsets_m=flat,
-                panel_thickness_m=heavy,
-            )
-        )
-
-    if mass(lo) > MAX_TOTAL_MASS_KG:
-        return lo  # even the thinnest rib is over (this blade count barely fits)
-    if mass(hi) <= MAX_TOTAL_MASS_KG:
-        return hi
-    a, b = lo, hi
-    for _ in range(28):
-        m = 0.5 * (a + b)
-        if mass(m) <= MAX_TOTAL_MASS_KG:
-            a = m
-        else:
-            b = m
-    return a
-
-
 # Upper bound on the rib meridian's out-of-plane extent for any codec-emittable design. Uniform
 # Catmull-Rom overshoots the knot hull by up to ~25% of the knot span (empirically 1.25× at the
 # range corners); 1.3× is a safe upper bound for the bow-blind (bow_extent_m=None) fold cap.
 _MAX_MERIDIAN_EXTENT_M: float = 1.3 * (RIB_BOW_RANGE_M[1] - RIB_BOW_RANGE_M[0])
 
 
-def rib_thickness_cap_m(blade_count: int, bow_extent_m: float | None = None) -> float:
-    """Thickest rib (m) that both **folds** and keeps **mass ≤ cap** for ``blade_count``.
+def fold_envelope_cap_m(blade_count: int, bow_extent_m: float | None = None) -> float:
+    """Thickest **z-envelope** (m) per blade layer that still folds under the stack-height cap.
 
-    ``min`` of the **bow-aware** fold cap, the mass cap, and the rib range max — so more
-    blades ⇒ thinner ribs, and the design is fold + mass feasible by construction. Fold model
-    (matches :func:`fanopt.geometry.blade.folded_stack_height_m`):
-    ``(N−1)·(t+c) + bow_extent + t ≤ MAX`` ⇒ ``t ≤ (MAX − (N−1)·c − bow) / N``. ``decode``
-    passes the design's EXACT ``bow_extent_m`` (incl. Catmull-Rom overshoot) so the cap is
-    tight and feasible-by-construction; ``None`` falls back to ``_MAX_MERIDIAN_EXTENT_M`` — a
-    true UPPER bound on the extent (so the cap is a genuine fold-safe lower bound, since it
-    decreases in bow). The nominal knot span alone is NOT safe: a smooth meridian overshoots it.
+    The panel-aware per-layer footprint (:func:`fanopt.geometry.blade.blade_z_envelope_m`) that
+    both the thickest rib (ribbed) and the panel's own thickness+wave spread (uniform) must stay
+    under. Fold model (matches :func:`fanopt.geometry.blade.folded_stack_height_m`):
+    ``(N−1)·(e+c) + bow + e ≤ MAX`` ⇒ ``e ≤ (MAX − (N−1)·c − bow) / N``. ``decode`` passes the
+    design's EXACT ``bow_extent_m`` (incl. Catmull-Rom overshoot) so the cap is tight and
+    feasible-by-construction; ``None`` falls back to ``_MAX_MERIDIAN_EXTENT_M`` — a true UPPER
+    bound on the extent (so the cap is a genuine fold-safe lower bound, since it decreases in bow).
+    """
+    bow = _MAX_MERIDIAN_EXTENT_M if bow_extent_m is None else bow_extent_m
+    return (MAX_FOLDED_STACK_HEIGHT_M - (blade_count - 1) * FOLD_CLEARANCE_M - bow) / blade_count
+
+
+def rib_thickness_cap_m(blade_count: int, bow_extent_m: float | None = None) -> float:
+    """Thickest rib (m) that **folds** under the stack-height cap for ``blade_count``.
+
+    The bow-aware :func:`fold_envelope_cap_m` clamped to the rib range — so more blades ⇒ thinner
+    ribs, and a ribbed design is fold-feasible by construction. Mass is deliberately NOT a factor
+    (a soft objective check instead; see the module docstring).
     """
     lo, hi = RIB_THICKNESS_RANGE_M
-    bow = _MAX_MERIDIAN_EXTENT_M if bow_extent_m is None else bow_extent_m
-    fold_cap = (MAX_FOLDED_STACK_HEIGHT_M - (blade_count - 1) * FOLD_CLEARANCE_M - bow) / blade_count
-    cap = min(fold_cap, _mass_thickness_cap_m(blade_count), hi)
+    cap = min(fold_envelope_cap_m(blade_count, bow_extent_m), hi)
     return min(max(cap, lo), hi)
 
 
@@ -144,6 +123,9 @@ def _build_search_space() -> tuple[Var, ...]:
     vars_.append(
         Var("rib_bow_interp", 0.0, float(len(RIB_BOW_INTERP_MODES)),
             kind="categorical", choices=RIB_BOW_INTERP_MODES)
+    )
+    vars_.append(
+        Var("rib_mode", 0.0, float(len(RIB_MODES)), kind="categorical", choices=RIB_MODES)
     )
     vars_ += [
         Var("t_rib_hub_k", 0.0, 1.0),  # knob → [T_MIN, cap(blade_count)]
@@ -167,6 +149,9 @@ N_DIMS: int = len(SEARCH_SPACE)
 _IDX = {v.name: i for i, v in enumerate(SEARCH_SPACE)}
 _T_LO = RIB_THICKNESS_RANGE_M[0]
 _P_LO, _P_HI = PANEL_THICKNESS_NOM_RANGE_M
+# Ribbed rib floor: a rib must be at least as thick as the panel floor to contain a panel
+# (panel ≥ P_LO), so the ribbed rib range starts at max(rib_floor, panel_floor).
+_T_LO_RIBBED = max(_T_LO, _P_LO)
 
 
 def bounds() -> tuple[np.ndarray, np.ndarray]:
@@ -199,11 +184,29 @@ def _c01(x: float) -> float:
 
 
 def _radial_fracs() -> list[float]:
-    return [(r - HUB_RADIUS_M) / L_RIB_M for r in panel_radial_stations()]
+    span = RIB_TIP_RADIUS_M - BLADE_ROOT_RADIUS_M
+    return [(r - BLADE_ROOT_RADIUS_M) / span for r in panel_radial_stations()]
+
+
+def _uniform_t_rib_m(thicks: tuple[tuple[float, ...], ...]) -> float:
+    """Rib-thickness field value stored on a uniform (no-rib) design.
+
+    Uniform blades have no rib rails, so ``t_rib`` is unused by the geometry — but it is a
+    ``BladeParams`` field, so it must be set deterministically from the panel (the sheet's own
+    thickness) for ``decode``/``encode`` to round-trip. Clamped into the valid rib range.
+    """
+    t = max(max(row) for row in thicks)
+    return min(max(t, RIB_THICKNESS_RANGE_M[0]), RIB_THICKNESS_RANGE_M[1])
 
 
 def decode(vec: np.ndarray) -> BladeParams:
-    """Vector → **feasible** :class:`BladeParams` (fold + containment by construction)."""
+    """Vector → **feasible** :class:`BladeParams` (fold + containment/nesting by construction).
+
+    Ribbed and uniform (no-rib) designs are both feasible-by-construction: ribbed pins the panel
+    inside the rib envelope; uniform bounds each node's ``|offset| + t/2`` by half the fold
+    envelope cap so the wavy sheet still nests under the stack-height limit — the same hard fold
+    constraint, letting design B wave as freely as design A.
+    """
     arr = np.asarray(vec, dtype=float)
     if arr.shape != (N_DIMS,):
         raise ValueError(f"vector must have shape ({N_DIMS},); got {arr.shape}")
@@ -211,7 +214,11 @@ def decode(vec: np.ndarray) -> BladeParams:
     blade_count: int = _decode_categorical(
         float(arr[_IDX["blade_count"]]), SEARCH_SPACE[_IDX["blade_count"]]
     )
-    # Bow decoded first so the fold cap below uses the design's EXACT bow extent (B4).
+    uniform = (
+        _decode_categorical(float(arr[_IDX["rib_mode"]]), SEARCH_SPACE[_IDX["rib_mode"]])
+        == "uniform"
+    )
+    # Bow decoded first so the fold cap below uses the design's EXACT bow extent.
     interp = _decode_categorical(
         float(arr[_IDX["rib_bow_interp"]]), SEARCH_SPACE[_IDX["rib_bow_interp"]]
     )
@@ -219,20 +226,47 @@ def decode(vec: np.ndarray) -> BladeParams:
         min(max(float(arr[_IDX[f"rib_bow_k{i}"]]), RIB_BOW_RANGE_M[0]), RIB_BOW_RANGE_M[1])
         for i in range(RIB_BOW_KNOT_COUNT)
     )
-    # Rib thickness: knob → [T_MIN, bow-aware fold cap].
-    t_cap = rib_thickness_cap_m(blade_count, rib_meridian_extent_m(knots, interp))
-    t_hub = _T_LO + _c01(float(arr[_IDX["t_rib_hub_k"]])) * (t_cap - _T_LO)
-    t_tip = _T_LO + _c01(float(arr[_IDX["t_rib_tip_k"]])) * (t_cap - _T_LO)
+    e_cap = fold_envelope_cap_m(blade_count, rib_meridian_extent_m(knots, interp))
 
-    # Per node: thickness knob → [P_MIN, min(t_rib(r), P_HI)]; offset knob → fraction of the
-    # local containable envelope (t_rib(r) − thickness)/2 ≥ 0. Two free grids ⇒ independent faces.
     offsets: list[tuple[float, ...]] = []
     thicks: list[tuple[float, ...]] = []
+
+    if uniform:
+        # No-rib sheet: thickness knob → [P_MIN, min(P_HI, e_cap)] (sheet fits its own layer);
+        # offset knob → fraction of the nesting-containable half-envelope (e_cap − t)/2, so each
+        # node's |offset| + t/2 ≤ e_cap/2 ⇒ the whole sheet's z-spread ≤ e_cap ⇒ nests by
+        # construction. The tangential edges are UNPINNED in the geometry, so the sheet waves free.
+        p_hi = max(min(_P_HI, e_cap), _P_LO)
+        for _i in range(PANEL_GRID_RADIAL_COUNT):
+            off_row: list[float] = []
+            th_row: list[float] = []
+            for j in range(PANEL_GRID_TANGENTIAL_COUNT):
+                thick = _P_LO + _c01(float(arr[_IDX[f"panel_thick_{_i}_{j}"]])) * (p_hi - _P_LO)
+                allow = max((e_cap - thick) / 2.0, 0.0)
+                off = min(max(float(arr[_IDX[f"panel_z_{_i}_{j}"]]), -1.0), 1.0) * allow
+                off_row.append(off)
+                th_row.append(thick)
+            offsets.append(tuple(off_row))
+            thicks.append(tuple(th_row))
+        thicks_t = tuple(thicks)
+        t_rib = _uniform_t_rib_m(thicks_t)
+        return BladeParams(
+            blade_count=blade_count, rib_bow_knots_m=knots, rib_bow_interp=interp,
+            t_rib_hub_m=t_rib, t_rib_tip_m=t_rib,
+            panel_offsets_m=tuple(offsets), panel_thickness_m=thicks_t, uniform=True,
+        )
+
+    # Ribbed: rib thickness knob → [T_LO_RIBBED, bow-aware fold cap] (rib ≥ panel floor so it can
+    # contain a panel); per node: thickness → [P_MIN, min(t_rib(r), P_HI)]; offset → fraction of
+    # the local containable envelope (t_rib(r) − thickness)/2 ≥ 0. Two free grids ⇒ independent faces.
+    t_cap = max(rib_thickness_cap_m(blade_count, rib_meridian_extent_m(knots, interp)), _T_LO_RIBBED)
+    t_hub = _T_LO_RIBBED + _c01(float(arr[_IDX["t_rib_hub_k"]])) * (t_cap - _T_LO_RIBBED)
+    t_tip = _T_LO_RIBBED + _c01(float(arr[_IDX["t_rib_tip_k"]])) * (t_cap - _T_LO_RIBBED)
     for i, u in enumerate(_radial_fracs()):
         t_rib_i = t_hub * (1.0 - u) + t_tip * u
         p_hi_i = max(min(t_rib_i, _P_HI), _P_LO)
-        off_row: list[float] = []
-        th_row: list[float] = []
+        off_row = []
+        th_row = []
         for j in range(PANEL_GRID_TANGENTIAL_COUNT):
             thick = _P_LO + _c01(float(arr[_IDX[f"panel_thick_{i}_{j}"]])) * (p_hi_i - _P_LO)
             allow = max((t_rib_i - thick) / 2.0, 0.0)
@@ -243,13 +277,9 @@ def decode(vec: np.ndarray) -> BladeParams:
         thicks.append(tuple(th_row))
 
     return BladeParams(
-        blade_count=blade_count,
-        rib_bow_knots_m=knots,
-        rib_bow_interp=interp,
-        t_rib_hub_m=t_hub,
-        t_rib_tip_m=t_tip,
-        panel_offsets_m=tuple(offsets),
-        panel_thickness_m=tuple(thicks),
+        blade_count=blade_count, rib_bow_knots_m=knots, rib_bow_interp=interp,
+        t_rib_hub_m=t_hub, t_rib_tip_m=t_tip,
+        panel_offsets_m=tuple(offsets), panel_thickness_m=tuple(thicks), uniform=False,
     )
 
 
@@ -259,14 +289,34 @@ def encode(params: BladeParams) -> np.ndarray:
     for i in range(RIB_BOW_KNOT_COUNT):
         out[_IDX[f"rib_bow_k{i}"]] = params.rib_bow_knots_m[i]
     out[_IDX["rib_bow_interp"]] = float(RIB_BOW_INTERP_MODES.index(params.rib_bow_interp)) + 0.5
+    out[_IDX["rib_mode"]] = float(RIB_MODES.index("uniform" if params.uniform else "ribbed")) + 0.5
+    out[_IDX["blade_count"]] = float(BLADE_COUNTS.index(params.blade_count)) + 0.5
 
-    # Same bow-aware cap decode used, so encode(decode(v)) round-trips the thickness knob.
-    t_cap = rib_thickness_cap_m(
+    e_cap = fold_envelope_cap_m(
         params.blade_count, rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
     )
-    t_span = t_cap - _T_LO
-    out[_IDX["t_rib_hub_k"]] = _c01((params.t_rib_hub_m - _T_LO) / t_span) if t_span > 0 else 0.0
-    out[_IDX["t_rib_tip_k"]] = _c01((params.t_rib_tip_m - _T_LO) / t_span) if t_span > 0 else 0.0
+
+    if params.uniform:
+        # t_rib knobs are dead in uniform mode (decode ignores them and recomputes t_rib from
+        # the panel), so leave them at 0. Invert the same per-node maps decode used.
+        p_hi = max(min(_P_HI, e_cap), _P_LO)
+        p_span = p_hi - _P_LO
+        for i in range(PANEL_GRID_RADIAL_COUNT):
+            for j in range(PANEL_GRID_TANGENTIAL_COUNT):
+                thick = params.panel_thickness_m[i][j]
+                out[_IDX[f"panel_thick_{i}_{j}"]] = _c01((thick - _P_LO) / p_span) if p_span > 0 else 0.0
+                allow = max((e_cap - thick) / 2.0, 0.0)
+                frac = params.panel_offsets_m[i][j] / allow if allow > 0 else 0.0
+                out[_IDX[f"panel_z_{i}_{j}"]] = min(max(frac, -1.0), 1.0)
+        return out
+
+    # Same bow-aware cap decode used, so encode(decode(v)) round-trips the thickness knob.
+    t_cap = max(rib_thickness_cap_m(
+        params.blade_count, rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
+    ), _T_LO_RIBBED)
+    t_span = t_cap - _T_LO_RIBBED
+    out[_IDX["t_rib_hub_k"]] = _c01((params.t_rib_hub_m - _T_LO_RIBBED) / t_span) if t_span > 0 else 0.0
+    out[_IDX["t_rib_tip_k"]] = _c01((params.t_rib_tip_m - _T_LO_RIBBED) / t_span) if t_span > 0 else 0.0
 
     for i, u in enumerate(_radial_fracs()):
         t_rib_i = params.t_rib_hub_m * (1.0 - u) + params.t_rib_tip_m * u
@@ -281,5 +331,4 @@ def encode(params: BladeParams) -> np.ndarray:
             frac = params.panel_offsets_m[i][j] / allow if allow > 0 else 0.0
             out[_IDX[f"panel_z_{i}_{j}"]] = min(max(frac, -1.0), 1.0)
 
-    out[_IDX["blade_count"]] = float(BLADE_COUNTS.index(params.blade_count)) + 0.5
     return out

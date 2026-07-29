@@ -103,8 +103,8 @@ def sobol_doe(n: int, seed: int = 0) -> np.ndarray:
 
 
 def _blade(
-    grid, *, blade_count=10, t_hub=0.0025, t_tip=0.0035, panel=0.0015, thick_grid=None,
-    bow_knots=(0.005, 0.010, 0.013, 0.017, 0.020), interp="linear",
+    grid, *, blade_count=10, t_hub=0.005, t_tip=0.006, panel=0.003, thick_grid=None,
+    bow_knots=(0.001, 0.002, 0.003, 0.0045, 0.006), interp="linear", uniform=False,
 ) -> BladeParams:
     tg = thick_grid or tuple((panel, panel, panel) for _ in range(4))
     return BladeParams(
@@ -115,6 +115,7 @@ def _blade(
         t_rib_tip_m=t_tip,
         panel_offsets_m=grid,
         panel_thickness_m=tg,
+        uniform=uniform,
     )
 
 
@@ -122,29 +123,34 @@ def diverse_fallback_designs() -> list[np.ndarray]:
     """Structurally-diverse seed vectors for the BO-stall fallback.
 
     Spans the reachable aero archetypes — flat baseline, cambered, base→tip zigzag, thin,
-    thick — across blade counts, so a stalled optimizer explores rather than exploits.
+    thick, and the no-rib uniform family (design B) — across blade counts, so a stalled
+    optimizer explores rather than exploits. All ribbed archetypes stay panel-contained (panel
+    ≥ 3 mm floor, ribs ≥ panel); meridian bows are kept gentle so the trapezoid still nests.
     """
     flat = tuple((0.0, 0.0, 0.0) for _ in range(4))
+    # Ribbed tangential relief hides inside the rib slab, so keep offsets within (rib−panel)/2.
     camber = ((0.0004, 0.0009, 0.0004), (0.0005, 0.0011, 0.0005),
               (0.0006, 0.0013, 0.0006), (0.0007, 0.0015, 0.0007))
     zig = ((0.0008, -0.0008, 0.0008), (0.0009, -0.0009, 0.0009),
            (0.0010, -0.0010, 0.0010), (0.0011, -0.0011, 0.0011))
-    # Radial meridian archetypes (the fold-free large-amplitude shape lever): a deep smooth
-    # dome and a sharp radial pleat/zigzag — the shapes the panel grid can't reach.
-    dome = (0.008, 0.016, 0.022, 0.026, 0.028)
-    pleat = (0.006, 0.024, 0.008, 0.026, 0.010)
+    # Radial meridian archetypes (the fold-safe large-amplitude shape lever in the trapezoid):
+    # a smooth dome and a radial pleat — kept gentle so they nest under the fold.
+    dome = (0.002, 0.004, 0.006, 0.007, 0.008)
+    pleat = (0.003, 0.008, 0.004, 0.008, 0.005)
     # Thickness archetype: thick centre, thin edges = a lens/airfoil ")(" section (both faces
     # bulge) — reachable now that panel thickness is a free grid, not a scalar.
-    airfoil = tuple((0.0013, 0.0026, 0.0013) for _ in range(4))
+    airfoil = tuple((0.003, 0.005, 0.003) for _ in range(4))
     designs = [
         _blade(flat, blade_count=10),
         _blade(camber, blade_count=10),
-        _blade(zig, blade_count=8, t_hub=0.003, t_tip=0.004),
-        _blade(flat, blade_count=8, panel=0.0012),  # thin/light
-        _blade(camber, blade_count=12, t_hub=0.003, t_tip=0.0045),  # thick/stiff
-        _blade(flat, blade_count=8, bow_knots=dome, interp="smooth"),  # deep smooth cup
+        _blade(zig, blade_count=8, t_hub=0.005, t_tip=0.006),
+        _blade(flat, blade_count=8, panel=0.003),  # thin/light (panel floor)
+        _blade(camber, blade_count=12, t_hub=0.005, t_tip=0.007),  # thick/stiff
+        _blade(flat, blade_count=8, bow_knots=dome, interp="smooth"),  # radial smooth cup
         _blade(flat, blade_count=8, bow_knots=pleat, interp="linear"),  # radial pleat/zigzag
-        _blade(flat, blade_count=8, t_hub=0.003, t_tip=0.004, thick_grid=airfoil),  # ")(" section
+        _blade(flat, blade_count=8, t_hub=0.006, t_tip=0.006, thick_grid=airfoil),  # ")(" section
+        # Design B: a no-rib uniform sheet with radial camber (edges unpinned).
+        _blade(flat, blade_count=8, panel=0.0035, bow_knots=dome, interp="smooth", uniform=True),
     ]
     return [encode(p) for p in designs]
 

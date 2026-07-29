@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from fanopt.geometry.blade import (
+    BLADE_ROOT_RADIUS_M,
     FOLD_CLEARANCE_M,
     MAX_FOLDED_STACK_HEIGHT_M,
     PANEL_GRID_RADIAL_COUNT,
@@ -14,7 +15,10 @@ from fanopt.geometry.blade import (
     RIB_BOW_RANGE_M,
     RIB_THICKNESS_RANGE_M,
     RIB_TIP_RADIUS_M,
+    ROOT_HALF_WIDTH_M,
+    TIP_HALF_WIDTH_M,
     BladeParams,
+    blade_z_envelope_m,
     folded_rib_bow_extent_m,
     containment_margin_m,
     displacement_at,
@@ -22,6 +26,7 @@ from fanopt.geometry.blade import (
     feasible,
     fold_margin_m,
     folded_stack_height_m,
+    half_width_at,
     layer_spacing_m,
     mass_margin_kg,
     panel_radial_stations,
@@ -31,29 +36,48 @@ from fanopt.geometry.blade import (
     rib_z_at,
 )
 from fanopt.geometry.schema import (
-    HUB_RADIUS_M,
+    PIVOT_BOSS_OD_M,
     RIB_BASE_WIDTH_M,
     RIB_TIP_WIDTH_M,
 )
 
+# Panel floor is now 3 mm; ribs must be ≥ panel to contain it. Offsets stay inside the
+# local containable envelope (t_rib − panel)/2.
 _SAMPLE_GRID = (
     (0.0003, 0.0005, 0.0003),
     (0.0004, 0.0006, 0.0004),
     (0.0005, 0.0007, 0.0005),
     (0.0006, 0.0008, 0.0006),
 )
+_P3 = tuple((0.003, 0.003, 0.003) for _ in range(4))
 
 
 def _sample(blade_count: int = 8) -> BladeParams:
-    """A feasible lean blade (all three constraint proxies satisfied)."""
+    """A feasible ribbed blade (all constraint proxies satisfied)."""
     return BladeParams(
         blade_count=blade_count,
         rib_bow_knots_m=(0.005, 0.010, 0.013, 0.017, 0.020),
         rib_bow_interp="linear",
-        t_rib_hub_m=0.0025,
-        t_rib_tip_m=0.0035,
+        t_rib_hub_m=0.005,
+        t_rib_tip_m=0.006,
         panel_offsets_m=_SAMPLE_GRID,
-        panel_thickness_m=((0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013), (0.0013, 0.0013, 0.0013)),
+        panel_thickness_m=_P3,
+        uniform=False,
+    )
+
+
+def _uniform_sample(blade_count: int = 8) -> BladeParams:
+    """A feasible uniform (no-rib) blade — a single sheet that waves and nests via the fold."""
+    off = tuple((0.001, 0.0018, 0.001) for _ in range(4))
+    return BladeParams(
+        blade_count=blade_count,
+        rib_bow_knots_m=(0.005, 0.010, 0.013, 0.017, 0.020),
+        rib_bow_interp="linear",
+        t_rib_hub_m=0.0035,
+        t_rib_tip_m=0.0035,
+        panel_offsets_m=off,
+        panel_thickness_m=tuple((0.0035, 0.0035, 0.0035) for _ in range(4)),
+        uniform=True,
     )
 
 
@@ -151,8 +175,8 @@ def test_to_from_dict_roundtrip():
 # --- rib meridian + thickness + width ---------------------------------------
 
 
-def test_rib_z_zero_at_hub():
-    assert rib_z_at(_sample(), HUB_RADIUS_M) == pytest.approx(0.0)
+def test_rib_z_zero_at_root():
+    assert rib_z_at(_sample(), BLADE_ROOT_RADIUS_M) == pytest.approx(0.0)
 
 
 def test_rib_z_hits_each_knot_at_its_station_linear():
@@ -182,13 +206,34 @@ def test_rib_z_linear_midpoint_between_two_knots():
 
 def test_rib_thickness_endpoints():
     p = _sample()
-    assert rib_thickness_at(p, HUB_RADIUS_M) == pytest.approx(p.t_rib_hub_m)
+    assert rib_thickness_at(p, BLADE_ROOT_RADIUS_M) == pytest.approx(p.t_rib_hub_m)
     assert rib_thickness_at(p, RIB_TIP_RADIUS_M) == pytest.approx(p.t_rib_tip_m)
 
 
 def test_rib_width_endpoints():
-    assert rib_width_at(HUB_RADIUS_M) == pytest.approx(RIB_BASE_WIDTH_M)
+    assert rib_width_at(BLADE_ROOT_RADIUS_M) == pytest.approx(RIB_BASE_WIDTH_M)
     assert rib_width_at(RIB_TIP_RADIUS_M) == pytest.approx(RIB_TIP_WIDTH_M)
+
+
+# --- trapezoid planform ------------------------------------------------------
+
+
+def test_blade_length_is_220_mm():
+    assert RIB_TIP_RADIUS_M == pytest.approx(0.220)
+
+
+def test_root_width_equals_boss_diameter():
+    # Root width = 12 mm = boss diameter, so the root unions with the boss into one solid.
+    assert 2.0 * half_width_at(BLADE_ROOT_RADIUS_M) == pytest.approx(PIVOT_BOSS_OD_M)
+
+
+def test_tip_width_is_51_mm():
+    assert 2.0 * half_width_at(RIB_TIP_RADIUS_M) == pytest.approx(0.051)
+
+
+def test_half_width_grows_linearly_root_to_tip():
+    mid = half_width_at(0.5 * RIB_TIP_RADIUS_M)
+    assert mid == pytest.approx(0.5 * (ROOT_HALF_WIDTH_M + TIP_HALF_WIDTH_M))
 
 
 # --- panel displacement grid ------------------------------------------------
@@ -225,16 +270,25 @@ def test_displacement_grid_expresses_base_to_tip_zigzag():
 
 
 def test_layer_spacing_is_thickest_rib_plus_clearance():
-    p = _sample()  # t_rib_tip (0.0035) is the thickest section
+    p = _sample()  # ribbed, panel contained ⇒ envelope = thickest rib (t_rib_tip)
     assert layer_spacing_m(p) == pytest.approx(p.t_rib_tip_m + FOLD_CLEARANCE_M)
 
 
-def test_folded_stack_height_is_bow_aware():
+def test_layer_spacing_panel_aware_uniform():
+    # Uniform (no-rib): the fold pitch is set by the panel sheet itself, not any rib.
+    p = _uniform_sample()
+    max_panel = max(t for row in p.panel_thickness_m for t in row)
+    # envelope = sheet thickness + its wave spread; ≥ the flat sheet thickness + clearance.
+    assert layer_spacing_m(p) == pytest.approx(blade_z_envelope_m(p) + FOLD_CLEARANCE_M)
+    assert layer_spacing_m(p) >= max_panel + FOLD_CLEARANCE_M - 1e-12
+
+
+def test_folded_stack_height_is_envelope_and_bow_aware():
     p = _sample()
     expected = (
         (p.blade_count - 1) * layer_spacing_m(p)
         + folded_rib_bow_extent_m(p)
-        + max(p.t_rib_hub_m, p.t_rib_tip_m)
+        + blade_z_envelope_m(p)
     )
     assert folded_stack_height_m(p) == pytest.approx(expected)
 
@@ -307,3 +361,46 @@ def test_feasible_false_when_any_constraint_violated():
     # 12 max-thick-rib blades bust the fold cap → feasible() is False.
     p = BladeParams(**{**_sample().to_dict(), "blade_count": 12, "t_rib_tip_m": 0.012})
     assert feasible(p) is False
+
+
+# --- B-proper: uniform (no-rib) mode ----------------------------------------
+
+
+def test_uniform_flag_roundtrips_through_dict():
+    p = _uniform_sample()
+    assert p.uniform is True
+    assert BladeParams.from_dict(p.to_dict()) == p
+
+
+def test_ribbed_displacement_pinned_at_tangential_edge():
+    # Ribbed: the panel edge (v = ±1) is pinned to the rib frame (0).
+    p = _sample()
+    assert displacement_at(p, 0.10, +1.0) == pytest.approx(0.0)
+
+
+def test_uniform_displacement_unpinned_at_tangential_edge():
+    # B-proper: the no-rib sheet's tangential edge is UNPINNED — it follows the (all-positive)
+    # offset grid, so the surface waves out at v = ±1 (a pinned edge, or dead knobs, would give 0).
+    p = _uniform_sample()
+    assert displacement_at(p, 0.10, +1.0) > 0.0
+
+
+def test_uniform_offsets_move_the_surface():
+    # The panel offset knobs are LIVE in uniform mode (not dead): waving the grid changes the
+    # mean surface relative to a flat sheet.
+    flat = BladeParams(**{**_uniform_sample().to_dict(),
+                          "panel_offsets_m": [[0.0] * PANEL_GRID_TANGENTIAL_COUNT
+                                              for _ in range(PANEL_GRID_RADIAL_COUNT)]})
+    waved = _uniform_sample()
+    assert displacement_at(waved, 0.10, 0.0) != pytest.approx(displacement_at(flat, 0.10, 0.0))
+
+
+def test_uniform_containment_margin_is_fold_margin():
+    # No rib frame to contain the sheet: the nesting constraint IS the fold stack-height margin.
+    p = _uniform_sample()
+    assert containment_margin_m(p) == pytest.approx(fold_margin_m(p))
+
+
+def test_uniform_waved_sheet_still_folds():
+    p = _uniform_sample()  # a wavy no-rib sheet
+    assert fold_margin_m(p) >= 0.0
