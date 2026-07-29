@@ -6,12 +6,14 @@ import json
 
 import numpy as np
 
-from fanopt.bo.blade_codec import N_DIMS, bounds
+from fanopt.bo.blade_codec import N_DIMS, SEARCH_SPACE, bounds
 from fanopt.bo.campaign_analysis import (
     campaign_report,
+    classify_panel,
     failed_designs,
     find_shards,
     load_rows,
+    panel_shape_summary,
     pareto_indices,
     session_trajectories,
     shape_evolution,
@@ -192,6 +194,65 @@ def test_session_trajectories_per_session_time_ordered_with_details(tmp_path):
     pt = traj["colab-0"][0]
     assert {"eval", "j_fan", "mass_g", "peak", "hash"} <= set(pt)  # hover fields present
     assert [d["eval"] for d in traj["colab-0"]] == [1, 2, 3, 4]  # time-ordered
+
+
+def test_classify_panel_flat_camber_zigzag():
+    assert classify_panel([[0.0, 0.0, 0.0]] * 4) == "flat"
+    assert classify_panel([[1e-3] * 3, [2e-3] * 3, [3e-3] * 3, [4e-3] * 3]) == "camber"  # tilt
+    assert classify_panel([[1e-3] * 3, [2e-3] * 3, [2e-3] * 3, [1e-3] * 3]) == "camber"  # 1 hump
+    assert classify_panel([[1e-3] * 3, [-1e-3] * 3, [1e-3] * 3, [-1e-3] * 3]) == "zigzag"
+
+
+_PANEL_Z_COLS = [i for i, v in enumerate(SEARCH_SPACE) if v.name.startswith("panel_z")]
+
+
+def _design(vec, h="h", j=1e12):
+    return {
+        "design_hash": h,
+        "vector": list(vec),
+        "j_fan": j,
+        "mass_kg": 0.09,
+        "deflection_m": 1e-3,
+    }
+
+
+def test_panel_shape_summary_at_bound_100_when_offsets_pinned(tmp_path):
+    low, high = bounds()
+    rng = np.random.default_rng(7)
+    rows = []
+    for i in range(6):
+        v = low + rng.random(N_DIMS) * (high - low)
+        v[_PANEL_Z_COLS] = 1.0  # pin every panel offset knob to its containment bound
+        rows.append(_design(v, h=f"h{i}", j=1e12 + i))
+    _write(tmp_path / "evaluations_A.jsonl", rows)
+    s = panel_shape_summary([tmp_path / "evaluations_A.jsonl"])
+    assert s["at_bound_pct_median"] == 100.0  # all 12 knobs pinned in every design
+    assert s["panel_amp_mm"]["median"] > 0  # pinned => real (containment-capped) deflection
+
+
+def test_panel_shape_summary_flat_and_unpinned_when_offsets_zero(tmp_path):
+    low, high = bounds()
+    rng = np.random.default_rng(9)
+    rows = []
+    for i in range(6):
+        v = low + rng.random(N_DIMS) * (high - low)
+        v[_PANEL_Z_COLS] = 0.0  # zero offset => flat panel, no knob at its bound
+        rows.append(_design(v, h=f"h{i}", j=1e12 + i))
+    _write(tmp_path / "evaluations_A.jsonl", rows)
+    s = panel_shape_summary([tmp_path / "evaluations_A.jsonl"])
+    assert s["at_bound_pct_median"] == 0.0
+    assert s["panel_amp_mm"]["median"] == 0.0  # offsets are exactly zero
+    assert s["class_counts"] == {"flat": 6}  # every panel classifies flat
+
+
+def test_top_designs_shapes_panel_fields_flat_when_offsets_zero(tmp_path):
+    low, high = bounds()
+    v = low + np.random.default_rng(8).random(N_DIMS) * (high - low)
+    v[_PANEL_Z_COLS] = 0.0
+    _write(tmp_path / "evaluations_A.jsonl", [_design(v, h="h0", j=2e12)])
+    top = top_designs_shapes([tmp_path / "evaluations_A.jsonl"], k=1)
+    assert top[0]["panel_class"] == "flat"  # zeroed offsets => flat
+    assert top[0]["panel_amp_mm"] == 0.0
 
 
 def test_shape_evolution_samples_across_time_order(tmp_path):
