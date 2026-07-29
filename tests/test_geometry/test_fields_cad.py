@@ -157,7 +157,7 @@ def test_texture_dimple_reduces_volume() -> None:
         TextureField(
             active=True,
             feature_type="dimple",
-            density_per_cm2=5.0,
+            density_per_cm2=1.0,
             size_m=0.001,
             polarity="subtract",
         ),
@@ -182,7 +182,7 @@ def test_texture_higher_density_removes_more_volume() -> None:
         TextureField(
             active=True,
             feature_type="dimple",
-            density_per_cm2=10.0,
+            density_per_cm2=2.0,
             size_m=0.001,
             polarity="subtract",
         ),

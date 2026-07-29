@@ -68,7 +68,7 @@ include = ["fanopt*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --strict-config"
+addopts = "-ra --strict-markers --strict-config -n auto"
 markers = [
     "slow: marks tests as slow (deselect with -m 'not slow')",
     "cfd: requires SU2 binary on PATH",

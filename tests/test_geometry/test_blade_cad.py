@@ -68,6 +68,7 @@ def test_solid_is_valid():
     assert make_blade_solid(_sample()).val().isValid() is True
 
 
+@pytest.mark.slow
 def test_trimesh_shapes_and_indices_valid():
     V, F = blade_trimesh(_sample())
     assert V.ndim == 2 and V.shape[1] == 3 and V.shape[0] > 0
@@ -75,6 +76,7 @@ def test_trimesh_shapes_and_indices_valid():
     assert int(F.max()) < V.shape[0] and int(F.min()) >= 0  # every face indexes a real vertex
 
 
+@pytest.mark.slow
 def test_trimesh_finer_tol_more_triangles():
     _, coarse = blade_trimesh(_sample(), tol=0.002)
     _, fine = blade_trimesh(_sample(), tol=0.0002)
