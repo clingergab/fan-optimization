@@ -330,7 +330,10 @@ def panel_shape_summary(shard_files: list[str | Path]) -> dict:
         bow = (max(knots) - min(knots)) * 1e3
         amp_mm.append(a)
         ribbow_mm.append(bow)
-        authority.append(a / bow if bow > 1e-9 else 0.0)
+        # bow is in mm; 1e-3 mm (1 micron) is the "rib is not flat" floor. A one-sided panel
+        # amplitude over a two-sided knot span makes this a rough ~order-of-magnitude proxy, not
+        # a calibrated ratio — the qualitative "panel << rib" is what it is meant to show.
+        authority.append(a / bow if bow > 1e-3 else 0.0)
         at_bound.append(float(np.mean(np.abs(vec[_PANEL_Z_IDX]) > 0.95)))
         classes.append(classify_panel(offs))
     if not amp_mm:
