@@ -26,6 +26,7 @@ __all__ = [
     "shape_summary",
     "top_designs_shapes",
     "failed_designs",
+    "shape_evolution",
 ]
 
 # 5 rib-bow knots run hub->tip; bucket the wave's peak location into a coarse surface "type"
@@ -316,6 +317,49 @@ def failed_designs(shard_files: list[str | Path]) -> list[dict]:
                 "blade_count": p.get("blade_count"),
                 "knots_mm": [round(k * 1e3, 1) for k in knots],
                 "vector": r.get("vector"),
+            }
+        )
+    return out
+
+
+def shape_evolution(shard_files: list[str | Path], n_samples: int = 12) -> list[dict]:
+    """Designs sampled evenly across EVALUATION ORDER, each with its rib-bow wave — so you can SEE
+    how the surface shape itself evolved over the run (early → late), not just J_fan.
+
+    Returns records ordered from first to last: ``eval_index`` (position in time order),
+    ``eval_frac`` (0=first, 1=last), ``j_fan``, ``knots_mm`` (wave height hub→tip), ``peak``.
+    """
+    rows = load_rows(shard_files)
+    by_hash: dict[str, dict] = {}
+    for r in rows:
+        by_hash.setdefault(r.get("design_hash"), r)
+    finite = sorted(
+        (
+            r
+            for r in by_hash.values()
+            if isinstance(r.get("j_fan"), (int | float)) and np.isfinite(r["j_fan"])
+        ),
+        key=lambda r: r.get("timestamp_iso", ""),
+    )
+    if not finite:
+        return []
+    idxs = np.unique(np.linspace(0, len(finite) - 1, min(n_samples, len(finite))).astype(int))
+    out: list[dict] = []
+    for i in idxs:
+        r = finite[int(i)]
+        try:
+            knots = (
+                decode(np.array(r["vector"], dtype=float)).to_dict().get("rib_bow_knots_m") or []
+            )
+        except (KeyError, ValueError, TypeError):
+            continue
+        out.append(
+            {
+                "eval_index": int(i),
+                "eval_frac": float(i) / (len(finite) - 1) if len(finite) > 1 else 0.0,
+                "j_fan": float(r["j_fan"]),
+                "knots_mm": [round(k * 1e3, 2) for k in knots],
+                "peak": _PEAK_BUCKET.get(int(np.argmax(knots)), "?") if knots else "?",
             }
         )
     return out
