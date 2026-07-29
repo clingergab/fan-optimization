@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from fanopt.bo.blade_codec import decode
+from fanopt.bo.blade_codec import SEARCH_SPACE, decode
 
 __all__ = [
     "load_rows",
@@ -24,6 +24,8 @@ __all__ = [
     "campaign_report",
     "find_shards",
     "shape_summary",
+    "panel_shape_summary",
+    "classify_panel",
     "top_designs_shapes",
     "failed_designs",
     "shape_evolution",
@@ -32,6 +34,41 @@ __all__ = [
 
 # 5 rib-bow knots run hub->tip; bucket the wave's peak location into a coarse surface "type"
 _PEAK_BUCKET = {0: "hub", 1: "hub", 2: "mid", 3: "tip", 4: "tip"}
+
+# Column indices of the panel mean-surface offset knobs in the BO vector (the 4x3 aero grid).
+_PANEL_Z_IDX = [i for i, v in enumerate(SEARCH_SPACE) if v.name.startswith("panel_z")]
+# Below this peak-to-anchor offset the panel is aerodynamically flat (sub-50-micron ripple).
+_PANEL_FLAT_EPS_M = 5.0e-5
+
+
+def _reversals(profile: np.ndarray) -> int:
+    """Interior extrema of a 1-D profile = sign reversals of its slope (tiny steps ignored).
+
+    0 → monotone tilt, 1 → single dish/hump, >=2 → alternating (pleated). Counting slope
+    reversals (not centered sign changes) so one symmetric hump reads as one feature, not two.
+    """
+    d = np.diff(np.asarray(profile, dtype=float))
+    amp = float(np.max(profile) - np.min(profile))
+    d = d[np.abs(d) > 0.15 * amp] if amp > 0 else np.array([])
+    if len(d) < 2:
+        return 0
+    return int(np.sum(np.diff(np.sign(d)) != 0))
+
+
+def classify_panel(panel_offsets_m) -> str:
+    """Name the panel aero-surface *shape type* from its 4x3 offset grid.
+
+    ``flat`` (offsets below the aero-flat floor), else by the interior extrema of the dominant
+    (radial base->tip or chordwise) profile: ``camber`` (<=1 — a monotone tilt or single
+    dish/hump) or ``zigzag`` (>=2 — pleated / multi-hump / alternating). The panel analogue of
+    the rib-bow ``interp`` label — the thing the free displacement grid exists to discover.
+    """
+    g = np.asarray(panel_offsets_m, dtype=float)
+    if g.size == 0 or np.max(np.abs(g)) < _PANEL_FLAT_EPS_M:
+        return "flat"
+    return (
+        "zigzag" if max(_reversals(g.mean(axis=1)), _reversals(g.mean(axis=0))) >= 2 else "camber"
+    )
 
 
 def load_rows(shard_files: list[str | Path]) -> list[dict]:
@@ -257,6 +294,62 @@ def shape_summary(shard_files: list[str | Path]) -> dict:
     }
 
 
+def panel_shape_summary(shard_files: list[str | Path]) -> dict:
+    """Characterize the PANEL aero surface — the 24-of-33 codec dims the rib-bow summary ignores.
+
+    Answers "what panel shapes did it try, and do they matter?" The panel offset is capped by
+    containment to ``(t_rib - panel_thickness)/2`` (sub-mm), so the key number is
+    ``authority_pct`` — panel amplitude as a fraction of the rib-bow extent. A low value means
+    the winning shape is the rib meridian and the panel is a maxed-but-tiny ripple.
+    ``at_bound_pct`` (share of the 12 panel knobs pinned to the containment limit) shows whether
+    the optimizer WANTED more panel travel than containment allowed.
+    """
+    rows = load_rows(shard_files)
+    by_hash: dict[str, dict] = {}
+    for r in rows:
+        by_hash.setdefault(r.get("design_hash"), r)
+    amp_mm: list[float] = []
+    ribbow_mm: list[float] = []
+    authority: list[float] = []
+    at_bound: list[float] = []
+    classes: list[str] = []
+    for r in by_hash.values():
+        j = r.get("j_fan")
+        if not (isinstance(j, (int | float)) and np.isfinite(j)):
+            continue
+        try:
+            vec = np.array(r["vector"], dtype=float)
+            p = decode(vec).to_dict()
+        except (KeyError, ValueError, TypeError):
+            continue
+        knots = p.get("rib_bow_knots_m") or []
+        offs = np.asarray(p.get("panel_offsets_m") or [], dtype=float)
+        if not knots or offs.size == 0:
+            continue
+        a = float(np.max(np.abs(offs)) * 1e3)
+        bow = (max(knots) - min(knots)) * 1e3
+        amp_mm.append(a)
+        ribbow_mm.append(bow)
+        authority.append(a / bow if bow > 1e-9 else 0.0)
+        at_bound.append(float(np.mean(np.abs(vec[_PANEL_Z_IDX]) > 0.95)))
+        classes.append(classify_panel(offs))
+    if not amp_mm:
+        return {"n": 0}
+    return {
+        "n": len(amp_mm),
+        "panel_amp_mm": {
+            "median": float(np.median(amp_mm)),
+            "p10": float(np.percentile(amp_mm, 10)),
+            "p90": float(np.percentile(amp_mm, 90)),
+            "max": float(np.max(amp_mm)),
+        },
+        "rib_bow_mm_median": float(np.median(ribbow_mm)),
+        "authority_pct_median": float(np.median(authority) * 100.0),
+        "at_bound_pct_median": float(np.median(at_bound) * 100.0),
+        "class_counts": dict(Counter(classes)),
+    }
+
+
 def top_designs_shapes(shard_files: list[str | Path], k: int = 8) -> list[dict]:
     """Decode the top-``k`` designs by J_fan and show their actual surface shape (the rib-bow wave
     knots hub->tip, peak location, interp, blade_count) — 'what do the winners look like?'"""
@@ -279,6 +372,7 @@ def top_designs_shapes(shard_files: list[str | Path], k: int = 8) -> list[dict]:
         except (KeyError, ValueError, TypeError):
             continue
         knots = p.get("rib_bow_knots_m") or []
+        offs = np.asarray(p.get("panel_offsets_m") or [], dtype=float)
         out.append(
             {
                 "j_fan": float(r["j_fan"]),
@@ -287,6 +381,8 @@ def top_designs_shapes(shard_files: list[str | Path], k: int = 8) -> list[dict]:
                 "interp": p.get("rib_bow_interp"),
                 "blade_count": p.get("blade_count"),
                 "knots_mm": [round(kk * 1e3, 1) for kk in knots],
+                "panel_class": classify_panel(offs) if offs.size else "?",
+                "panel_amp_mm": round(float(np.max(np.abs(offs)) * 1e3), 2) if offs.size else 0.0,
                 "hash": r.get("design_hash", "")[:8],
             }
         )

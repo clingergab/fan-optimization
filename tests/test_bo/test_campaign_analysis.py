@@ -9,9 +9,11 @@ import numpy as np
 from fanopt.bo.blade_codec import N_DIMS, bounds
 from fanopt.bo.campaign_analysis import (
     campaign_report,
+    classify_panel,
     failed_designs,
     find_shards,
     load_rows,
+    panel_shape_summary,
     pareto_indices,
     session_trajectories,
     shape_evolution,
@@ -192,6 +194,51 @@ def test_session_trajectories_per_session_time_ordered_with_details(tmp_path):
     pt = traj["colab-0"][0]
     assert {"eval", "j_fan", "mass_g", "peak", "hash"} <= set(pt)  # hover fields present
     assert [d["eval"] for d in traj["colab-0"]] == [1, 2, 3, 4]  # time-ordered
+
+
+def test_classify_panel_flat_camber_zigzag():
+    assert classify_panel([[0.0, 0.0, 0.0]] * 4) == "flat"
+    assert classify_panel([[1e-3] * 3, [2e-3] * 3, [3e-3] * 3, [4e-3] * 3]) == "camber"  # tilt
+    assert classify_panel([[1e-3] * 3, [2e-3] * 3, [2e-3] * 3, [1e-3] * 3]) == "camber"  # 1 hump
+    assert classify_panel([[1e-3] * 3, [-1e-3] * 3, [1e-3] * 3, [-1e-3] * 3]) == "zigzag"
+
+
+def test_panel_shape_summary_reports_authority_and_at_bound(tmp_path):
+    low, high = bounds()
+    rng = np.random.default_rng(7)
+    rows = []
+    for i in range(8):
+        v = (low + rng.random(N_DIMS) * (high - low)).tolist()
+        rows.append(
+            {
+                "design_hash": f"h{i}",
+                "vector": v,
+                "j_fan": 1e12 + i * 1e11,
+                "mass_kg": 0.09,
+                "deflection_m": 1e-3,
+                "timestamp_iso": f"t{i:02d}",
+            }
+        )
+    _write(tmp_path / "evaluations_A.jsonl", rows)
+    s = panel_shape_summary([tmp_path / "evaluations_A.jsonl"])
+    assert s["n"] == 8
+    assert s["panel_amp_mm"]["median"] > 0  # panel actually deflects
+    assert s["authority_pct_median"] >= 0.0  # panel amplitude vs rib bow, a fraction
+    assert 0.0 <= s["at_bound_pct_median"] <= 100.0
+    assert set(s["class_counts"]) <= {"flat", "camber", "zigzag"}
+
+
+def test_top_designs_shapes_includes_panel_fields(tmp_path):
+    low, high = bounds()
+    rng = np.random.default_rng(8)
+    v = (low + rng.random(N_DIMS) * (high - low)).tolist()
+    _write(
+        tmp_path / "evaluations_A.jsonl",
+        [{"design_hash": "h0", "vector": v, "j_fan": 2e12, "mass_kg": 0.09, "deflection_m": 1e-3}],
+    )
+    top = top_designs_shapes([tmp_path / "evaluations_A.jsonl"], k=1)
+    assert top[0]["panel_class"] in ("flat", "camber", "zigzag")
+    assert top[0]["panel_amp_mm"] >= 0.0
 
 
 def test_shape_evolution_samples_across_time_order(tmp_path):
