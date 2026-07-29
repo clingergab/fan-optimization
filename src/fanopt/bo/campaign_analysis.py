@@ -27,6 +27,7 @@ __all__ = [
     "top_designs_shapes",
     "failed_designs",
     "shape_evolution",
+    "session_trajectories",
 ]
 
 # 5 rib-bow knots run hub->tip; bucket the wave's peak location into a coarse surface "type"
@@ -362,6 +363,48 @@ def shape_evolution(shard_files: list[str | Path], n_samples: int = 12) -> list[
                 "peak": _PEAK_BUCKET.get(int(np.argmax(knots)), "?") if knots else "?",
             }
         )
+    return out
+
+
+def session_trajectories(shard_files: list[str | Path]) -> dict[str, list[dict]]:
+    """Per session, the designs in EVALUATION (time) order with J_fan, mass and decoded shape — the
+    per-point detail an interactive progression plot shows on hover.
+
+    ``{session_id: [{eval, j_fan, mass_g, peak, interp, blade_count, hash}, ...]}`` (each list in
+    that session's own time order).
+    """
+    rows = load_rows(shard_files)
+    by_hash: dict[str, dict] = {}
+    for r in rows:
+        by_hash.setdefault(r.get("design_hash"), r)
+    by_sess: dict[str, list[dict]] = {}
+    for r in by_hash.values():
+        j = r.get("j_fan")
+        if not (isinstance(j, (int | float)) and np.isfinite(j)):
+            continue
+        by_sess.setdefault(r.get("session_id", "?"), []).append(r)
+    out: dict[str, list[dict]] = {}
+    for s, rs in by_sess.items():
+        rs = sorted(rs, key=lambda r: r.get("timestamp_iso", ""))
+        pts: list[dict] = []
+        for idx, r in enumerate(rs):
+            try:
+                p = decode(np.array(r["vector"], dtype=float)).to_dict()
+            except (KeyError, ValueError, TypeError):
+                p = {}
+            knots = p.get("rib_bow_knots_m") or []
+            pts.append(
+                {
+                    "eval": idx + 1,
+                    "j_fan": float(r["j_fan"]),
+                    "mass_g": float(r["mass_kg"] * 1e3),
+                    "peak": _PEAK_BUCKET.get(int(np.argmax(knots)), "?") if knots else "?",
+                    "interp": p.get("rib_bow_interp"),
+                    "blade_count": p.get("blade_count"),
+                    "hash": r.get("design_hash", "")[:8],
+                }
+            )
+        out[s] = pts
     return out
 
 

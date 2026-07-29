@@ -13,6 +13,7 @@ from fanopt.bo.campaign_analysis import (
     find_shards,
     load_rows,
     pareto_indices,
+    session_trajectories,
     shape_evolution,
     shape_summary,
     top_designs_shapes,
@@ -165,6 +166,32 @@ def test_top_designs_shapes_decodes_winners(tmp_path):
     assert len(top) == 3
     assert top[0]["j_fan"] >= top[1]["j_fan"] >= top[2]["j_fan"]  # sorted desc
     assert len(top[0]["knots_mm"]) == 5 and top[0]["peak"] in ("hub", "mid", "tip")
+
+
+def test_session_trajectories_per_session_time_ordered_with_details(tmp_path):
+    low, high = bounds()
+    rng = np.random.default_rng(4)
+    rows = []
+    for s in ("colab-0", "colab-1"):
+        for i in range(4):
+            v = (low + rng.random(N_DIMS) * (high - low)).tolist()
+            rows.append(
+                {
+                    "design_hash": f"{s}-{i}",
+                    "vector": v,
+                    "j_fan": 1e12 + i * 1e11,
+                    "mass_kg": 0.09,
+                    "deflection_m": 1e-3,
+                    "session_id": s,
+                    "timestamp_iso": f"2026-07-29T00:0{i}:00",
+                }
+            )
+    _write(tmp_path / "evaluations_A.jsonl", rows)
+    traj = session_trajectories([tmp_path / "evaluations_A.jsonl"])
+    assert set(traj) == {"colab-0", "colab-1"} and len(traj["colab-0"]) == 4
+    pt = traj["colab-0"][0]
+    assert {"eval", "j_fan", "mass_g", "peak", "hash"} <= set(pt)  # hover fields present
+    assert [d["eval"] for d in traj["colab-0"]] == [1, 2, 3, 4]  # time-ordered
 
 
 def test_shape_evolution_samples_across_time_order(tmp_path):
