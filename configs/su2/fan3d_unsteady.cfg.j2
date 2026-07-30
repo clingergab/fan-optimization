@@ -10,7 +10,7 @@
 %   {{ mesh_filename }}        - .su2 mesh path (10-blade deployed fan)
 %   {{ marker_fan }}           - physical-group name(s) covering all blade surfaces
 %   {{ marker_farfield }}      - physical-group name on the outer boundary
-%   {{ reynolds_number }}      - Re_global = 37000 per §3.2.3 (locked)
+%   {{ reynolds_number }}      - Re_global ~ 40000 per §3.2.3 (ADR-0005: 0.22 m tip)
 %   {{ reynolds_length }}      - L_wrist_to_tip = 0.25 m (locked)
 %   {{ pitching_omega_y }}     - ω_SHM = -12.5664 rad/s (C11 sign lock — NEGATIVE y)
 %   {{ pitching_ampl_y }}      - θ_max = +0.6981 rad (40°)
@@ -23,7 +23,7 @@
 %
 % Tier-1 lock invariants (Round-9 HIGH-12 / C12 — enforced by
 % tests/test_cfd/test_unsteady_freestream_consistency.py):
-%   1. MACH_NUMBER = 1e-9                          (NOT 0.0064 — that's steady)
+%   1. MACH_NUMBER = 1e-9                          (NOT 0.0070 — that's steady)
 %   2. FREESTREAM_OPTION = FREESTREAM_VELOCITY     (primary path, deprecated)
 %      OR REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE (fallback — used)
 %   3. LOW_MACH_PREC = YES                         (compressible low-Mach prec)

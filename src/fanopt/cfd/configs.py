@@ -61,11 +61,18 @@ __all__ = [
 MACH_UNSTEADY: float = 1e-9
 """Round-9 HIGH-12 / C12 lock — unsteady cfg uses near-zero Mach."""
 
-MACH_STEADY: float = 0.0064
-"""Steady tiers (-1 / 0) use V_tip as freestream → Mach ≈ 2.20 m/s / 340 m/s."""
+MACH_STEADY: float = 0.0070
+"""Steady tiers (-1 / 0) use the peak blade tip speed as freestream. Re-derived for the
+2026-07-29 trapezoid redesign (ADR-0005): the blade tip moved from r = L_BLADE_M (0.20 m) to
+``geometry.blade.RIB_TIP_RADIUS_M`` (0.22 m), so the wrist→tip lever grew to
+D_HANDLE_M + 0.22 = 0.27 m and V_tip = OMEGA_BLADE_MAX (≈ 8.77 rad/s) × 0.27 m ≈ 2.38 m/s
+⇒ Mach = 2.38 / 340 ≈ 0.0070 (was 0.0064 at the 0.20 m tip / 2.20 m/s)."""
 
-REYNOLDS_NUMBER_GLOBAL: float = 37000.0
-"""Re_global at L = L_wrist_to_tip per §3.2.3 H8 symbol table."""
+REYNOLDS_NUMBER_GLOBAL: float = 40000.0
+"""Re_global = V_tip · L_wrist_to_tip / ν_air ≈ 2.38 m/s · 0.25 m / 1.5e-5 m²/s ≈ 40000 (was
+37000 at the old 0.20 m tip / 2.20 m/s). Re-derived for the trapezoid redesign (ADR-0005): only
+the tip speed changed with the longer blade; the reference length stays L_WRIST_TO_TIP_M (the
+emitted REYNOLDS_LENGTH), so the (Re, L) pair handed to SU2 stays self-consistent."""
 
 
 CROSS_TIER: dict[str, Any] = {

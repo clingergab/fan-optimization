@@ -4,7 +4,7 @@
 %
 % Tier -1 is the cheapest CFD tier — a 2D cross-section at r = r_mid (mid-
 % radius slice) used by the Phase 4 architecture bandit for cheap promotion
-% screening. Same locked numerics class as Tier 0 (MACH = 0.0064 per the
+% screening. Same locked numerics class as Tier 0 (MACH = 0.0070 per the
 % Round-9 HIGH-12 lock putting MACH in TIER_SPECIFIC, NOT CROSS_TIER).
 %
 % Local slice frame: (x, y) where x = chord-aligned (local tangential
@@ -21,7 +21,7 @@
 %   {{ marker_farfield }}          - physical-group name on outer boundary
 %   {{ reynolds_number }}          - Re_local at r_mid per §3.2.3
 %   {{ reynolds_length }}          - local chord at r_mid (m)
-%   {{ mach_number }}              - 0.0064 (V_tip-based, steady-tier lock)
+%   {{ mach_number }}              - 0.0070 (V_tip-based, steady-tier lock, ADR-0005)
 %   freestream_direction_{x,y}     - (-1, 0) PRODUCTIVE / (+1, 0) RETURN
 %   {{ cfl_number }}               - 5.0 default
 %
