@@ -28,6 +28,7 @@ from fanopt.geometry.blade import (
     half_width_at,
     panel_radial_stations,
 )
+from fanopt.geometry.blade_cad import fold_collision_clear
 from fanopt.geometry.schema import E_PETG_XY_PA
 from fanopt.utils.ledger import design_hash
 
@@ -113,6 +114,15 @@ class Blade3DObjective:
                 diagdir.mkdir(parents=True, exist_ok=True)
                 (diagdir / "INFEASIBLE.txt").write_text(
                     f"infeasible: {params.to_dict()}\n", encoding="utf-8"
+                )
+                return (nan, nan, nan)
+            # Authoritative CAD fold backstop (~seconds) BEFORE the minutes-long CFD: even if a
+            # corner slips past the analytic feasible() proxy, never evaluate an un-foldable design.
+            if not fold_collision_clear(params):
+                diagdir.mkdir(parents=True, exist_ok=True)
+                (diagdir / "UNFOLDABLE.txt").write_text(
+                    f"CAD fold gate: adjacent blades collide when folded: {params.to_dict()}\n",
+                    encoding="utf-8",
                 )
                 return (nan, nan, nan)
             res = evaluate_blade_aero_3d(params, workdir, cfg=self.cfg, su2_bin=self.su2_bin)

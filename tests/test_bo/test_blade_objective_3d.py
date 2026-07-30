@@ -112,6 +112,20 @@ def test_infeasible_returns_nan(tmp_path, monkeypatch):
     assert np.isnan(j_fan) and np.isnan(mass) and np.isnan(defl)
 
 
+def test_unfoldable_returns_nan_before_cfd(tmp_path, monkeypatch):
+    # The CAD fold gate is a cheap backstop BEFORE the minutes-long CFD: an un-foldable design is
+    # excluded (NaN) and the aero eval is never reached, so nothing un-foldable is ever evaluated.
+    monkeypatch.setattr(obj3d, "fold_collision_clear", lambda p: False)
+
+    def boom(*a, **k):
+        raise AssertionError("CFD must not run for an un-foldable design")
+
+    monkeypatch.setattr(obj3d, "evaluate_blade_aero_3d", boom)
+    j_fan, mass, defl = Blade3DObjective(out_dir=tmp_path, su2_bin="/fake")(_feasible_vector())
+    assert np.isnan(j_fan) and np.isnan(mass) and np.isnan(defl)
+    assert list(tmp_path.rglob("UNFOLDABLE.txt"))  # marker written for diagnosis
+
+
 def test_cfd_failure_returns_nan(tmp_path, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("SU2 diverged")
