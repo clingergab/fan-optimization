@@ -115,6 +115,35 @@ the relaxed meridian ranges, the default fold mesh was raised 60×18 → **90×2
 ~10² mm³). The CAD fold gate is wired into the 3D objective as a cheap pre-CFD backstop, so no
 un-foldable design is ever evaluated. Fold is the HARD by-construction constraint; mass stays SOFT.
 
+## Analytic fold gate — replaces the CAD boolean in-loop (2026-07-30)
+
+The bipolar relaxation (`RIB_BOW_RANGE_M → ±20 mm`) made the CAD swept-volume boolean untenable as
+the in-loop gate on two counts: (1) it **hangs indefinitely** on a valid-but-pathological decoded
+solid — a steep bipolar-zigzag meridian + **checkerboard (adjacent opposite-sign) max panel
+offsets** — whose `isValid()`-true single solid builds fine but whose boolean never terminates (at
+any mesh); (2) at the fine mesh the tight gate needed, a *normal* bipolar design's boolean runs
+~35–45 s, so a timeout can't separate slow-valid from hang → ~20 % of random Sobol designs were
+false-rejected. Both are decode-reachable, so the gate would stall or starve the campaign.
+
+**Fix — `fold_penetration_m` (analytic surface-gap gate).** `fold_collision_clear` now evaluates the
+deepest interpenetration between two rotated neighbours directly from the **smooth surface-of-
+revolution height field** (the same mean/thickness formulas the CAD solid is lofted from), sampling
+the planform and the fold swing. It is:
+
+- **Faceting-free / exact** — no polyhedral artifact, so the clear tolerance is a true 0.05 mm
+  (`_FOLD_PENETRATION_EPS_M`), not a mm³ faceting floor;
+- **Hang-proof** — no boolean; the checkerboard design that hangs OCP is resolved in ~40 ms and, in
+  fact, **folds** (its hang was never a real collision);
+- **~1000× faster** — ~40–50 ms vs ~35–45 s, negligible before the minutes-long CFD.
+
+Validated: over **512 Sobol-init designs the analytic gate is 100 % fold-clear** (max interpenetration
+−0.40 mm = one full fold clearance; every decoded design nests by construction), with **no hangs**;
+it agrees with the CAD boolean on non-pathological designs and correctly **catches** a real collision
+(recreated by disabling the rib-rail window: +0.5 mm interpenetration → rejected). This **restores
+full feasible-by-construction** on the relaxed ranges. The CAD boolean `fold_collision_volume_m3` is
+retained as an offline deep-verify cross-check; the lofted-solid density (`N_RADIAL_SECTIONS` ×
+`N_TANGENTIAL_SAMPLES` = 60×18) reverts to serving only the CFD/FEA mesh export, not the fold gate.
+
 ## Resolved
 
 - **Mass cap = 300 g** (operator, 2026-07-29). `schema.py MAX_TOTAL_MASS_KG = 0.300` is

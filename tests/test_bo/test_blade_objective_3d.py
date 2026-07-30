@@ -54,6 +54,7 @@ def test_default_metric_is_cycle_mean_per_n1(tmp_path):
 
 def test_objective_peak_metric_scales_per_blade_by_count(tmp_path, monkeypatch):
     monkeypatch.setattr(obj3d, "evaluate_blade_aero_3d", _fake_aero(3.0, 10.0))
+    monkeypatch.setattr(obj3d, "fold_collision_clear", lambda p: True)
     vec = _feasible_vector()
     p = obj3d.decode(vec)
     j_fan, mass, defl = Blade3DObjective(out_dir=tmp_path, su2_bin="/fake", metric="peak")(vec)
@@ -63,6 +64,7 @@ def test_objective_peak_metric_scales_per_blade_by_count(tmp_path, monkeypatch):
 
 def test_objective_mean_metric_uses_cycle_mean(tmp_path, monkeypatch):
     monkeypatch.setattr(obj3d, "evaluate_blade_aero_3d", _fake_aero(3.0, 10.0))
+    monkeypatch.setattr(obj3d, "fold_collision_clear", lambda p: True)
     vec = _feasible_vector()
     p = obj3d.decode(vec)
     j_fan, _, _ = Blade3DObjective(out_dir=tmp_path, su2_bin="/fake", metric="mean")(vec)
@@ -73,6 +75,7 @@ def test_whole_fan_scales_by_fixed_blade_count_12(tmp_path, monkeypatch):
     # ADR-0005: blade_count is FIXED at 12 (no longer a codec dimension), so whole-fan wind is
     # always per-blade × 12 — every decoded design is a 12-blade fan.
     monkeypatch.setattr(obj3d, "evaluate_blade_aero_3d", _fake_aero(3.0, 10.0))
+    monkeypatch.setattr(obj3d, "fold_collision_clear", lambda p: True)
     vec = _feasible_vector()
     assert obj3d.decode(vec).blade_count == 12
     j_fan, _, _ = Blade3DObjective(out_dir=tmp_path, su2_bin="/fake", metric="mean")(vec)
@@ -113,8 +116,8 @@ def test_infeasible_returns_nan(tmp_path, monkeypatch):
 
 
 def test_unfoldable_returns_nan_before_cfd(tmp_path, monkeypatch):
-    # The CAD fold gate is a cheap backstop BEFORE the minutes-long CFD: an un-foldable design is
-    # excluded (NaN) and the aero eval is never reached, so nothing un-foldable is ever evaluated.
+    # The analytic fold gate is a cheap backstop BEFORE the minutes-long CFD: an un-foldable design
+    # is excluded (NaN) and the aero eval is never reached, so nothing un-foldable is ever evaluated.
     monkeypatch.setattr(obj3d, "fold_collision_clear", lambda p: False)
 
     def boom(*a, **k):
@@ -130,5 +133,6 @@ def test_cfd_failure_returns_nan(tmp_path, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("SU2 diverged")
     monkeypatch.setattr(obj3d, "evaluate_blade_aero_3d", boom)
+    monkeypatch.setattr(obj3d, "fold_collision_clear", lambda p: True)
     j_fan, _, _ = Blade3DObjective(out_dir=tmp_path, su2_bin="/fake")(_feasible_vector())
     assert np.isnan(j_fan)

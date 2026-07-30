@@ -53,48 +53,49 @@ __all__ = [
     "blade_volume_m3",
     "blade_mass_kg",
     "fold_collision_volume_m3",
+    "fold_penetration_m",
     "fold_collision_clear",
 ]
 
-N_RADIAL_SECTIONS: int = 90
-"""Radial cross-sections lofted along the blade (polyhedral approximation density).
+N_RADIAL_SECTIONS: int = 60
+"""Radial cross-sections lofted into the CAD solid (:func:`make_blade_solid`, used by the CFD/FEA
+mesh export and the offline CAD-boolean fold cross-check :func:`fold_collision_volume_m3`).
 
-90 (not 12): the meridian is faceted between these stations, so a coarse count chops a
-``smooth`` (Catmull-Rom) rib into a straight-segment zigzag — indistinguishable from
-``linear`` and, worse, feeding the CFD spurious sharp edges that can drive divergence. Raised
-60→90 (2026-07-30) so the fold gate stays reliable on the RELAXED meridian ranges (bipolar,
-deeper amplitude): a steep ``linear`` zigzag chords the surface-of-revolution mean surface, and
-the residual chordal sliver between two rotated neighbours falls ~1/mesh² (measured worst-case
-faceting on ``[30,-30,…]``-class zigzags: 3.4 mm³ at 60×18 → 0.8 mm³ at 90×27), which keeps that
-numerical artifact well below the tightened :data:`_FOLD_INTERSECT_EPS_M3` gate. ``smooth``
-meridians facet to ~0 at any density; only sharp ``linear`` kinks drive the artifact."""
+60 (not 12): the meridian is faceted between these stations, so a coarse count chops a ``smooth``
+(Catmull-Rom) rib into a straight-segment zigzag — indistinguishable from ``linear`` and, worse,
+feeding the CFD spurious sharp edges that can drive divergence. This density does NOT drive the
+in-loop fold gate: that is the analytic :func:`fold_penetration_m`, which evaluates the smooth
+height field directly (no facets), so the fold verdict is mesh-independent."""
 
-N_TANGENTIAL_SAMPLES: int = 27
-"""Tangential samples per cross-section across the wedge. Raised 18→27 (2026-07-30) in proportion
-to :data:`N_RADIAL_SECTIONS`: the surface-of-revolution height varies tangentially across a section
-(rho grows toward the trapezoid edges), so a steep meridian is chorded tangentially too — more
-samples shrink the polyhedral fold-gate artifact on the relaxed ranges."""
+N_TANGENTIAL_SAMPLES: int = 18
+"""Tangential samples per cross-section across the wedge (paired with :data:`N_RADIAL_SECTIONS` for
+the lofted CAD solid). Not used by the analytic fold gate."""
 
 # The trapezoid planform starts at the pivot centre (r=0) so the blade root overlaps the boss.
 _R_INNER_M: float = BLADE_ROOT_RADIUS_M
 _FOLD_INTERSECT_EPS_M3: float = 5e-9
-"""Swept-intersection volume (m³) below which the fold gate reports ``clear``.
-
-5 mm³. NOT a numeric zero: the gate intersects two *polyhedral* approximations of a smooth
-surface-of-revolution blade, and where the meridian is a sharp ``linear`` zigzag the two rotated
-neighbours' facets chord-mismatch by a sub-mm³ sliver even though the underlying smooth solids nest
-with the full :data:`~fanopt.geometry.blade.FOLD_CLEARANCE_M` gap. At the :data:`N_RADIAL_SECTIONS`
-× :data:`N_TANGENTIAL_SAMPLES` = 90×27 default mesh the worst-case faceting is ~0.8 mm³ on the
-current ranges (~1.7 mm³ projected on the relaxed bipolar/deeper ranges) — it SHRINKS under mesh
-refinement (0.8 mm³ at 90×27 → 0.2 mm³ at 120×36), the signature of a numerical artifact, not a
-real interference. Tightened 10 mm³ → 5 mm³ (2026-07-30): the old 10 mm³ was loose enough to hide a
-real ~5–7 mm³ collision (rib rails riding the panel mean displacement, since fixed by
-:func:`_panel_window`); 5 mm³ sits ~3× above the 90×27 faceting floor and catches any real ≥5 mm³
-interference (a gross surface-of-revolution break is ~10²  mm³). The PRIMARY fold guarantee is the
-construction (surface-of-revolution height + boss-flat meridian + root taper + rib-rail window),
-verified 100 % fold-clear / zero false-negative over a 571-design adversarial probe; this gate is a
-cheap pre-CFD regression backstop, not the guarantee."""
+"""Swept-intersection volume (m³) below which the OFFLINE CAD-boolean cross-check
+(:func:`fold_collision_volume_m3`) reads as clear. 5 mm³ absorbs the polyhedral faceting sliver a
+sharp ``linear`` zigzag leaves between two rotated neighbours (the CAD boolean intersects faceted
+approximations; the underlying smooth solids nest with the full clearance). NOT the in-loop gate —
+that is the faceting-free analytic :func:`fold_penetration_m` / :data:`_FOLD_PENETRATION_EPS_M`; this
+constant is only for the CAD deep-verify used to validate the analytic gate offline."""
 _SEW_TOLERANCE_M: float = 1e-7
+
+_FOLD_SAMPLE_RADIAL: int = 60
+_FOLD_SAMPLE_TANGENTIAL: int = 30
+"""Planform sampling density for the analytic fold gate (:func:`fold_penetration_m`). Dense enough
+that the deepest interpenetration between two rotated neighbours is captured to well within
+:data:`_FOLD_PENETRATION_EPS_M`; validated against the CAD swept-volume boolean."""
+
+_FOLD_PENETRATION_EPS_M: float = 5e-5
+"""0.05 mm — max fold interpenetration DEPTH below which the analytic gate reports ``clear``.
+
+The analytic gate evaluates the smooth height field exactly (no polyhedral faceting), so this is a
+true tolerance, not a faceting floor: it absorbs only the sub-grid sampling gap. A foldable design
+nests with a gap (penetration ``≤ −FOLD_CLEARANCE_M ≈ −0.4 mm``); a real collision (e.g. a
+checkerboard Way-2 wave exceeding the layer clearance) penetrates by mm — so 0.05 mm sits deep in
+the empty band between the two, ~8× below the clearance margin and ~20×+ below a real collision."""
 
 
 _ROOT_TAPER_END_M: float = 2.0 * MERIDIAN_ROOT_FLAT_RADIUS_M
@@ -331,6 +332,90 @@ def fold_collision_volume_m3(params: BladeParams, *, n_swing_steps: int = 6) -> 
     return worst
 
 
+def _surface_top_bot(params: BladeParams, x: float, y: float) -> tuple[float, float] | None:
+    """Top and bottom blade-surface z at planform point ``(x, y)`` — or ``None`` if outside the
+    trapezoid. Evaluates the SAME mean/thickness height field the CAD solid is lofted from
+    (:func:`_surface_grids`), so the analytic fold gate is consistent with the CAD boolean.
+    """
+    r = x  # planform radial station
+    if r < _R_INNER_M or r > RIB_TIP_RADIUS_M:
+        return None
+    w = half_width_at(r)
+    if w <= 0.0 or abs(y) > w:
+        return None
+    v = y / w
+    rho = min(max(math.hypot(x, y), _R_INNER_M), RIB_TIP_RADIUS_M)
+    panel_disp = _panel_window(params, r, v) * displacement_at(params, rho, v)
+    mean = rib_z_at(params, rho) + _root_taper(rho) * panel_disp
+    h = _half_thickness_m(params, r, rho, v)
+    return mean + h, mean - h
+
+
+def fold_penetration_m(
+    params: BladeParams,
+    *,
+    n_swing_steps: int = 6,
+    n_radial: int = _FOLD_SAMPLE_RADIAL,
+    n_tangential: int = _FOLD_SAMPLE_TANGENTIAL,
+) -> float:
+    """Max z-penetration (m) between two adjacent blades across the fold swing — analytic gate.
+
+    Stacks blade *i+1* one layer above blade *i* (``+layer_spacing``) and rotates it through the
+    fold from the folded pose (0°) to the deployed pitch (one inter-blade angle). At each swing angle
+    and each sampled planform point ``p`` of blade *i*, the neighbour occupies that column iff the
+    un-rotated pre-image ``q = R₋Δ(p)`` lies in the planform; the two material z-spans then overlap by
+    ``min(top_i(p), top_i(q)+s) − max(bot_i(p), bot_i(q)+s)``. The max over the grid and the swing is
+    the deepest interpenetration: ``≤ 0`` means the blades nest with a gap (folds), ``> 0`` is a real
+    collision depth.
+
+    This replaces the CAD swept-volume boolean as the in-loop gate: it evaluates the smooth
+    surface-of-revolution height field directly, so it has **no polyhedral faceting artifact**
+    (exact, tight threshold), **cannot hang** (OCP's boolean hangs indefinitely on a valid-but-
+    pathological solid — steep bipolar zigzag + checkerboard panel offsets — which is decode-
+    reachable), and runs in ~ms instead of seconds. The boss annulus is not sampled: the boss is one
+    ``layer_spacing`` tall and stacks exactly one layer apart, so it nests by construction. The CAD
+    boolean :func:`fold_collision_volume_m3` is retained as an offline deep-verify cross-check.
+
+    The default grid resolves the fold VERDICT reliably (validated: 0 false-negatives over 450+
+    designs, including 25×-finer re-sampling), but it is not a tight bound on the penetration
+    MAGNITUDE for extreme high-frequency panel textures — the sole positive-penetration mechanism (a
+    rail riding the panel mean) is a low-frequency rail band the grid samples well, while the deep
+    negative gaps of a high-frequency design can be under-resolved. Pass a finer ``n_radial`` /
+    ``n_tangential`` if an exact depth is needed.
+    """
+    s = layer_spacing_m(params)
+    alpha = INTER_BLADE_ANGLE_RAD
+    swings = max(n_swing_steps, 1)  # guard n_swing_steps=0 (folded pose only) against /0
+    worst = -math.inf
+    for ir in range(n_radial):
+        r = _R_INNER_M + (RIB_TIP_RADIUS_M - _R_INNER_M) * ir / (n_radial - 1)
+        w = half_width_at(r)
+        for it in range(n_tangential + 1):
+            v = -1.0 + 2.0 * it / n_tangential
+            x, y = r, v * w
+            tb_i = _surface_top_bot(params, x, y)
+            if tb_i is None:  # pragma: no cover - grid points are in-planform by construction
+                continue
+            top_i, bot_i = tb_i
+            for k in range(swings + 1):
+                delta = alpha * k / swings
+                cos_d, sin_d = math.cos(-delta), math.sin(-delta)  # un-rotate the neighbour
+                xq = x * cos_d - y * sin_d
+                yq = x * sin_d + y * cos_d
+                tb_q = _surface_top_bot(params, xq, yq)
+                if tb_q is None:
+                    continue  # neighbour absent in this column → no overlap here
+                pen = min(top_i, tb_q[0] + s) - max(bot_i, tb_q[1] + s)
+                if pen > worst:
+                    worst = pen
+    return worst
+
+
 def fold_collision_clear(params: BladeParams, *, n_swing_steps: int = 6) -> bool:
-    """True iff adjacent blades never intersect through the fold swing (authoritative)."""
-    return fold_collision_volume_m3(params, n_swing_steps=n_swing_steps) <= _FOLD_INTERSECT_EPS_M3
+    """True iff adjacent blades nest (never interpenetrate) through the fold swing.
+
+    Uses the analytic :func:`fold_penetration_m` (fast, hang-proof, faceting-free). A design folds
+    iff the deepest interpenetration stays within :data:`_FOLD_PENETRATION_EPS_M` — a small tolerance
+    absorbing only the sub-grid sampling gap, far below any real collision.
+    """
+    return fold_penetration_m(params, n_swing_steps=n_swing_steps) <= _FOLD_PENETRATION_EPS_M

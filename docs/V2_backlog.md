@@ -46,6 +46,18 @@ Each deferred item is a one-line range/count change + fold re-verification; none
 physics. Acceptance for any of them: the full random+extreme decode sample stays ~100 % CAD-fold-
 clear and the seeds still hold.
 
+### Analytic (boolean-free) fold gate — DONE in V1 (2026-07-30)
+
+Implemented, not deferred. The in-loop gate is now the boolean-free analytic `fold_penetration_m`
+(max fold interpenetration from the smooth surface-of-revolution height field), replacing the CAD
+swept-volume boolean which the bipolar relaxation made untenable (it **hangs** on steep-zigzag +
+checkerboard-offset solids and runs ~35–45 s on normal bipolar designs at the fine mesh a tight gate
+needed). The analytic gate is ~40 ms, hang-proof, faceting-free, validated 100 % fold-clear over 512
+Sobol designs, and restores full feasible-by-construction. The CAD boolean `fold_collision_volume_m3`
+is kept as an offline deep-verify. See ADR-0005 "Analytic fold gate". *V2 follow-on:* vectorise the
+gate (numpy over the swing×grid) if per-call cost ever matters, and fold the boss annulus in
+explicitly if a future geometry lets the boss rise with the meridian.
+
 ---
 
 ## Deferred Phase-0 spikes (V1 scope pivot, 2026-05-13)

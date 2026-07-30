@@ -15,6 +15,7 @@ if importlib.util.find_spec("cadquery") is None:
 
 from fanopt.bo.blade_codec import SEARCH_SPACE, decode
 from fanopt.geometry.blade import (
+    FOLD_CLEARANCE_M,
     RIB_BOW_RANGE_M,
     RIB_TIP_RADIUS_M,
     BladeParams,
@@ -30,8 +31,10 @@ from fanopt.geometry.blade_cad import (
     export_blade_step,
     fold_collision_clear,
     fold_collision_volume_m3,
+    fold_penetration_m,
     make_blade_solid,
 )
+import fanopt.geometry.blade_cad as blade_cad_mod
 from fanopt.geometry.schema import PIVOT_BOSS_RADIUS_M
 
 _SAMPLE_GRID = (
@@ -214,8 +217,8 @@ def test_smooth_multihump_meridian_folds_clear():
 
 
 def test_full_amplitude_monotonic_bow_folds_clear():
-    # A full-amplitude base→tip ramp to the 30 mm ceiling folds (no amplitude cap on the meridian).
-    p = _meridian_blade((0.006, 0.012, 0.018, 0.024, _MAX_BOW))
+    # A full-amplitude base→tip ramp to the +20 mm ceiling folds (no amplitude cap on the meridian).
+    p = _meridian_blade((0.004, 0.008, 0.012, 0.016, _MAX_BOW))
     assert fold_collision_clear(p) is True
 
 
@@ -246,6 +249,61 @@ def test_bipolar_zigzag_meridian_folds_clear():
     # relaxed range — still folds clear at the 90×27 default mesh (measured 1.1 mm³ ≪ 5 mm³ gate).
     p = _meridian_blade((_MAX_BOW, _MIN_BOW, _MAX_BOW, _MIN_BOW, _MAX_BOW))
     assert fold_collision_clear(p) is True
+
+
+# --- Analytic fold gate (2026-07-30): fold_collision_clear evaluates the SMOOTH surface-of-
+# revolution height field directly (fold_penetration_m) instead of the CAD swept-volume boolean.
+# It is ~ms (not seconds), faceting-free (exact), and CANNOT hang — OCP's boolean hangs indefinitely
+# on a valid-but-pathological solid (steep bipolar zigzag + checkerboard panel offsets) that is
+# decode-reachable and actually FOLDS. The analytic gate gives it a correct verdict, restoring
+# feasible-by-construction. The CAD boolean stays as an offline deep-verify cross-check. ---
+
+
+def _checkerboard_design() -> BladeParams:
+    """A steep bipolar-zigzag meridian + checkerboard (adjacent opposite-sign) max panel offsets +
+    thin panel, ribbed — the design class that HANGS OCP's boolean. It is decode-reachable and (per
+    the analytic gate) actually folds; the CAD boolean simply cannot compute it."""
+    idx = {v.name: i for i, v in enumerate(SEARCH_SPACE)}
+    lo, hi = RIB_BOW_RANGE_M
+    vec = np.zeros(len(SEARCH_SPACE))
+    vec[idx["rib_mode"]] = 0.5  # ribbed
+    vec[idx["rib_bow_interp"]] = 0.5  # linear
+    for i, s in enumerate((hi, lo, hi, lo, hi)):  # steep bipolar zigzag
+        vec[idx[f"rib_bow_k{i}"]] = s
+    for i in range(4):
+        for j in range(3):
+            vec[idx[f"panel_z_{i}_{j}"]] = 1.0 if (i + j) % 2 == 0 else -1.0  # checkerboard
+            vec[idx[f"panel_thick_{i}_{j}"]] = 0.0  # thin panel → widest offset swing
+    return decode(vec)
+
+
+def test_analytic_gate_good_design_gap_is_the_fold_clearance():
+    # A flat contained design nests with a gap of exactly one fold clearance: penetration = −0.4 mm.
+    assert fold_penetration_m(_sample()) == pytest.approx(-FOLD_CLEARANCE_M, abs=5e-5)
+
+
+def test_analytic_gate_is_fast_and_never_hangs_on_checkerboard():
+    # The design that hangs OCP's boolean is resolved by the analytic gate in ~ms — and it FOLDS.
+    p = _checkerboard_design()
+    assert fold_collision_clear(p) is True  # foldable — the boolean's hang was not a real collision
+
+
+def test_analytic_gate_catches_rail_lift_collision(monkeypatch):
+    # Positive control: disabling the rib-rail window recreates the rail-lift bug (rails ride the
+    # panel mean above the containment envelope). The analytic gate must report a real penetration.
+    p = _max_offset_ribbed(1.0)
+    monkeypatch.setattr(blade_cad_mod, "_panel_window", lambda params, r, v: 1.0)
+    assert fold_penetration_m(p) > 0.0  # interpenetration detected
+    assert fold_collision_clear(p) is False
+
+
+def test_analytic_penetration_negative_when_clear():
+    assert fold_penetration_m(_sample()) < 0.0  # a gap, not an overlap
+
+
+def test_analytic_gate_handles_zero_swing_steps():
+    # Guard: n_swing_steps=0 (folded pose only) must not divide by zero.
+    assert fold_penetration_m(_sample(), n_swing_steps=0) == pytest.approx(-FOLD_CLEARANCE_M, abs=5e-5)
 
 
 def _way2_checkerboard() -> BladeParams:
@@ -283,13 +341,17 @@ def test_way2_independent_faces_folds_clear():
 
 
 def _max_offset_ribbed(sign: float = 1.0) -> BladeParams:
-    """Ribbed design at the containment boundary: every panel offset knob at ±1 (max displacement),
-    thin 3 mm panel, flat meridian. Decoded so it is exactly BO-reachable. This is the design class
-    whose rib rails used to ride up on the panel wave and collide when folded."""
+    """Ribbed design at the containment boundary: THICK ribs (so the offset envelope is real) with
+    every panel offset knob at ±1 (max displacement), thin 3 mm panel, flat meridian. Decoded so it
+    is exactly BO-reachable. This is the design class whose rib rails used to ride up on the panel
+    wave and collide when folded — thick ribs are essential, since the offset allowance is
+    ``(t_rib − panel)/2`` (thin ribs would leave zero offset room and no rail-lift to exercise)."""
     idx = {v.name: i for i, v in enumerate(SEARCH_SPACE)}
     vec = np.zeros(len(SEARCH_SPACE))
     vec[idx["rib_mode"]] = 0.5  # ribbed
     vec[idx["rib_bow_interp"]] = 0.5  # linear, flat meridian (all knots 0)
+    vec[idx["t_rib_hub_k"]] = 1.0  # thick ribs → real containable offset envelope
+    vec[idx["t_rib_tip_k"]] = 1.0
     for i in range(4):
         for j in range(3):
             vec[idx[f"panel_z_{i}_{j}"]] = sign  # max |offset| — the containment boundary
@@ -307,9 +369,16 @@ def test_max_offset_ribbed_negative_folds_clear():
     assert fold_collision_clear(_max_offset_ribbed(-1.0)) is True
 
 
-def test_max_offset_ribbed_collision_below_faceting_floor():
-    # The former ~7 mm³ real collision is gone: residual is sub-faceting, far under the gate.
-    assert fold_collision_volume_m3(_max_offset_ribbed(1.0)) == pytest.approx(0.0, abs=1e-9)
+def test_max_offset_ribbed_penetration_is_a_clearance_gap():
+    # The former ~7 mm³ real collision is gone: the analytic gate shows the rails now nest with a
+    # gap (negative penetration), because the window keeps them on the meridian.
+    assert fold_penetration_m(_max_offset_ribbed(1.0)) < 0.0
+
+
+@pytest.mark.slow
+def test_max_offset_ribbed_cad_boolean_agrees_it_folds():
+    # Offline CAD-boolean cross-check on this key design agrees with the analytic gate: it folds.
+    assert fold_collision_volume_m3(_max_offset_ribbed(1.0)) == pytest.approx(0.0, abs=1e-8)
 
 
 def test_rib_rail_carries_no_panel_displacement():

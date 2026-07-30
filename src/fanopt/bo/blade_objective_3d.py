@@ -116,8 +116,9 @@ class Blade3DObjective:
                     f"infeasible: {params.to_dict()}\n", encoding="utf-8"
                 )
                 return (nan, nan, nan)
-            # Authoritative CAD fold backstop (~seconds) BEFORE the minutes-long CFD: even if a
-            # corner slips past the analytic feasible() proxy, never evaluate an un-foldable design.
+            # Analytic fold gate (~ms) BEFORE the minutes-long CFD: even if a corner slips past the
+            # analytic feasible() proxy, never evaluate an un-foldable design. Hang-proof and
+            # faceting-free (see fold_penetration_m), so no pathological design stalls this worker.
             if not fold_collision_clear(params):
                 diagdir.mkdir(parents=True, exist_ok=True)
                 (diagdir / "UNFOLDABLE.txt").write_text(
