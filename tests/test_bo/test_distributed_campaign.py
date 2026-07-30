@@ -15,6 +15,7 @@ if importlib.util.find_spec("botorch") is None:
     pytest.skip("botorch (the [bo] extra) required", allow_module_level=True)
 
 from fanopt.bo import distributed_campaign as dc
+from fanopt.bo.blade_campaign import stage3_seed_designs
 from fanopt.bo.blade_codec import N_DIMS, bounds, clip_to_bounds, decode
 from fanopt.bo.distributed_campaign import (
     DistributedConfig,
@@ -76,6 +77,19 @@ def _raw_row_count(shared) -> int:
         for ln in shard.read_text().splitlines()
         if ln.strip()
     )
+
+
+def _ledger_hashes(shared) -> list[str]:
+    return [
+        json.loads(ln)["design_hash"]
+        for shard in shared.glob(dc.LEDGER_GLOB)
+        for ln in shard.read_text().splitlines()
+        if ln.strip()
+    ]
+
+
+def _seed_hashes() -> list[str]:
+    return [design_hash(decode(s).to_dict()) for s in stage3_seed_designs()]
 
 
 # --- ledger round-trip / robustness ---
@@ -421,6 +435,69 @@ def test_trust_region_is_updated_during_bo(tmp_path, monkeypatch):
     cfg = DistributedConfig(total_budget=12, n_init=8, batch_size=2, poll_seconds=0.0)
     run_distributed_session(_synthetic, tmp_path, cfg, session_id="s", max_iters=5)
     assert len(calls) >= 1  # TR advanced at least once in the BO phase
+
+
+# --- seed injection (Stage-3 trapezoid cold rerun) ---
+
+
+def test_coldstart_prepends_seed_designs():
+    # Seeds sit at the FRONT of the cold-start sequence (dispatched ahead of the Sobol DoE); the
+    # DoE keeps its full n_init size, so the cold-start grows by exactly the seed count.
+    seeds = stage3_seed_designs()
+    cfg = DistributedConfig(n_init=6, seed_designs=seeds)
+    cold = dc._coldstart_designs(cfg)
+    assert len(cold) == 6 + len(seeds)
+    for i, s in enumerate(seeds):
+        assert np.allclose(cold[i], clip_to_bounds(np.asarray(s, dtype=float)))
+
+
+def test_coldstart_without_seeds_is_plain_sobol():
+    cfg = DistributedConfig(n_init=6)  # seed_designs defaults to None
+    assert len(dc._coldstart_designs(cfg)) == 6
+
+
+def test_injected_seeds_land_exactly_once_single_session(tmp_path):
+    seeds = stage3_seed_designs()
+    cfg = DistributedConfig(
+        total_budget=12, n_init=6, batch_size=4, poll_seconds=0.0, seed_designs=seeds
+    )
+    run_distributed_session(_synthetic, tmp_path, cfg, session_id="s0", max_iters=50)
+    rows = _ledger_hashes(tmp_path)
+    for h in _seed_hashes():
+        assert rows.count(h) == 1  # each seed dispatched, evaluated, and NOT duplicated
+
+
+def test_injected_seeds_land_once_across_two_sessions(tmp_path):
+    # Two interleaved sessions both carry the same seed_designs; the claim/ledger dedup must ensure
+    # each seed is physically evaluated exactly once (not once per session) — the headline guarantee.
+    seeds = stage3_seed_designs()
+    cfg = DistributedConfig(
+        total_budget=16, n_init=8, batch_size=4, poll_seconds=0.0, seed_designs=seeds
+    )
+    for _ in range(60):
+        if len(read_ledger(tmp_path)[0]) >= cfg.total_budget:
+            break
+        run_distributed_session(
+            _synthetic, tmp_path, cfg, session_id="A", session_index=0, n_sessions=2, max_iters=1
+        )
+        run_distributed_session(
+            _synthetic, tmp_path, cfg, session_id="B", session_index=1, n_sessions=2, max_iters=1
+        )
+    rows = _ledger_hashes(tmp_path)
+    for h in _seed_hashes():
+        assert rows.count(h) == 1  # deduped across sessions — no seed run twice
+    assert _raw_row_count(tmp_path) == len(read_ledger(tmp_path)[2])  # nothing run twice at all
+
+
+def test_async_injects_seeds_exactly_once(tmp_path):
+    seeds = stage3_seed_designs()
+    cfg = DistributedConfig(
+        total_budget=8, n_init=4, n_workers=2, poll_seconds=0.0, seed_designs=seeds, **_FAST_ACQ
+    )
+    run_async_session(_synthetic, tmp_path, cfg, session_id="s0")
+    rows = _ledger_hashes(tmp_path)
+    for h in _seed_hashes():
+        assert rows.count(h) == 1  # each seed evaluated once through the async claim/ledger path
 
 
 def test_doe_completes_despite_a_departed_session_slice(tmp_path):

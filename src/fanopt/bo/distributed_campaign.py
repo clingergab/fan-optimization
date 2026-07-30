@@ -34,7 +34,7 @@ import datetime as _dt
 import json
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, as_completed, wait
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
@@ -105,6 +105,10 @@ class DistributedConfig:
         # clears the ~4h high-fi CFD tier; lower it for a fast coarse tier to recover from drops sooner.
         21600.0
     )
+    seed_designs: Sequence[np.ndarray] | None = None
+    # Operator-locked seed designs (encoded N_DIMS vectors) dispatched AHEAD of the Sobol DoE. They
+    # travel the SAME claim/ledger path as any design — deduped by design hash — so across N sessions
+    # each seed is evaluated exactly once and lands as an ordinary eval. Identical across sessions.
 
 
 _DEFAULT_CFG = DistributedConfig()
@@ -304,6 +308,22 @@ def _sobol_doe(n: int, seed: int) -> np.ndarray:
     return np.array([clip_to_bounds(v) for v in (low + unit * (high - low))])
 
 
+def _coldstart_designs(cfg: DistributedConfig) -> np.ndarray:
+    """The cold-start dispatch sequence: the operator seed designs FIRST, then the Sobol DoE.
+
+    Seeds are prepended so they dispatch ahead of the DoE; both share the claim/ledger path, so a
+    seed is evaluated exactly once across all sessions (deduped by design hash, like any design).
+    Empty/None ``cfg.seed_designs`` reproduces the plain Sobol cold-start.
+    """
+    sobol = _sobol_doe(cfg.n_init, cfg.seed)
+    if not cfg.seed_designs:
+        return sobol
+    seeds = np.array(
+        [clip_to_bounds(np.asarray(s, dtype=float)) for s in cfg.seed_designs]
+    ).reshape(-1, N_DIMS)
+    return np.vstack([seeds, sobol])
+
+
 def _safe_eval(objective_fn: ObjectiveFn, v: np.ndarray) -> tuple[float, float, float]:
     try:
         return objective_fn(v)
@@ -378,7 +398,8 @@ def run_distributed_session(
     claims = shared / CLAIMS_DIR
     low, high = bounds()
     tr = TrustRegionState(dim=N_DIMS, batch_size=cfg.batch_size)
-    doe = _sobol_doe(cfg.n_init, cfg.seed)
+    doe = _coldstart_designs(cfg)  # seed designs first, then the Sobol DoE
+    n_cold = len(doe)
 
     for _ in range(max_iters):
         x, y_raw, hashes = read_ledger(shared)
@@ -386,20 +407,21 @@ def run_distributed_session(
             break
 
         bo_ctx: tuple | None = None
-        if len(x) < cfg.n_init:
-            # Cold-start DoE: this session owns Sobol points i where i % n_sessions == index;
-            # propose the next ones NOT yet in the shared ledger, so it advances through the DoE
-            # instead of re-proposing an already-evaluated batch (which would stall on claims).
-            idxs = [i for i in range(cfg.n_init) if i % n_sessions == session_index]
+        if len(x) < n_cold:
+            # Cold-start: this session owns cold-start points i where i % n_sessions == index
+            # (seeds sit at the front, so they dispatch ahead of the DoE); propose the next ones NOT
+            # yet in the shared ledger, so it advances instead of re-proposing an already-evaluated
+            # batch (which would stall on claims).
+            idxs = [i for i in range(n_cold) if i % n_sessions == session_index]
             fresh = [doe[i] for i in idxs if design_hash(decode(doe[i]).to_dict()) not in hashes]
             if not fresh:
-                # Own slice done but ledger < n_init: mop up ANY un-evaluated DoE point, so a
+                # Own slice done but ledger < n_cold: mop up ANY un-evaluated cold-start point, so a
                 # permanently-departed session's slice can't deadlock cold-start. claim_designs
                 # skips points a live session still holds and steals only stale (dead) claims, so
-                # this never double-runs live work — it just lets survivors finish the DoE.
+                # this never double-runs live work — it just lets survivors finish the cold-start.
                 fresh = [
                     doe[i]
-                    for i in range(cfg.n_init)
+                    for i in range(n_cold)
                     if design_hash(decode(doe[i]).to_dict()) not in hashes
                 ]
             if not fresh:
@@ -504,7 +526,8 @@ def run_async_session(
     shard = shard_path(shared, session_id)
     claims = shared / CLAIMS_DIR
     low, high = bounds()
-    doe = _sobol_doe(cfg.n_init, cfg.seed)
+    doe = _coldstart_designs(cfg)  # seed designs first, then the Sobol DoE
+    n_cold = len(doe)
     tr = TrustRegionState(dim=N_DIMS, batch_size=1)
     t0 = time.monotonic()
     inflight: dict = {}  # future -> (vector, hash, dispatch_s, inflight_at_dispatch, source)
@@ -524,10 +547,10 @@ def run_async_session(
         known = hashes | {h for h, _ in active}
         if len(known) >= cfg.total_budget:
             return "stop"
-        if len(hashes) < cfg.n_init:  # cold-start DoE (own slice first, then mop up any orphan)
-            own = [doe[i] for i in range(cfg.n_init) if i % n_sessions == session_index]
+        if len(hashes) < n_cold:  # cold-start (seeds first, then DoE; own slice first, then mop up)
+            own = [doe[i] for i in range(n_cold) if i % n_sessions == session_index]
             cand = [v for v in own if _hof(v) not in known] or [
-                doe[i] for i in range(cfg.n_init) if _hof(doe[i]) not in known
+                doe[i] for i in range(n_cold) if _hof(doe[i]) not in known
             ]
             if not cand:
                 return "stop"  # every DoE point is claimed/done; wait for it to reach the ledger
