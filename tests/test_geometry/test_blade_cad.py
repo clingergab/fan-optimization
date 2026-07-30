@@ -23,6 +23,7 @@ from fanopt.geometry.blade import (
     half_width_at,
 )
 from fanopt.geometry.blade_cad import (
+    _panel_window,
     blade_mass_kg,
     blade_trimesh,
     blade_volume_m3,
@@ -249,3 +250,55 @@ def test_way2_independent_faces_folds_clear():
     p = _way2_checkerboard()
     assert not p.uniform  # sanity: this is the ribbed independent-face family
     assert fold_collision_clear(p) is True
+
+
+# --- Rib-rail window fold fix (2026-07-29, part 2): the panel mean displacement is windowed to
+# ZERO across the rib-rail band, so the thick rail sits on the pure meridian (surface of revolution)
+# instead of riding up on the panel wave. Pre-fix, a max-panel-offset ribbed design lifted the rail
+# ~0.8 mm above the ±t_rib/2 containment envelope → a real ~7 mm³ fold collision that GREW under
+# mesh refinement and passed the loose 10 mm³ gate (a false-negative). ---
+
+
+def _max_offset_ribbed(sign: float = 1.0) -> BladeParams:
+    """Ribbed design at the containment boundary: every panel offset knob at ±1 (max displacement),
+    thin 3 mm panel, flat meridian. Decoded so it is exactly BO-reachable. This is the design class
+    whose rib rails used to ride up on the panel wave and collide when folded."""
+    idx = {v.name: i for i, v in enumerate(SEARCH_SPACE)}
+    vec = np.zeros(len(SEARCH_SPACE))
+    vec[idx["rib_mode"]] = 0.5  # ribbed
+    vec[idx["rib_bow_interp"]] = 0.5  # linear, flat meridian (all knots 0)
+    for i in range(4):
+        for j in range(3):
+            vec[idx[f"panel_z_{i}_{j}"]] = sign  # max |offset| — the containment boundary
+            vec[idx[f"panel_thick_{i}_{j}"]] = 0.0  # thin 3 mm panel → deepest rail/panel step
+    return decode(vec)
+
+
+def test_max_offset_ribbed_positive_folds_clear():
+    p = _max_offset_ribbed(1.0)
+    assert not p.uniform
+    assert fold_collision_clear(p) is True
+
+
+def test_max_offset_ribbed_negative_folds_clear():
+    assert fold_collision_clear(_max_offset_ribbed(-1.0)) is True
+
+
+def test_max_offset_ribbed_collision_below_faceting_floor():
+    # The former ~7 mm³ real collision is gone: residual is sub-faceting, far under the gate.
+    assert fold_collision_volume_m3(_max_offset_ribbed(1.0)) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_rib_rail_carries_no_panel_displacement():
+    # Unit invariant behind the fix: inside the rib-rail band the panel window is 0 (rail rides the
+    # pure meridian), and it reaches 1 in the deep interior (panel free to wave).
+    p = _max_offset_ribbed(1.0)
+    assert _panel_window(p, 0.11, 1.0) == 0.0  # trapezoid edge → rail → no displacement
+    assert _panel_window(p, 0.11, 0.0) == pytest.approx(1.0)  # centreline → full panel wave
+
+
+def test_uniform_window_is_one_everywhere():
+    # No-rib sheet has no rails, so the panel wave is never windowed (it waves to its edges).
+    p = _uniform_sample()
+    assert _panel_window(p, 0.11, 1.0) == 1.0
+    assert _panel_window(p, 0.11, 0.0) == 1.0

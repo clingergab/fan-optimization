@@ -56,40 +56,44 @@ __all__ = [
     "fold_collision_clear",
 ]
 
-N_RADIAL_SECTIONS: int = 60
+N_RADIAL_SECTIONS: int = 90
 """Radial cross-sections lofted along the blade (polyhedral approximation density).
 
-60 (not 12): the meridian is faceted between these stations, so a coarse count chops a
+90 (not 12): the meridian is faceted between these stations, so a coarse count chops a
 ``smooth`` (Catmull-Rom) rib into a straight-segment zigzag — indistinguishable from
 ``linear`` and, worse, feeding the CFD spurious sharp edges that can drive divergence. Raised
-40→60 with the surface-of-revolution height (2026-07-29): the mean surface now varies with the
-TRUE radius ``√(x²+y²)``, which varies tangentially within a section, so a steep meridian needs a
-finer mesh for the two rotated neighbours' faceted surfaces to nest to within the fold clearance
-(coarse facets leave a mm³-scale chordal sliver — numerical, not a real interference)."""
+60→90 (2026-07-30) so the fold gate stays reliable on the RELAXED meridian ranges (bipolar,
+deeper amplitude): a steep ``linear`` zigzag chords the surface-of-revolution mean surface, and
+the residual chordal sliver between two rotated neighbours falls ~1/mesh² (measured worst-case
+faceting on ``[30,-30,…]``-class zigzags: 3.4 mm³ at 60×18 → 0.8 mm³ at 90×27), which keeps that
+numerical artifact well below the tightened :data:`_FOLD_INTERSECT_EPS_M3` gate. ``smooth``
+meridians facet to ~0 at any density; only sharp ``linear`` kinks drive the artifact."""
 
-N_TANGENTIAL_SAMPLES: int = 18
-"""Tangential samples per cross-section across the wedge. Raised 12→18 alongside
-:data:`N_RADIAL_SECTIONS` (2026-07-29): the surface-of-revolution height varies tangentially
-across a section (rho grows toward the trapezoid edges), so a steep meridian is chorded
-tangentially too — more samples shrink the polyhedral fold-gate artifact."""
+N_TANGENTIAL_SAMPLES: int = 27
+"""Tangential samples per cross-section across the wedge. Raised 18→27 (2026-07-30) in proportion
+to :data:`N_RADIAL_SECTIONS`: the surface-of-revolution height varies tangentially across a section
+(rho grows toward the trapezoid edges), so a steep meridian is chorded tangentially too — more
+samples shrink the polyhedral fold-gate artifact on the relaxed ranges."""
 
 # The trapezoid planform starts at the pivot centre (r=0) so the blade root overlaps the boss.
 _R_INNER_M: float = BLADE_ROOT_RADIUS_M
-_FOLD_INTERSECT_EPS_M3: float = 1e-8
+_FOLD_INTERSECT_EPS_M3: float = 5e-9
 """Swept-intersection volume (m³) below which the fold gate reports ``clear``.
 
-10 mm³. NOT a numeric zero: the gate intersects two *polyhedral* approximations of a smooth
-surface-of-revolution blade, and where the meridian is steep the two rotated neighbours' facets
-chord-mismatch by a mm³-scale sliver even though the underlying smooth solids nest with the full
-:data:`~fanopt.geometry.blade.FOLD_CLEARANCE_M` gap. Measured over 371 diverse decoded designs
-(Sobol + range-corner steep zigzags + extremes) AND a 48-way extreme sweep, the artifact peaks at
-~3.4 mm³ and does not shrink to zero at the boss-rim kink with mesh refinement — it is numerical,
-not a real interference. A real interference is an order of magnitude larger and grows (or holds)
-under refinement: WITHOUT the boss-flat meridian + root taper a steep meridian climbs the next
-layer's boss at ~140 mm³. Those construction fixes make every range-valid design fold, so this
-threshold's job is to pass the faceting noise (it sits ~3× above the floor, ~14× below a gross
-collision) while remaining a live backstop against any future gross interference. 100 % of the
-371-design probe folds clear at this threshold; the exact-zero rate is ~94 %."""
+5 mm³. NOT a numeric zero: the gate intersects two *polyhedral* approximations of a smooth
+surface-of-revolution blade, and where the meridian is a sharp ``linear`` zigzag the two rotated
+neighbours' facets chord-mismatch by a sub-mm³ sliver even though the underlying smooth solids nest
+with the full :data:`~fanopt.geometry.blade.FOLD_CLEARANCE_M` gap. At the :data:`N_RADIAL_SECTIONS`
+× :data:`N_TANGENTIAL_SAMPLES` = 90×27 default mesh the worst-case faceting is ~0.8 mm³ on the
+current ranges (~1.7 mm³ projected on the relaxed bipolar/deeper ranges) — it SHRINKS under mesh
+refinement (0.8 mm³ at 90×27 → 0.2 mm³ at 120×36), the signature of a numerical artifact, not a
+real interference. Tightened 10 mm³ → 5 mm³ (2026-07-30): the old 10 mm³ was loose enough to hide a
+real ~5–7 mm³ collision (rib rails riding the panel mean displacement, since fixed by
+:func:`_panel_window`); 5 mm³ sits ~3× above the 90×27 faceting floor and catches any real ≥5 mm³
+interference (a gross surface-of-revolution break is ~10²  mm³). The PRIMARY fold guarantee is the
+construction (surface-of-revolution height + boss-flat meridian + root taper + rib-rail window),
+verified 100 % fold-clear / zero false-negative over a 571-design adversarial probe; this gate is a
+cheap pre-CFD regression backstop, not the guarantee."""
 _SEW_TOLERANCE_M: float = 1e-7
 
 
@@ -115,6 +119,49 @@ def _root_taper(rho: float) -> float:
     return t * t * (3.0 - 2.0 * t)  # smoothstep (C1 at both ends — no lip to catch a neighbour)
 
 
+def _is_rib_rail(params: BladeParams, r_station: float, v: float) -> bool:
+    """True iff the planform point is inside a rib rail (thick frame) rather than the panel.
+
+    A rib rail runs within ``rib_width`` (tangential y-distance) of each trapezoid edge. Uniform
+    (no-rib) blades have no rails, so this is always ``False``. Classification is a **planform**
+    decision (fixed tangential distance from the straight edge), so it uses ``r_station``.
+    """
+    if params.uniform:
+        return False
+    edge_dist = half_width_at(r_station) * (1.0 - abs(v))  # y-distance to the nearest edge
+    return edge_dist <= rib_width_at(r_station)
+
+
+def _panel_window(params: BladeParams, r_station: float, v: float) -> float:
+    """Tangential weight (0→1) that suppresses the panel mean displacement across the rib rails.
+
+    **The fold fix (2026-07-29, part 2):** the panel mean-surface displacement grid pins only the
+    trapezoid *edge* (``v = ±1``) to 0, but a rib rail is a whole *band* (``edge_dist ≤ rib_width``)
+    — so without this window the thick rail rides UP on the still-nonzero displacement inside the
+    band and pokes ABOVE the ``±t_rib/2`` containment envelope (measured ~0.8 mm of poke → ~7 mm³
+    fold collision). Containment (the codec) only proves the thin *panel* fits inside the rib
+    envelope; it never accounted for the rails riding the mean. Zeroing the displacement across the
+    rail band puts the rails on the pure meridian (a true surface of revolution → folds any shape)
+    and leaves the interior panel free to wave *within* the rib envelope — exactly the intended
+    ribbed Way-2 model (rails = frame on the meridian; panel undulates between them). Uniform blades
+    have no rails, so the window is 1 everywhere (the sheet waves to its edges; it nests by the
+    codec's ``|offset| + t/2 ≤ e_cap/2`` bound instead).
+
+    The window ramps smoothly (smoothstep) from 0 at the rail inner boundary to 1 one rail-width
+    further in, so the panel blends into the frame with no sharp lip to catch a folded neighbour.
+    """
+    if params.uniform:
+        return 1.0
+    edge_dist = half_width_at(r_station) * (1.0 - abs(v))
+    rail = rib_width_at(r_station)
+    if edge_dist <= rail:
+        return 0.0
+    if edge_dist >= 2.0 * rail:
+        return 1.0
+    t = (edge_dist - rail) / rail
+    return t * t * (3.0 - 2.0 * t)
+
+
 def _half_thickness_m(params: BladeParams, r_station: float, rho: float, v: float) -> float:
     """Local half material thickness at planform station ``r_station``, true radius ``rho`` and
     tangential fraction ``v`` ∈ [-1, 1].
@@ -128,10 +175,8 @@ def _half_thickness_m(params: BladeParams, r_station: float, rho: float, v: floa
     trapezoid edge; the interior carries the thinner panel membrane. **Uniform**: no rails —
     the whole width is the panel sheet.
     """
-    if not params.uniform:
-        edge_dist = half_width_at(r_station) * (1.0 - abs(v))  # y-distance to the nearest edge
-        if edge_dist <= rib_width_at(r_station):
-            return rib_thickness_at(params, rho) / 2.0
+    if _is_rib_rail(params, r_station, v):
+        return rib_thickness_at(params, rho) / 2.0
     return panel_thickness_at(params, rho, v) / 2.0
 
 
@@ -163,7 +208,8 @@ def _surface_grids(
             v = -1.0 + 2.0 * j / N_TANGENTIAL_SAMPLES
             x, y = r, v * w
             rho = min(max(math.hypot(x, y), _R_INNER_M), RIB_TIP_RADIUS_M)
-            mean = rib_z_at(params, rho) + _root_taper(rho) * displacement_at(params, rho, v)
+            panel_disp = _panel_window(params, r, v) * displacement_at(params, rho, v)
+            mean = rib_z_at(params, rho) + _root_taper(rho) * panel_disp
             h = _half_thickness_m(params, r, rho, v)
             top_row.append(cq.Vector(x, y, mean + h))
             bot_row.append(cq.Vector(x, y, mean - h))

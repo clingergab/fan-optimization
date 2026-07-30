@@ -84,17 +84,36 @@ meridians crossed. The retired pie-slice sector used `z = f(true radius)` and fo
 4. **Panel-aware layer spacing** (already in the codec/geometry) means a panel that pokes past the
    rib rail just makes a uniformly thicker blade that still nests — so the analytic
    `containment_margin` is now a *conservative* proxy; the CAD swept-volume boolean is authoritative.
+5. **Rib-rail displacement window** (`_panel_window`, the 2026-07-30 completion). A harder
+   adversarial probe (subprocess-isolated, mesh-refinement classifier) showed the height fix alone
+   was **incomplete**: max-panel-offset *ribbed* designs still collided ~7 mm³ and the collision
+   GREW under mesh refinement (a real interference, not faceting), slipping the old 10 mm³ gate.
+   **Root cause:** `displacement_at` pins the panel mean displacement to 0 only at the exact
+   trapezoid edge (`v = ±1`), but a rib rail is a whole *band* (`edge_dist ≤ rib_width`); inside it
+   the displacement was still ~0.8 mm nonzero, so the thick rail rode up on the panel wave and poked
+   above the `±t_rib/2` containment envelope. Containment (the codec) proved only that the thin
+   *panel* fits the rib envelope — never that the rails stay on the mean. `_panel_window` zeroes the
+   panel displacement across the rail band (smoothstep ramp 0→1 over `[rib_width, 2·rib_width]` in
+   `edge_dist`), so the rails sit on the pure meridian (surface of revolution) and only the contained
+   interior panel waves — exactly the intended ribbed Way-2 model (rails = frame on the meridian;
+   panel undulates between them). Aero freedom is untouched (interior mean + the independent-faces
+   thickness grid are unchanged).
 
 **Two orthogonal design axes preserved:** rib structure (ribbed A / no-rib B) stays independent of
 panel shaping freedom (Way-1 whole-panel meridian wave ↔ Way-2 independent top/bottom face waves ↔
 any mix); the optimizer roams both on every design.
 
-**Result:** over the 371-design probe (and a 48-way extreme sweep) **100 % fold clear** on the CAD
-gate; the exact-zero rate is ~94 %, with the small residual a polyhedral **faceting artifact**
-(≤ ~3.4 mm³, order-of-magnitude below a real ~140 mm³ interference) absorbed by a justified
-`fold_collision_clear` threshold (10 mm³). The CAD fold gate is wired into the 3D objective as a
-cheap pre-CFD backstop, so no un-foldable design is ever evaluated. Fold is the HARD
-by-construction constraint; mass stays SOFT.
+**Result (2026-07-30, completed fix):** over a **571-design adversarial probe** (Sobol + box-corners
++ all 2⁵ meridian-knot corners × interp × mode + adversarial panel-offset extremes, 290 ribbed / 281
+uniform, subprocess-isolated) **100 % fold clear**; the mesh-refinement classifier re-measured every
+suspect + a random-clear sample at 2× mesh and **all shrank** (coarse max 3.4 mm³ → fine max 0.19 mm³),
+**zero grew, zero false-negatives** — confirming the residual is a polyhedral **faceting artifact**
+(sharp `linear` zigzag meridians only; `smooth` meridians facet to ~0). To keep the gate reliable on
+the relaxed meridian ranges, the default fold mesh was raised 60×18 → **90×27** (faceting worst-case
+3.4 → 0.8 mm³) and the `fold_collision_clear` threshold tightened **10 mm³ → 5 mm³** (~3× above the
+90×27 faceting floor, catches any real ≥5 mm³ interference; a gross surface-of-revolution break is
+~10² mm³). The CAD fold gate is wired into the 3D objective as a cheap pre-CFD backstop, so no
+un-foldable design is ever evaluated. Fold is the HARD by-construction constraint; mass stays SOFT.
 
 ## Resolved
 
