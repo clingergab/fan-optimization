@@ -57,6 +57,45 @@ The operator iterated the geometry via interactive 3D renders and locked the dec
   modules. The 2D `blade_slice` / `blade_objective` path is already retired (ADR-0004) and is not
   touched.
 
+## Fold-feasibility fix — surface of revolution (2026-07-29)
+
+The first trapezoid CAD build was **not feasible-by-construction on the authoritative swept-volume
+fold gate**: ~90 % of decoded designs collided when folded (only ~10 % clear over a 371-design
+Sobol + extremes probe). **Root cause:** the blade height was computed as `z = f(x-station)` — a
+flat Cartesian strip, NOT a surface of revolution. Stacked neighbours are placed by *rotation*
+about the pin, and a strip's profile goes out of phase when rotated, so multi-hump / zigzag
+meridians crossed. The retired pie-slice sector used `z = f(true radius)` and folded any meridian.
+
+**Fix (implemented, verified):**
+
+1. **Height = surface of revolution.** The mean surface and material thickness are functions of the
+   **true radius** `rho = √(x² + y²)` (clamped to the tip radius at the corners), with the trapezoid
+   **planform outline unchanged** (`x = r_station`, `y = s·half_width(r_station)`). Rotated
+   neighbours are then congruent, so a meridian of **any** shape/amplitude (multi-hump, zigzag,
+   base→tip wave) nests. No meridian reparametrisation / monotonic restriction — full design
+   freedom is retained. Holds for both ribbed (A) and uniform no-rib (B) modes.
+2. **Boss-flat meridian.** The blade root overlaps the boss (a straight pin bearing that can't rise
+   with the meridian). The meridian is pinned flat (`z = 0`) inside `MERIDIAN_ROOT_FLAT_RADIUS_M`
+   (9 mm ≈ 1.5× boss radius) so a steep root rise can't climb into the next layer's boss. All five
+   meridian knots sit at `r ≥ 44 mm`, so no aero shape freedom is lost.
+3. **Panel root taper.** The panel displacement grid is smoothly tapered to zero over the same
+   near-boss region (`_root_taper`) so Way-2 face waves also can't lift the buried root into the
+   neighbour's boss.
+4. **Panel-aware layer spacing** (already in the codec/geometry) means a panel that pokes past the
+   rib rail just makes a uniformly thicker blade that still nests — so the analytic
+   `containment_margin` is now a *conservative* proxy; the CAD swept-volume boolean is authoritative.
+
+**Two orthogonal design axes preserved:** rib structure (ribbed A / no-rib B) stays independent of
+panel shaping freedom (Way-1 whole-panel meridian wave ↔ Way-2 independent top/bottom face waves ↔
+any mix); the optimizer roams both on every design.
+
+**Result:** over the 371-design probe (and a 48-way extreme sweep) **100 % fold clear** on the CAD
+gate; the exact-zero rate is ~94 %, with the small residual a polyhedral **faceting artifact**
+(≤ ~3.4 mm³, order-of-magnitude below a real ~140 mm³ interference) absorbed by a justified
+`fold_collision_clear` threshold (10 mm³). The CAD fold gate is wired into the 3D objective as a
+cheap pre-CFD backstop, so no un-foldable design is ever evaluated. Fold is the HARD
+by-construction constraint; mass stays SOFT.
+
 ## Resolved
 
 - **Mass cap = 300 g** (operator, 2026-07-29). `schema.py MAX_TOTAL_MASS_KG = 0.300` is
