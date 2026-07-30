@@ -18,15 +18,54 @@ from pathlib import Path
 import numpy as np
 
 from fanopt.bo.blade_codec import decode
-from fanopt.bo.blade_objective import blade_panel_deflection_m
 from fanopt.cfd.blade_aero_3d import evaluate_blade_aero_3d
 from fanopt.cfd.phase5 import VerifyConfig
-from fanopt.geometry.blade import estimate_mass_kg, feasible
+from fanopt.geometry.blade import (
+    RIB_TIP_RADIUS_M,
+    BladeParams,
+    estimate_mass_kg,
+    feasible,
+    half_width_at,
+    panel_radial_stations,
+)
+from fanopt.geometry.schema import E_PETG_XY_PA
 from fanopt.utils.ledger import design_hash
 
-__all__ = ["THRUST_METRICS", "whole_fan_j_fan", "Blade3DObjective"]
+__all__ = [
+    "THRUST_METRICS",
+    "AERO_PRESSURE_PA",
+    "blade_panel_deflection_m",
+    "whole_fan_j_fan",
+    "Blade3DObjective",
+]
 
 THRUST_METRICS = ("mean", "peak")
+
+AERO_PRESSURE_PA: float = 10.0  # §9.2 distributed-pressure reference
+_CLAMPED_PLATE_ALPHA: float = 0.0138  # max-deflection coefficient, clamped rectangular plate
+
+
+def blade_panel_deflection_m(params: BladeParams) -> float:
+    """Panel-floppiness proxy (m) — area-weighted mean clamped-plate deflection over the grid.
+
+    Per node ``δ ∝ α · p · width(r)⁴ / (E · t(r,v)³)`` with ``width(r) = 2·half_width_at(r)`` the
+    local **trapezoid** tangential width (NOT the retired ``r·Δθ`` pie-slice span), area-weighted
+    (width × radial strip over the 22 cm :data:`RIB_TIP_RADIUS_M` blade) and averaged over the whole
+    ``panel_thickness_m`` grid — so it responds to the entire thickness field and the width growth
+    (wider outer nodes flex more), not just the single thinnest node. A soft Pareto proxy; real
+    structure is Phase-2 TO's job. Live: called by :class:`Blade3DObjective` (ADR-0004 3D path).
+    """
+    stations = panel_radial_stations()
+    dr = RIB_TIP_RADIUS_M / (len(stations) - 1)  # radial strip; BLADE_ROOT_RADIUS_M = 0
+    total_defl = 0.0
+    total_area = 0.0
+    for r, th_row in zip(stations, params.panel_thickness_m):
+        width = max(2.0 * half_width_at(r), 1e-6)  # trapezoid full tangential width at r
+        area = width * dr  # radial-strip area weight
+        for t in th_row:
+            total_defl += area * _CLAMPED_PLATE_ALPHA * AERO_PRESSURE_PA * width**4 / (E_PETG_XY_PA * t**3)
+            total_area += area
+    return total_defl / total_area
 
 
 def whole_fan_j_fan(per_blade_thrust: float, blade_count: int) -> float:

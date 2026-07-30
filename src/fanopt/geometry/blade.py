@@ -61,6 +61,7 @@ __all__ = [
     "MAX_FOLDED_STACK_HEIGHT_M",
     "RIB_TIP_RADIUS_M",
     "BLADE_ROOT_RADIUS_M",
+    "BLADE_COUNT",
     "ROOT_HALF_WIDTH_M",
     "TIP_HALF_WIDTH_M",
     "BladeParams",
@@ -153,6 +154,12 @@ at the retired 185 mm; decoupled here to keep this length change inside the live
 BLADE_ROOT_RADIUS_M: float = 0.0
 """Root radius. The trapezoid planform starts at the pivot centre (r = 0) so the blade root
 overlaps the pivot boss and unions into ONE solid (not a tangent-but-separate part)."""
+
+BLADE_COUNT: int = 12
+"""Blade count — FIXED at 12 (operator, 2026-07-29 trapezoid redesign; ADR-0005). No longer a
+BO variable: the deployed span (12 × 13.3° × 22 cm ≈ 43 cm) requires the count be fixed, so the
+codec dropped the ``blade_count`` categorical and every design is a 12-blade fan. 12 is a member
+of ``schema.BLADE_COUNTS`` (still the validation set for :class:`BladeParams`)."""
 
 ROOT_HALF_WIDTH_M: float = PIVOT_BOSS_RADIUS_M
 """6 mm — root tangential half-width. Root width = 12 mm = boss diameter, so the root meets
@@ -588,14 +595,21 @@ def estimate_mass_kg(params: BladeParams) -> float:
 
 
 def mass_margin_kg(params: BladeParams) -> float:
-    """``MAX_TOTAL_MASS_KG − estimate_mass_kg``. ≥ 0 ⇒ under the mass cap (120 g)."""
+    """``MAX_TOTAL_MASS_KG − estimate_mass_kg`` (kg). Reported margin only — NOT a feasibility gate.
+
+    Mass is a **soft** Pareto objective, not a hard constraint (operator, 2026-07-29): the 22 cm /
+    12-blade seeds run ~360 g, over the ``MAX_TOTAL_MASS_KG`` = 300 g reference, and gating on it
+    would erase the whole search. ``MAX_TOTAL_MASS_KG`` stays a documented reference (audit N8), so
+    this margin can go negative without making a design infeasible; :func:`feasible` ignores it.
+    """
     return MAX_TOTAL_MASS_KG - estimate_mass_kg(params)
 
 
 def feasible(params: BladeParams) -> bool:
-    """True iff the fold (stack-height), containment, and mass proxies are all satisfied."""
-    return (
-        fold_margin_m(params) >= 0.0
-        and containment_margin_m(params) >= 0.0
-        and mass_margin_kg(params) >= 0.0
-    )
+    """True iff the fold (stack-height) and containment proxies are satisfied.
+
+    Mass is deliberately NOT a gate (operator, 2026-07-29): it is a soft Pareto objective the BO
+    trades, reported via :func:`estimate_mass_kg` / :func:`mass_margin_kg`, never a feasibility
+    veto. Only the two geometric buildability proxies gate here.
+    """
+    return fold_margin_m(params) >= 0.0 and containment_margin_m(params) >= 0.0

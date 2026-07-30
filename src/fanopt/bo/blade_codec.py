@@ -15,7 +15,8 @@ raw physical thickness/offsets is almost never feasible). Concretely:
 - **panel offsets** are knobs in ``[-1, 1]`` scaled by the *local* containable envelope
   ``(t_rib(r) − panel)/2`` (ribbed) or the nesting envelope (uniform).
 
-``rib_bow`` (unconstrained) and ``blade_count`` / ``rib_mode`` (categorical) stay direct. Mass
+``rib_bow`` (unconstrained) and ``rib_mode`` (categorical) stay direct; ``blade_count`` is FIXED at
+:data:`~fanopt.geometry.blade.BLADE_COUNT` = 12 (ADR-0005) and carries no vector dimension. Mass
 is **not** forced here — it depends on the whole design and stays a purely soft check in the
 objective. (The fold cap is intentionally mass-free: at the 22 cm trapezoid a mass ceiling
 would collapse the rib range to a point for 10–12 blades. Mass-cap reconciliation is a
@@ -31,6 +32,7 @@ from typing import Any
 import numpy as np
 
 from fanopt.geometry.blade import (
+    BLADE_COUNT,
     BLADE_ROOT_RADIUS_M,
     FOLD_CLEARANCE_M,
     MAX_FOLDED_STACK_HEIGHT_M,
@@ -47,7 +49,6 @@ from fanopt.geometry.blade import (
     panel_radial_stations,
     rib_meridian_extent_m,
 )
-from fanopt.geometry.schema import BLADE_COUNTS
 
 __all__ = [
     "Var",
@@ -137,9 +138,8 @@ def _build_search_space() -> tuple[Var, ...]:
     for i in range(PANEL_GRID_RADIAL_COUNT):
         for j in range(PANEL_GRID_TANGENTIAL_COUNT):
             vars_.append(Var(f"panel_thick_{i}_{j}", 0.0, 1.0))  # knob → [P_MIN, min(rib) at node]
-    vars_.append(
-        Var("blade_count", 0.0, float(len(BLADE_COUNTS)), kind="categorical", choices=BLADE_COUNTS)
-    )
+    # blade_count is NOT a BO variable — FIXED at BLADE_COUNT = 12 (ADR-0005); decode/encode use it
+    # directly so it carries no vector dimension.
     return tuple(vars_)
 
 
@@ -211,9 +211,7 @@ def decode(vec: np.ndarray) -> BladeParams:
     if arr.shape != (N_DIMS,):
         raise ValueError(f"vector must have shape ({N_DIMS},); got {arr.shape}")
 
-    blade_count: int = _decode_categorical(
-        float(arr[_IDX["blade_count"]]), SEARCH_SPACE[_IDX["blade_count"]]
-    )
+    blade_count: int = BLADE_COUNT  # fixed at 12 (ADR-0005); not a vector dimension
     uniform = (
         _decode_categorical(float(arr[_IDX["rib_mode"]]), SEARCH_SPACE[_IDX["rib_mode"]])
         == "uniform"
@@ -290,10 +288,11 @@ def encode(params: BladeParams) -> np.ndarray:
         out[_IDX[f"rib_bow_k{i}"]] = params.rib_bow_knots_m[i]
     out[_IDX["rib_bow_interp"]] = float(RIB_BOW_INTERP_MODES.index(params.rib_bow_interp)) + 0.5
     out[_IDX["rib_mode"]] = float(RIB_MODES.index("uniform" if params.uniform else "ribbed")) + 0.5
-    out[_IDX["blade_count"]] = float(BLADE_COUNTS.index(params.blade_count)) + 0.5
 
+    # blade_count is fixed at BLADE_COUNT (not encoded); use it — not params.blade_count — for the
+    # caps so encode inverts the exact map decode applies (which always decodes at BLADE_COUNT).
     e_cap = fold_envelope_cap_m(
-        params.blade_count, rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
+        BLADE_COUNT, rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
     )
 
     if params.uniform:
@@ -312,7 +311,7 @@ def encode(params: BladeParams) -> np.ndarray:
 
     # Same bow-aware cap decode used, so encode(decode(v)) round-trips the thickness knob.
     t_cap = max(rib_thickness_cap_m(
-        params.blade_count, rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
+        BLADE_COUNT, rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
     ), _T_LO_RIBBED)
     t_span = t_cap - _T_LO_RIBBED
     out[_IDX["t_rib_hub_k"]] = _c01((params.t_rib_hub_m - _T_LO_RIBBED) / t_span) if t_span > 0 else 0.0

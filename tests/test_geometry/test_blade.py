@@ -36,6 +36,7 @@ from fanopt.geometry.blade import (
     rib_z_at,
 )
 from fanopt.geometry.schema import (
+    MAX_TOTAL_MASS_KG,
     PIVOT_BOSS_OD_M,
     RIB_BASE_WIDTH_M,
     RIB_TIP_WIDTH_M,
@@ -347,8 +348,6 @@ def test_estimate_mass_scales_with_blade_count():
 
 
 def test_mass_margin_is_cap_minus_estimate():
-    from fanopt.geometry.schema import MAX_TOTAL_MASS_KG
-
     p = _sample()
     assert mass_margin_kg(p) == pytest.approx(MAX_TOTAL_MASS_KG - estimate_mass_kg(p))
 
@@ -361,6 +360,26 @@ def test_feasible_false_when_any_constraint_violated():
     # 12 max-thick-rib blades bust the fold cap → feasible() is False.
     p = BladeParams(**{**_sample().to_dict(), "blade_count": 12, "t_rib_tip_m": 0.012})
     assert feasible(p) is False
+
+
+def test_feasible_does_not_gate_on_mass():
+    # Operator (2026-07-29): mass is a SOFT Pareto objective, NOT a feasibility gate. A design
+    # that folds + is contained but exceeds MAX_TOTAL_MASS_KG stays feasible; mass is only
+    # reported. The flat 12-blade / 3 mm-panel seed A is ~358 g — over the 300 g reference — yet
+    # folds with room to spare, so it must not be vetoed.
+    p = BladeParams(
+        blade_count=12,
+        rib_bow_knots_m=(0.0, 0.0, 0.0, 0.0, 0.0),
+        rib_bow_interp="linear",
+        t_rib_hub_m=0.004,
+        t_rib_tip_m=0.004,
+        panel_offsets_m=tuple((0.0, 0.0, 0.0) for _ in range(4)),
+        panel_thickness_m=tuple((0.003, 0.003, 0.003) for _ in range(4)),
+    )
+    assert estimate_mass_kg(p) > MAX_TOTAL_MASS_KG  # over the reference cap
+    assert mass_margin_kg(p) < 0.0  # margin can go negative
+    assert fold_margin_m(p) >= 0.0 and containment_margin_m(p) >= 0.0  # but still buildable
+    assert feasible(p) is True  # ... so feasible() ignores mass
 
 
 # --- B-proper: uniform (no-rib) mode ----------------------------------------

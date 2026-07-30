@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Phase 5 — 3D verification of the aero-first campaign's top Pareto blades.
 
-Loads a finished aero campaign's ``pareto.json`` (from ``scripts/run_phase4_aero.py``),
+Loads a finished aero campaign's ``pareto.json`` (from the distributed Stage-3 campaign),
 picks the top-k designs by slice ``J_fan``, and re-evaluates each with a 3D unsteady SU2
 run (single redesigned blade, external flow) — then checks the cheap 2D-slice ranking
 survives the 3D physics (Kendall τ between slice and 3D ``J_fan``). Writes

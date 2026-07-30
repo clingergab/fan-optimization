@@ -1,7 +1,7 @@
 """Aero-first BO campaign for the redesigned blade (V1).
 
 The Phase-4 campaign loop for the new blade: a Sobol design-of-experiments seed, then
-qLogNEHVI + TuRBO iterations over the 18-var :mod:`~fanopt.bo.blade_codec`, maximizing
+qLogNEHVI + TuRBO iterations over the :mod:`~fanopt.bo.blade_codec` search space, maximizing
 ``J_fan`` while minimizing mass + deflection. Reuses the kept, codec-agnostic
 :mod:`~fanopt.bo.backbone` (GP fit, acquisition, trust region, hypervolume) — this module
 only wires the loop: DoE, evaluate (optionally across processes), normalize, propose,
@@ -9,8 +9,8 @@ checkpoint + JSONL ledger every iteration so a killed Colab session resumes.
 
 The objective is **injected** (``objective_fn: vector -> (J_fan, mass, deflection)``) so
 this module carries no gmsh/SU2 dependency and is testable with a cheap synthetic
-objective; the real CFD objective is :class:`~fanopt.bo.blade_objective.BladeObjective`,
-wired in ``scripts/run_phase4_aero.py``.
+objective; the live CFD objective is :class:`~fanopt.bo.blade_objective_3d.Blade3DObjective`
+(the ADR-0004 3D path), wired in ``scripts/run_blade_campaign_distributed.py``.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from fanopt.bo.backbone import (
     to_maximization,
 )
 from fanopt.bo.blade_codec import N_DIMS, bounds, clip_to_bounds, decode, encode
-from fanopt.geometry.blade import BladeParams
+from fanopt.geometry.blade import BLADE_COUNT, BladeParams
 from fanopt.utils.ledger import design_hash
 
 __all__ = [
@@ -53,6 +53,7 @@ __all__ = [
     "LEDGER_NAME",
     "sobol_doe",
     "diverse_fallback_designs",
+    "stage3_seed_designs",
     "pareto_designs",
     "run_campaign",
 ]
@@ -103,7 +104,7 @@ def sobol_doe(n: int, seed: int = 0) -> np.ndarray:
 
 
 def _blade(
-    grid, *, blade_count=10, t_hub=0.005, t_tip=0.006, panel=0.003, thick_grid=None,
+    grid, *, blade_count=BLADE_COUNT, t_hub=0.005, t_tip=0.006, panel=0.003, thick_grid=None,
     bow_knots=(0.001, 0.002, 0.003, 0.0045, 0.006), interp="linear", uniform=False,
 ) -> BladeParams:
     tg = thick_grid or tuple((panel, panel, panel) for _ in range(4))
@@ -123,9 +124,11 @@ def diverse_fallback_designs() -> list[np.ndarray]:
     """Structurally-diverse seed vectors for the BO-stall fallback.
 
     Spans the reachable aero archetypes — flat baseline, cambered, base→tip zigzag, thin,
-    thick, and the no-rib uniform family (design B) — across blade counts, so a stalled
-    optimizer explores rather than exploits. All ribbed archetypes stay panel-contained (panel
-    ≥ 3 mm floor, ribs ≥ panel); meridian bows are kept gentle so the trapezoid still nests.
+    thick, and the no-rib uniform family (design B) — so a stalled optimizer explores rather
+    than exploits. blade_count is FIXED at :data:`~fanopt.geometry.blade.BLADE_COUNT` = 12
+    (ADR-0005), so the archetypes vary shape/thickness/topology, not count. All ribbed
+    archetypes stay panel-contained (panel ≥ 3 mm floor, ribs ≥ panel); meridian bows are kept
+    gentle so the trapezoid still nests.
     """
     flat = tuple((0.0, 0.0, 0.0) for _ in range(4))
     # Ribbed tangential relief hides inside the rib slab, so keep offsets within (rib−panel)/2.
@@ -141,18 +144,41 @@ def diverse_fallback_designs() -> list[np.ndarray]:
     # bulge) — reachable now that panel thickness is a free grid, not a scalar.
     airfoil = tuple((0.003, 0.005, 0.003) for _ in range(4))
     designs = [
-        _blade(flat, blade_count=10),
-        _blade(camber, blade_count=10),
-        _blade(zig, blade_count=8, t_hub=0.005, t_tip=0.006),
-        _blade(flat, blade_count=8, panel=0.003),  # thin/light (panel floor)
-        _blade(camber, blade_count=12, t_hub=0.005, t_tip=0.007),  # thick/stiff
-        _blade(flat, blade_count=8, bow_knots=dome, interp="smooth"),  # radial smooth cup
-        _blade(flat, blade_count=8, bow_knots=pleat, interp="linear"),  # radial pleat/zigzag
-        _blade(flat, blade_count=8, t_hub=0.006, t_tip=0.006, thick_grid=airfoil),  # ")(" section
+        _blade(flat),
+        _blade(camber),
+        _blade(zig, t_hub=0.005, t_tip=0.006),
+        _blade(flat, panel=0.003),  # thin/light (panel floor)
+        _blade(camber, t_hub=0.005, t_tip=0.007),  # thick/stiff
+        _blade(flat, bow_knots=dome, interp="smooth"),  # radial smooth cup
+        _blade(flat, bow_knots=pleat, interp="linear"),  # radial pleat/zigzag
+        _blade(flat, t_hub=0.006, t_tip=0.006, thick_grid=airfoil),  # ")(" section
         # Design B: a no-rib uniform sheet with radial camber (edges unpinned).
-        _blade(flat, blade_count=8, panel=0.0035, bow_knots=dome, interp="smooth", uniform=True),
+        _blade(flat, panel=0.0035, bow_knots=dome, interp="smooth", uniform=True),
     ]
     return [encode(p) for p in designs]
+
+
+def stage3_seed_designs() -> list[np.ndarray]:
+    """The two operator-locked Stage-3 seeds (encoded), injected AHEAD of the Sobol DoE.
+
+    ``A`` = panel+ribs (3 mm panel contained between 4 mm ribs); ``B`` = a no-rib uniform 3.5 mm
+    sheet (design B). Both at the fixed 12-blade deploy span, flat meridian and zero panel offset —
+    the two archetypes the trapezoid redesign exists to compare head-to-head (see
+    ``project_blade_redesign_spec`` / ADR-0005). Built via :func:`~fanopt.bo.blade_codec.encode`, so
+    each is exactly ``N_DIMS`` long and decodes back to its family under the feasible-by-construction
+    codec (A ribbed, B uniform). Reachable from the distributed campaign via ``--inject-seeds``.
+    """
+    flat_offsets = tuple((0.0, 0.0, 0.0) for _ in range(4))
+    flat_meridian = (0.0, 0.0, 0.0, 0.0, 0.0)
+    seed_a = _blade(
+        flat_offsets, blade_count=12, t_hub=0.004, t_tip=0.004, panel=0.003,
+        bow_knots=flat_meridian, interp="linear", uniform=False,
+    )
+    seed_b = _blade(
+        flat_offsets, blade_count=12, panel=0.0035,
+        bow_knots=flat_meridian, interp="linear", uniform=True,
+    )
+    return [encode(seed_a), encode(seed_b)]
 
 
 def _sanitize_yraw(y_raw: np.ndarray) -> np.ndarray:
