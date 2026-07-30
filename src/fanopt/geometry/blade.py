@@ -89,8 +89,19 @@ __all__ = [
 # --- New parameterization bounds (this module's own ranges, like the old
 # envelope.py's CAMBER_RANGE_M — NOT locked schema constants). -----------------
 
-RIB_BOW_RANGE_M: tuple[float, float] = (0.0, 0.030)
-"""Out-of-plane rise of the ``)`` rib meridian at each knot (0–30 mm)."""
+RIB_BOW_RANGE_M: tuple[float, float] = (-0.020, 0.020)
+"""Out-of-plane displacement of the ``)`` rib meridian at each knot — **BIPOLAR** ±20 mm
+(operator, 2026-07-30; ADR-0005). Negative knots dip the meridian BELOW the base plane, so the
+optimizer can choose down-cups / scoops and multi-sign waves (e.g. ``[0, 15, -15, 15, 0]``), not
+just up-humps — the meridian is a surface of revolution, so any sign/shape folds without collision.
+
+±20 mm (not the operator's first-cut ±30) is the MEASURED max symmetric amplitude that stays
+feasible-by-construction for BOTH families at 12 blades under the 90 mm :data:`MAX_FOLDED_STACK_HEIGHT_M`
+cap: the binding case is the UNIFORM no-rib sheet at its 3 mm floor (max foldable meridian extent
+49.6 mm; the worst ±20 knot pattern's Catmull-Rom extent is 48.8 mm). ±25 would need a ~101 mm fold
+cap, ±30 a ~115 mm cap — the operator kept the 90 mm cap over a chunkier fold. Bipolar ±20 already
+doubles the meridian travel of the retired up-only 30 mm (40 mm peak-to-peak). See
+``scratchpad/calib_amplitude.py`` for the derivation."""
 
 RIB_BOW_KNOT_COUNT: int = 5
 """Free radial control knots of the rib meridian (hub pinned to 0, knots hub→tip).
@@ -523,8 +534,10 @@ def layer_spacing_m(params: BladeParams) -> float:
 def folded_rib_bow_extent_m(params: BladeParams) -> float:
     """Peak-to-trough out-of-plane extent of the rib meridian ``max z(r) − min z(r)``.
 
-    The meridian rises up to ~30 mm on the **same z axis the fan folds on**, so it adds to
-    the folded stack — a Catmull-Rom overshoot below 0 widens the extent further.
+    The bipolar meridian ranges over ±20 mm on the **same z axis the fan folds on**, so its full
+    peak-to-trough extent (up to ~49 mm for a multi-sign wave, incl. Catmull-Rom overshoot) adds to
+    the folded stack — which is exactly why ±20 is the amplitude cap at 12 blades (see
+    :data:`RIB_BOW_RANGE_M` / :data:`MAX_FOLDED_STACK_HEIGHT_M`).
     """
     return rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
 

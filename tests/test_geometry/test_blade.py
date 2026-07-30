@@ -184,7 +184,7 @@ def test_rib_z_zero_at_root():
 def test_rib_z_flat_inside_boss_radius():
     # The meridian is pinned flat within the boss footprint (fold fix): blade material there can't
     # rise or it climbs into the next stacked layer's boss. All knots sit well outside this radius.
-    p = BladeParams(**{**_sample().to_dict(), "rib_bow_knots_m": (0.03, 0.03, 0.03, 0.03, 0.03)})
+    p = BladeParams(**{**_sample().to_dict(), "rib_bow_knots_m": (0.02, 0.02, 0.02, 0.02, 0.02)})
     for r in (0.0, 0.003, 0.006, MERIDIAN_ROOT_FLAT_RADIUS_M):
         assert rib_z_at(p, r) == pytest.approx(0.0)
 
@@ -192,7 +192,7 @@ def test_rib_z_flat_inside_boss_radius():
 def test_rib_z_rises_just_outside_boss_radius():
     # Re-anchored at the boss rim: with a raised first knot the meridian is climbing immediately
     # past MERIDIAN_ROOT_FLAT_RADIUS_M (so no aero-shape freedom is lost outside the buried boss).
-    p = BladeParams(**{**_sample().to_dict(), "rib_bow_knots_m": (0.03, 0.03, 0.03, 0.03, 0.03)})
+    p = BladeParams(**{**_sample().to_dict(), "rib_bow_knots_m": (0.02, 0.02, 0.02, 0.02, 0.02)})
     assert rib_z_at(p, MERIDIAN_ROOT_FLAT_RADIUS_M + 0.005) > 0.0
 
 
@@ -211,6 +211,20 @@ def test_rib_z_hits_each_knot_at_its_station_smooth():
 
 def test_rib_z_equals_last_knot_at_tip():
     assert rib_z_at(_sample(), RIB_TIP_RADIUS_M) == pytest.approx(_sample().rib_bow_knots_m[-1])
+
+
+def test_rib_z_dips_below_base_plane_for_negative_knots():
+    # Bipolar range (2026-07-30): negative knots dip the meridian BELOW z=0 (down-cups / scoops),
+    # a shape the old up-only [0, 0.030] range could not express.
+    p = BladeParams(**{**_sample().to_dict(), "rib_bow_knots_m": (-0.015, -0.020, -0.015, -0.010, -0.005)})
+    assert rib_z_at(p, RIB_TIP_RADIUS_M) < 0.0  # tip sits below the base plane
+
+
+def test_bladeparams_accepts_full_bipolar_range():
+    # Both range ends are valid: the deepest scoop (−20 mm) and the tallest hump (+20 mm) coexist.
+    p = BladeParams(**{**_sample().to_dict(), "rib_bow_knots_m": (-0.020, 0.020, -0.020, 0.020, 0.0)})
+    assert min(p.rib_bow_knots_m) == pytest.approx(-0.020)
+    assert max(p.rib_bow_knots_m) == pytest.approx(0.020)
 
 
 def test_rib_z_linear_midpoint_between_two_knots():
@@ -383,13 +397,15 @@ def test_folded_stack_height_is_envelope_and_bow_aware():
 
 
 def test_bowed_rib_folds_taller_than_flat():
-    # B4: a big rib bow adds to the folded stack; the old formula ignored it entirely.
+    # B4: a big rib bow adds to the folded stack; the old formula ignored it entirely. A BIPOLAR
+    # bow (dip below the base plane then rise) makes the peak-to-trough extent exceed either single
+    # amplitude — exercising the ±20 mm bipolar range.
     base = _sample().to_dict()
     flat = BladeParams.from_dict({**base, "rib_bow_knots_m": [0.0005] * 5, "rib_bow_interp": "linear"})
     bowed = BladeParams.from_dict(
-        {**base, "rib_bow_knots_m": [0.006, 0.014, 0.022, 0.028, 0.030], "rib_bow_interp": "linear"}
+        {**base, "rib_bow_knots_m": [-0.014, 0.008, 0.014, 0.018, 0.020], "rib_bow_interp": "linear"}
     )
-    assert folded_rib_bow_extent_m(bowed) > 0.02
+    assert folded_rib_bow_extent_m(bowed) > 0.02  # extent = 0.020 − (−0.014) = 0.034 mm > 0.02
     assert folded_stack_height_m(bowed) > folded_stack_height_m(flat) + 0.02
 
 
@@ -426,7 +442,7 @@ def test_bowed_rib_weighs_more_than_flat():
     base = _sample().to_dict()
     flat = BladeParams.from_dict({**base, "rib_bow_knots_m": [0.0005] * 5, "rib_bow_interp": "linear"})
     bowed = BladeParams.from_dict(
-        {**base, "rib_bow_knots_m": [0.006, 0.014, 0.022, 0.028, 0.030], "rib_bow_interp": "linear"}
+        {**base, "rib_bow_knots_m": [0.004, 0.009, 0.013, 0.017, 0.020], "rib_bow_interp": "linear"}
     )
     assert estimate_mass_kg(bowed) > estimate_mass_kg(flat)
 

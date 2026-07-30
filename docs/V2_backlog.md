@@ -4,6 +4,50 @@ Canonical, expanded V2 plan. The in-spec summary lives at `../report-final.md` �
 
 ---
 
+## Deferred design-space relaxations (trapezoid redesign, 2026-07-29)
+
+The trapezoid blade redesign (ADR-0005) freed several arbitrary pre-decisions so the BO can
+choose rather than have shape baked in. **Relaxed in V1** (fold-safe, feasible-by-construction):
+bipolar meridian `RIB_BOW_RANGE_M` `[0, +30] mm` → **`[−20, +20] mm`** (up-humps *and*
+down-cups/scoops; ±20 not ±30 is the measured max that folds by construction at 12 blades under the
+90 mm stack cap — see ADR-0005 / `blade.py`). This already doubles the meridian travel (40 mm p2p).
+
+**Panel surface amplitude was NOT relaxed** (measured 2026-07-30, found fold-limited not starved):
+the ribbed panel offset ceiling is ~1 mm (flat meridian, ~0.15–0.3 mm with a deep bow) and the
+uniform ~2 mm, all set by the shared 12-blade / 90 mm fold budget — the meridian, rib thickness, and
+panel offset draw on the SAME budget. The radial panel offset is a surface-of-revolution wave, so it
+is *redundant* with the (now large, bipolar) meridian; the tangential (Way-2) component is genuinely
+fold-limited (rotational asymmetry collides). The old ~3 % "starvation" is already resolved by the
+redesign's thick ribs + bipolar meridian + 3 mm base + the 3–10 mm thickness grid. The only lever for
+MORE ribbed-panel offset is to let it bulge past the rib (fold thicker) — a fold/mass/click trade,
+deferred below.
+
+**Deferred to V2** — also arbitrary, also fold-safe, but each **adds search dimensions**, so held
+back to keep the V1 BO tractable. Revisit if the V1 run stalls or the operator wants a wider search:
+
+- **More meridian knots** (`RIB_BOW_KNOT_COUNT` 5 → 7–9) — finer / higher-frequency waves; the
+  current 5 caps the wave to ~2 oscillations. +2–4 dims.
+- **Finer panel grid** (`PANEL_GRID_RADIAL_COUNT × PANEL_GRID_TANGENTIAL_COUNT` 4×3 → finer) —
+  finer surface cups / texture (Way-2). +N dims per row/col added.
+- **Non-linear / higher rib-thickness profile** — currently a 2-point (hub, tip) linear ramp,
+  ≤12 mm. Let it vary non-linearly and/or thicker.
+- **Rib width as a BO variable** — `RIB_BASE_WIDTH_M` / `RIB_TIP_WIDTH_M` were H12-locked at
+  4/6 mm; the redesign already touches that lock, so exposing rib width to the optimizer is a
+  natural V2 step.
+- **Ribbed panel bulge past the rib** (drop the `panel ≤ rib` containment cap for BOTH the thickness
+  grid and the mean-offset grid) — the surface-of-revolution + rib-rail window + panel-aware layer
+  spacing mean an over-poke just makes a thicker blade that still folds; `containment_margin` is
+  already a conservative proxy, not a hard fold limit. This is the ONLY lever that gives the ribbed
+  panel more than its current ~1 mm fold-honest offset ceiling (uniform already bulges freely). Trade:
+  a thicker folded bundle + more mass, and it inverts the `panel ≤ rib` click-chamfer clearance
+  ordering (open ADR-0005 item) — so it needs a click-clearance re-check, not just a range bump.
+
+Each deferred item is a one-line range/count change + fold re-verification; none is blocked on new
+physics. Acceptance for any of them: the full random+extreme decode sample stays ~100 % CAD-fold-
+clear and the seeds still hold.
+
+---
+
 ## Deferred Phase-0 spikes (V1 scope pivot, 2026-05-13)
 
 These spikes were originally Phase 0 deliverables. They are deferred to V2 to keep V1 free of specialized measurement hardware purchases. The V1 substitute approach lives next to each one. Decision rationale: `docs/phase_logs/phase_0_signoff.md`. Per-spike sentinels: `data/spike_0_{2,3,5,7c}/deferral.json`.

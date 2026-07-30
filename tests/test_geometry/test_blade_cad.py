@@ -225,6 +225,29 @@ def test_uniform_zigzag_meridian_folds_clear():
     assert fold_collision_clear(p) is True
 
 
+_MIN_BOW: float = RIB_BOW_RANGE_M[0]  # −20 mm — the bottom of the bipolar meridian range
+
+
+def test_bipolar_multisign_meridian_folds_clear():
+    # Bipolar range (2026-07-30): a multi-sign wave that dips below the base plane then rises
+    # (−20, +10, −15, +12, +20 mm) folds — a surface of revolution nests any sign/shape.
+    p = _meridian_blade((_MIN_BOW, 0.010, -0.015, 0.012, _MAX_BOW))
+    assert fold_collision_clear(p) is True
+
+
+def test_bipolar_deep_scoop_folds_clear():
+    # A full-amplitude down-cup (all knots at −20 mm) — impossible in the retired up-only range.
+    p = _meridian_blade((_MIN_BOW, _MIN_BOW, _MIN_BOW, _MIN_BOW, _MIN_BOW))
+    assert fold_collision_clear(p) is True
+
+
+def test_bipolar_zigzag_meridian_folds_clear():
+    # The steep bipolar alternating zigzag (+20,−20,+20,−20,+20) — the worst faceting driver on the
+    # relaxed range — still folds clear at the 90×27 default mesh (measured 1.1 mm³ ≪ 5 mm³ gate).
+    p = _meridian_blade((_MAX_BOW, _MIN_BOW, _MAX_BOW, _MIN_BOW, _MAX_BOW))
+    assert fold_collision_clear(p) is True
+
+
 def _way2_checkerboard() -> BladeParams:
     """Way-2 design: independent top/bottom face waves (checkerboard offsets + varied thickness),
     within the rib thickness envelope by construction (built through the codec, which scales each
