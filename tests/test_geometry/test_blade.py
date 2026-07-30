@@ -267,6 +267,78 @@ def test_displacement_grid_expresses_base_to_tip_zigzag():
     assert signs == [True, False, True, False]
 
 
+# --- DIRECTION LOCK: wave/zigzag axes must never silently swap ---------------
+# Operator requirement: zigzag/stairs designs run BASE→TIP (radial), not side-to-side
+# (tangential). The panel_offsets_m FIRST index is the radial (base→tip) axis, the SECOND is
+# tangential — these tests fail loudly if displacement_at ever swaps them.
+
+
+def test_rib_bow_linear_alternating_knots_zigzag_with_radius():
+    # A linear meridian with alternating knots is a base→tip zigzag: rib_z must go up/down/up/down
+    # ALONG THE RADIUS (the fold-safe shape lever), not stay monotone.
+    p = BladeParams(
+        blade_count=12,
+        rib_bow_knots_m=(0.0, 0.018, 0.0, 0.018, 0.0),
+        rib_bow_interp="linear",
+        t_rib_hub_m=0.004,
+        t_rib_tip_m=0.004,
+        panel_offsets_m=tuple((0.0, 0.0, 0.0) for _ in range(4)),
+        panel_thickness_m=tuple((0.003, 0.003, 0.003) for _ in range(4)),
+    )
+    zs = [rib_z_at(p, r) for r in rib_bow_stations()]  # z at the 5 knot radii
+    assert zs == pytest.approx([0.0, 0.018, 0.0, 0.018, 0.0], abs=1e-9)  # alternates with radius
+    assert zs[1] > zs[0] and zs[1] > zs[2] and zs[3] > zs[2] and zs[3] > zs[4]  # valley/peak/…
+
+
+def test_panel_offsets_first_index_is_radial_second_is_tangential():
+    # A grid that alternates across the 4 RADIAL ROWS (constant across the 3 cols) must read as a
+    # base→tip zigzag: displacement varies with radius, is flat across tangential v.
+    a = 0.003
+    radial = ((a, a, a), (-a, -a, -a), (a, a, a), (-a, -a, -a))
+    p = BladeParams(
+        blade_count=12,
+        rib_bow_knots_m=(0.0, 0.0, 0.0, 0.0, 0.0),
+        rib_bow_interp="linear",
+        t_rib_hub_m=0.005,
+        t_rib_tip_m=0.005,
+        panel_offsets_m=radial,
+        panel_thickness_m=tuple((0.003, 0.003, 0.003) for _ in range(4)),
+    )
+    stations = panel_radial_stations()
+    along_r = [displacement_at(p, r, 0.0) for r in stations]  # sweep radius at mid-v
+    assert [d > 0 for d in along_r] == [True, False, True, False]  # zigzag along radius
+    # at a fixed radial row the interior is tangentially flat (no side-to-side structure)
+    assert displacement_at(p, stations[1], -0.5) == pytest.approx(
+        displacement_at(p, stations[1], 0.5)
+    )
+
+
+def test_tangential_offset_wave_is_flat_along_radius_not_swapped():
+    # The mirror check: a grid that alternates across the 3 tangential COLS (constant across rows)
+    # must read as a side-to-side wave — displacement varies with v, is FLAT along the radius.
+    # If the axes were swapped this would look like a radial zigzag. uniform=True unpins the edges.
+    a = 0.003
+    tangential = tuple((a, -a, a) for _ in range(4))
+    p = BladeParams(
+        blade_count=12,
+        rib_bow_knots_m=(0.0, 0.0, 0.0, 0.0, 0.0),
+        rib_bow_interp="linear",
+        t_rib_hub_m=0.0035,
+        t_rib_tip_m=0.0035,
+        panel_offsets_m=tangential,
+        panel_thickness_m=tuple((0.0035, 0.0035, 0.0035) for _ in range(4)),
+        uniform=True,
+    )
+    stations = panel_radial_stations()
+    assert displacement_at(p, stations[0], 0.0) == pytest.approx(
+        displacement_at(p, stations[3], 0.0)
+    )  # flat along radius
+    # but tangentially it varies (mid-column value differs from a neighbouring column)
+    assert displacement_at(p, stations[0], 0.0) != pytest.approx(
+        displacement_at(p, stations[0], -0.5)
+    )
+
+
 # --- fold (z-stack) + constraint margins ------------------------------------
 
 

@@ -200,7 +200,21 @@ def test_classify_panel_flat_camber_zigzag():
     assert classify_panel([[0.0, 0.0, 0.0]] * 4) == "flat"
     assert classify_panel([[1e-3] * 3, [2e-3] * 3, [3e-3] * 3, [4e-3] * 3]) == "camber"  # tilt
     assert classify_panel([[1e-3] * 3, [2e-3] * 3, [2e-3] * 3, [1e-3] * 3]) == "camber"  # 1 hump
-    assert classify_panel([[1e-3] * 3, [-1e-3] * 3, [1e-3] * 3, [-1e-3] * 3]) == "zigzag"
+    # A base->tip (radial-row) alternating pattern is the fold-safe zigzag.
+    assert classify_panel([[1e-3] * 3, [-1e-3] * 3, [1e-3] * 3, [-1e-3] * 3]) == "radial-zigzag"
+
+
+def test_classify_panel_direction_aware_radial_vs_tangential():
+    # DIRECTION LOCK: the same-amplitude wave must NOT read the same both ways. A base->tip
+    # (radial-row) zigzag is "radial-zigzag" (fold-safe); a side-to-side (tangential-column)
+    # wave with no radial structure is "tangential-ripple" (fold-limited). If displacement's
+    # radial/tangential axes ever swapped, these two would collapse to one label.
+    radial_zig = [[1e-3, 1e-3, 1e-3], [-1e-3, -1e-3, -1e-3],
+                  [1e-3, 1e-3, 1e-3], [-1e-3, -1e-3, -1e-3]]
+    tangential_wave = [[1e-3, -1e-3, 1e-3]] * 4  # alternates across cols, flat across rows
+    assert classify_panel(radial_zig) == "radial-zigzag"
+    assert classify_panel(tangential_wave) == "tangential-ripple"
+    assert classify_panel(radial_zig) != classify_panel(tangential_wave)
 
 
 _PANEL_Z_COLS = [i for i, v in enumerate(SEARCH_SPACE) if v.name.startswith("panel_z")]
