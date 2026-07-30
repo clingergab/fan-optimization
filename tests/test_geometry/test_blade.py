@@ -11,6 +11,7 @@ from fanopt.geometry.blade import (
     PANEL_GRID_RADIAL_COUNT,
     PANEL_GRID_TANGENTIAL_COUNT,
     PANEL_OFFSET_RANGE_M,
+    MERIDIAN_ROOT_FLAT_RADIUS_M,
     PANEL_THICKNESS_NOM_RANGE_M,
     RIB_BOW_RANGE_M,
     RIB_THICKNESS_RANGE_M,
@@ -178,6 +179,21 @@ def test_to_from_dict_roundtrip():
 
 def test_rib_z_zero_at_root():
     assert rib_z_at(_sample(), BLADE_ROOT_RADIUS_M) == pytest.approx(0.0)
+
+
+def test_rib_z_flat_inside_boss_radius():
+    # The meridian is pinned flat within the boss footprint (fold fix): blade material there can't
+    # rise or it climbs into the next stacked layer's boss. All knots sit well outside this radius.
+    p = BladeParams(**{**_sample().to_dict(), "rib_bow_knots_m": (0.03, 0.03, 0.03, 0.03, 0.03)})
+    for r in (0.0, 0.003, 0.006, MERIDIAN_ROOT_FLAT_RADIUS_M):
+        assert rib_z_at(p, r) == pytest.approx(0.0)
+
+
+def test_rib_z_rises_just_outside_boss_radius():
+    # Re-anchored at the boss rim: with a raised first knot the meridian is climbing immediately
+    # past MERIDIAN_ROOT_FLAT_RADIUS_M (so no aero-shape freedom is lost outside the buried boss).
+    p = BladeParams(**{**_sample().to_dict(), "rib_bow_knots_m": (0.03, 0.03, 0.03, 0.03, 0.03)})
+    assert rib_z_at(p, MERIDIAN_ROOT_FLAT_RADIUS_M + 0.005) > 0.0
 
 
 def test_rib_z_hits_each_knot_at_its_station_linear():

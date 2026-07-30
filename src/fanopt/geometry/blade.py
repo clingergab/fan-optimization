@@ -61,6 +61,7 @@ __all__ = [
     "MAX_FOLDED_STACK_HEIGHT_M",
     "RIB_TIP_RADIUS_M",
     "BLADE_ROOT_RADIUS_M",
+    "MERIDIAN_ROOT_FLAT_RADIUS_M",
     "BLADE_COUNT",
     "ROOT_HALF_WIDTH_M",
     "TIP_HALF_WIDTH_M",
@@ -154,6 +155,17 @@ at the retired 185 mm; decoupled here to keep this length change inside the live
 BLADE_ROOT_RADIUS_M: float = 0.0
 """Root radius. The trapezoid planform starts at the pivot centre (r = 0) so the blade root
 overlaps the pivot boss and unions into ONE solid (not a tangent-but-separate part)."""
+
+MERIDIAN_ROOT_FLAT_RADIUS_M: float = 1.5 * PIVOT_BOSS_RADIUS_M
+"""Radius (9 mm = 1.5× boss radius) inside which the rib meridian is pinned flat (``z = 0``).
+
+The blade root overlaps the boss cylinder; the boss is a straight pin bearing that can't rise
+with the meridian, so blade material inside it must stay flat or it climbs into the next stacked
+layer's boss and collides on fold. Set slightly OUTSIDE the 6 mm boss rim so the polyhedral facets
+that straddle the rim are flat too (a facet spanning the rim otherwise lifts material above the
+boss top). All meridian knots sit at ``r ≥ 44 mm`` (first :func:`rib_bow_stations`), far outside
+this radius, so pinning the buried near-boss region flat costs no aero shape freedom — it only
+re-anchors the root→first-knot interpolation just past the boss rim."""
 
 BLADE_COUNT: int = 12
 """Blade count — FIXED at 12 (operator, 2026-07-29 trapezoid redesign; ADR-0005). No longer a
@@ -349,9 +361,18 @@ def _catmull_rom(ys: list[float], seg: int, t: float) -> float:
 
 
 def _meridian_z(knots: Sequence[float], interp: str, r: float) -> float:
-    """Meridian height at ``r`` from knots + interp alone (no :class:`BladeParams`)."""
-    r = min(max(r, BLADE_ROOT_RADIUS_M), RIB_TIP_RADIUS_M)
-    xs = [BLADE_ROOT_RADIUS_M, *rib_bow_stations()]
+    """Meridian height at ``r`` from knots + interp alone (no :class:`BladeParams`).
+
+    The meridian is pinned flat (``z = 0``) inside the pivot boss (``r ≤``
+    :data:`MERIDIAN_ROOT_FLAT_RADIUS_M`): that region is buried in the boss cylinder, not an
+    aero surface, and the boss is a straight pin bearing that can't follow a rising meridian —
+    so a meridian that climbed steeply from ``r = 0`` would drive the blade root up into the
+    NEXT layer's boss and break the fold. All five knots sit at ``r ≥`` first
+    :func:`rib_bow_stations` (44 mm ≫ 6 mm boss), so no aero shape freedom is lost — only the
+    interpolation from the pinned root to the first knot re-anchors at the boss rim.
+    """
+    r = min(max(r, MERIDIAN_ROOT_FLAT_RADIUS_M), RIB_TIP_RADIUS_M)
+    xs = [MERIDIAN_ROOT_FLAT_RADIUS_M, *rib_bow_stations()]
     ys = [0.0, *knots]
     # Locate the segment [i, i+1] containing r (xs is strictly increasing).
     seg = 0
