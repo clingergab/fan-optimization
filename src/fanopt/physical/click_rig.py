@@ -10,9 +10,10 @@ Three independent measurements feed one Spike 0.4 verdict:
    inertial force that would back-drive the lock at the wrist's peak angular
    acceleration. Inertial torque from Spike 0.2 inertia and α_max = 110 rad/s²
    is converted to a tangential force AT the click location using the
-   **wrist-to-tip lever arm L_wrist_to_tip = 0.25 m** (H8 lock —
-   d_handle + L_blade = 0.05 + 0.20). The click chamfer + detent live at the
-   panel's outer tangential edge at the tip, NOT on a rib face.
+   **wrist-to-tip lever arm L_wrist_to_tip = 0.27 m** (H8 lock, ADR-0005 —
+   d_handle + live 22 cm blade tip = 0.05 + 0.22; was 0.25 at the 0.20 m blade).
+   The click chamfer + detent live at the panel's outer tangential edge at the
+   tip, NOT on a rib face.
 
    Pass: `F_friction_cumulative ≥ 2 × F_inertial_at_click` (factor-of-2 safety
    margin). On failure, the V1 fallback geometry (printed rib-tab on each
@@ -29,7 +30,7 @@ Three independent measurements feed one Spike 0.4 verdict:
    - Deployed-state alignment gap variation < 1 mm across adjacent blade tips.
 
    Fallback on detent fracture → embedded neodymium magnetic catch
-   (~20-40 g, within the 100 g C9 mass constraint).
+   (~20-40 g, well within the 300 g C9 cap per ADR-0005).
 
 All functions are pure: no file I/O, no globals, no side effects. The CLI
 wrapper (`scripts/run_spike_0_4.py`) is responsible for CSV ingestion and
@@ -37,7 +38,7 @@ results.json emission.
 
 References:
 - Spec: `docs/plan_R11.md §Phase 0 Spike 0.4`
-- Locks: H6 (force balance), H8 (lever arm 0.25 m), C9 (mass cap 100 g)
+- Locks: H6 (force balance), H8 (lever arm 0.27 m, ADR-0005), C9 (mass cap 300 g, ADR-0005)
 - Inertia input: `src/fanopt/physical/inertia.py` (Spike 0.2)
 - Protocol: `docs/spike_0_4_protocol.md`
 """
@@ -85,9 +86,10 @@ __all__ = [
 ALPHA_MAX_RAD_PER_S2: float = 110.0
 
 # H8 lever-arm lock: click feature sits at the panel's outer tangential edge at
-# the tip, i.e., d_handle (0.05 m) + L_blade (0.20 m) = 0.25 m from the wrist
-# axis. **Not** 0.20 m from the pivot pin.
-L_WRIST_TO_TIP_M: float = 0.25
+# the tip, i.e., d_handle (0.05 m) + live blade tip radius (0.22 m per ADR-0005,
+# was L_blade 0.20 m) = 0.27 m from the wrist axis. **Not** 0.22 m from the pivot pin.
+# Mirrors geometry.schema.L_WRIST_TO_TIP_M.
+L_WRIST_TO_TIP_M: float = 0.27
 
 # Pass-criterion safety factor for the V1-lock force balance.
 FORCE_BALANCE_SAFETY_FACTOR: float = 2.0
@@ -131,7 +133,7 @@ def inertial_force_at_click(
     """Convert wrist inertial torque to tangential force at the click feature.
 
     `τ_inertial_peak = I_wrist · α_max`, then `F = τ / L_wrist_to_tip`. The
-    lever arm is the **wrist-to-tip** distance (H8 lock: 0.25 m), since the
+    lever arm is the **wrist-to-tip** distance (H8 lock: 0.27 m, ADR-0005), since the
     click chamfer + detent live at the panel's outer tangential edge at the
     tip, not on a rib face.
 
@@ -139,7 +141,7 @@ def inertial_force_at_click(
     ----------
     I_wrist_kgm2 : measured I_wrist from Spike 0.2, kg·m².
     alpha_max : peak wrist angular acceleration, rad/s² (default 110).
-    lever_arm_m : wrist-to-tip lever arm, m (default 0.25 — H8 lock).
+    lever_arm_m : wrist-to-tip lever arm, m (default 0.27 — H8 lock, ADR-0005).
 
     Returns
     -------
@@ -227,7 +229,7 @@ def analyze_force_balance(
         9 inter-blade pairs at the deployed position, N. Force gauge applied
         tangentially at `(x = L_blade, y = ±panel_tangential_outer)`.
     alpha_max : peak wrist angular acceleration, rad/s² (default 110).
-    lever_arm_m : wrist-to-tip lever arm, m (default 0.25 — H8 lock).
+    lever_arm_m : wrist-to-tip lever arm, m (default 0.27 — H8 lock, ADR-0005).
     safety_factor : safety factor in the pass criterion (default 2.0).
 
     Returns

@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from fanopt.bo.blade_campaign import stage3_seed_designs
 from fanopt.bo.blade_objective_3d import Blade3DObjective
 from fanopt.bo.distributed_campaign import (
     DistributedConfig,
@@ -42,6 +43,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--n-workers", type=int, default=1, help="CFD evals in parallel per session")
     p.add_argument("--seed", type=int, default=0, help="shared Sobol seed")
+    p.add_argument(
+        "--inject-seeds",
+        action="store_true",
+        help="dispatch the two operator-locked Stage-3 seeds (A = panel+ribs, B = no-rib uniform) "
+        "AHEAD of the Sobol DoE (blade_campaign.stage3_seed_designs). Identical across sessions — "
+        "the claim/ledger path dedups them, so each is evaluated exactly once.",
+    )
     p.add_argument(
         "--explore-fraction",
         type=float,
@@ -117,6 +125,7 @@ def main(argv: list[str] | None = None, objective_fn: ObjectiveFn | None = None)
         explore_fraction=args.explore_fraction,
         poll_seconds=args.poll_seconds,
         claim_ttl_seconds=args.claim_ttl,
+        seed_designs=stage3_seed_designs() if args.inject_seeds else None,
     )
     if args.sync:
         x, _ = run_distributed_session(

@@ -15,9 +15,9 @@ A 3D-printed folding hand fan optimized in two stages:
    four locked load cases (productive stroke, return stroke, inertial, click
    engagement).
 2. **Panel aerodynamic shape optimization** — CadQuery generative geometry +
-   SU2 CFD on three fidelity tiers inside a multi-fidelity BoTorch Bayesian
-   optimization loop with an outer architecture bandit over categorical
-   choices (blade count, panel topology family, click variant).
+   SU2 CFD inside a BoTorch Bayesian optimization loop over the panel/rib shape
+   codec (blade count is NOT a variable — fixed at exactly 12 per ADR-0005; the
+   rib-mode ribbed/uniform categorical remains).
 
 V1 scope: ship a printable optimized fan judged by qualitative blinded A/B
 feel test against the printed flat-panel baseline. V2 scope: quantify the
@@ -51,14 +51,21 @@ These flow from the plan's §0. Code that contradicts any of them is wrong.
 - **Round-9 HIGH-12 unsteady cfg**: SU2 unsteady cfg uses `MACH = 1e-9` with
   `FREESTREAM_OPTION = FREESTREAM_VELOCITY` override (or fallback
   `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`). MACH is **tier-
-  specific**: steady tiers (-1 / 0) use 0.0064, unsteady tier (1) uses 1e-9.
+  specific**: steady tiers (-1 / 0) use 0.0070 (ADR-0005, re-derived for the
+  220 mm blade / 0.27 m lever; was 0.0064), unsteady tier (1) uses 1e-9.
   `CROSS_TIER` dict does NOT carry MACH.
 - **Round-9 HIGH-8 Option A click chamfer**: 0.5–1 mm corner bevel at the
   panel's outer tangential edge — NOT a full-panel-thickness face. Adjacent
   panels meet at a 45° butt-joint LINE; no Z-axis overlap.
 - **H8 lever-arm lock**: τ → F conversions at the click region use
-  `L_WRIST_TO_TIP = 0.25 m`, NOT `L_blade = 0.20 m`.
-- **C9 mass cap**: `m_total < 100 g`.
+  `L_WRIST_TO_TIP = 0.27 m` (ADR-0005: `D_HANDLE` + the live 220 mm blade tip
+  `blade.RIB_TIP_RADIUS_M`; was 0.25 m at the 200 mm blade), NOT the legacy
+  `L_blade = 0.20 m`.
+- **Blade count lock (ADR-0005)**: EXACTLY 12 blades, always — not a BO variable,
+  not {8,10,12,14}. `blade.BLADE_COUNT = 12`; the codec carries no blade-count
+  dimension and every vector decodes to 12.
+- **C9 mass cap**: `MAX_TOTAL_MASS_KG = 300 g` (ADR-0005 exploration budget;
+  the `< 100 g` C9 text is superseded). Mass is a SOFT Pareto objective, not a gate.
 - **Round-9 HIGH-11 hardware**: PyFR p=3 (Phase 5 verification only) needs
   Colab Pro G4 GPU (95 GB VRAM). T4 (16 GB) OOMs.
 - **Round-9 H10 Phase 4 gate**: Phase 4 launch is gated on

@@ -17,13 +17,27 @@
 schema_version: 3
 
 # ============================================================================
+# ⚠ SUPERSEDED BY ADR-0005 (trapezoid blade redesign, 2026-07-29..30) — see
+# docs/adr/0005-trapezoid-blade-geometry-redesign.md. The V1 aero blade is now a
+# 220 mm surface-of-revolution TRAPEZOID (root = 12 mm boss dia at r=0, tip ≈ 51 mm),
+# NOT the pie-slice V-unit below. Live overrides of the values in this file:
+#   • blade length 200 mm → 220 mm (live lever = geometry.blade.RIB_TIP_RADIUS_M)
+#   • blade_count: fixed 12 (the {8,10,12} bandit dropped; deployed span ≈ 43 cm)
+#   • L_wrist_to_tip 0.25 m → 0.27 m; V_tip 2.20 → 2.37 m/s; CFD Re → 43000, Mach 0.0070
+#   • pie-slice width (r·Δθ) → Cartesian trapezoid half-width
+#   • mass cap: 300 g (schema.MAX_TOTAL_MASS_KG; the 100 g C9 text is superseded)
+# The pie-slice geometry block below is retained for the LEGACY 2D-slice / plano-convex /
+# rib-TO stack, which still uses L_blade = 200 mm. Kinematic values updated in place above.
+# ============================================================================
+
+# ============================================================================
 # Geometry and architecture
 # ============================================================================
 architecture:
   blade:
-    type: V-unit  # 2 ribs + 1 panel as one rigid body
-    n_blades: 10  # default; BO bandit explores {8, 10, 12, 14}
-    length_mm: 200  # L_blade; pinned, NOT a BO variable
+    type: V-unit  # LEGACY (retired for the live aero path; see ADR-0005 banner). 2 ribs + 1 panel.
+    n_blades: 10  # LEGACY default. LIVE: fixed 12 (ADR-0005; bandit dropped).
+    length_mm: 200  # LEGACY parametric L_blade. LIVE aero blade = 220 mm (ADR-0005).
     panel_x_start_mm: 0  # panel runs the FULL x ∈ [0, L_blade] under panel-pivot architecture
   pivot:
     axis: +z  # stacking direction
@@ -88,14 +102,14 @@ kinematics:
   theta_max_rad: 0.6981
   omega_shm_rads: 12.5664        # 2π·f; SU2 PITCHING_OMEGA
   omega_blade_max_rads: 8.8      # θ_max · ω_shm; peak instantaneous angular velocity
-  v_tip_mps: 2.20                # ω_blade_max · L_wrist_to_tip
+  v_tip_mps: 2.37                # ω_blade_max · L_wrist_to_tip (0.27 m; ADR-0005 22 cm blade; was 2.20)
   v_mid_mps: 1.32                # ω_blade_max · r_wrist_mid
   alpha_max_rads2: 110           # θ_max · ω_shm²
   alpha_tip_mps2: 27.5
   k_reduced: 0.57
-  L_blade_m: 0.20                # rib + panel radial extent from pivot to tip
-  L_wrist_to_tip_m: 0.25         # d_handle + L_blade; canonical lever arm for τ→F conversions
-  lever_arm_audit_lock: "torque-to-force conversions outside pivot region MUST use L_wrist_to_tip = 0.25 m"
+  L_blade_m: 0.20                # LEGACY parametric length (retired 2D/plano-convex/rib-TO stack). LIVE blade tip = 0.22 m (blade.RIB_TIP_RADIUS_M; ADR-0005)
+  L_wrist_to_tip_m: 0.27         # d_handle + LIVE blade tip (0.22); canonical lever arm for τ→F (ADR-0005; was 0.25)
+  lever_arm_audit_lock: "torque-to-force conversions outside pivot region MUST use L_wrist_to_tip = 0.27 m (ADR-0005; was 0.25 m at the 0.20 m blade)"
 
 # ============================================================================
 # SU2 / CFD lock

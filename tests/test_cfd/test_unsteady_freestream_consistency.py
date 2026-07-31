@@ -33,7 +33,7 @@ def _resolve_spec_path() -> Path:
 
 SPEC_PATH = _resolve_spec_path()
 
-V_TIP_MPS = 2.20
+V_TIP_MPS = 2.37  # peak tip speed at the 0.27 m lever / 22 cm blade (ADR-0005; was 2.20)
 MACH_MAX = 1e-6
 VEL_FRACTION_OF_V_TIP_MAX = 0.01  # FREESTREAM_VELOCITY magnitude must be < 1% of V_tip
 
@@ -65,7 +65,7 @@ def test_unsteady_freestream_option_set_or_fallback() -> None:
 
     Either path forces SU2 to NOT compute freestream from MACH × c_ref. Without
     one of these, SU2's default TEMPERATURE_FS computes freestream as
-    MACH × c_ref = 2.20 m/s = V_tip — producing zero body-vs-ambient relative
+    MACH × c_ref = 2.37 m/s = V_tip — producing zero body-vs-ambient relative
     velocity and physically nonsensical CFD predictions.
     """
     cfg = _render_unsteady_cfg()

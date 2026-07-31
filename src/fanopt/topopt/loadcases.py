@@ -9,7 +9,8 @@ case engagement force at the click region.
 
 Kinematics locks are honored: the stroke/inertial axis follows ``PITCHING_OMEGA_VEC``
 (**negative y** — C11 sign lock), and a wrist torque converts to tip force through
-``L_WRIST_TO_TIP_M = 0.25 m`` (H8 lever-arm lock, NOT ``L_blade``).
+``L_WRIST_TO_TIP_M = 0.27 m`` (H8 lever-arm lock, re-derived for the 22 cm blade per ADR-0005;
+= D_HANDLE + live tip radius 0.22, NOT the legacy ``L_blade`` 0.20).
 
 Pure numpy — consumes only lower-level schema constants; no FEA dependency, so every case
 is testable on a synthetic mesh.
@@ -57,7 +58,7 @@ def default_angular_acceleration() -> np.ndarray:
 
 
 def tip_force_from_wrist_torque(torque_nm: float) -> float:
-    """Convert a wrist torque to an equivalent tip force via the H8 lever arm (0.25 m)."""
+    """Convert a wrist torque to an equivalent tip force via the H8 lever arm (0.27 m, ADR-0005)."""
     return torque_nm / L_WRIST_TO_TIP_M
 
 

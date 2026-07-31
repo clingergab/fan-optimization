@@ -2,7 +2,7 @@
 % Renderer: src/fanopt/cfd/configs.py — render_steady_cfg().
 % Source-of-truth: docs/plan_R11.md §9.4.1 CROSS_TIER + TIER_SPECIFIC[0].
 %
-% Steady tiers use V_tip as freestream (MACH = 0.0064). Used for:
+% Steady tiers use V_tip as freestream (MACH = 0.0070, ADR-0005). Used for:
 %   - Tier 0 architecture-bandit promotion (3D steady, ranking-only)
 %   - Two-eval delta proxy: PRODUCTIVE (-z) and RETURN (+z) per C2 lock
 %
@@ -10,9 +10,9 @@
 %   {{ mesh_filename }}            - .su2 mesh path (3D deployed fan)
 %   {{ marker_fan }}               - physical-group name(s) on blade surfaces
 %   {{ marker_farfield }}          - physical-group name on outer boundary
-%   {{ reynolds_number }}          - Re_global = 37000 per §3.2.3
+%   {{ reynolds_number }}          - Re_global ~ 40000 per §3.2.3 (ADR-0005: 0.22 m tip)
 %   {{ reynolds_length }}          - L_wrist_to_tip = 0.25 m
-%   {{ mach_number }}              - 0.0064 (V_tip = 2.20 m/s / 340 m/s)
+%   {{ mach_number }}              - 0.0070 (V_tip ~ 2.38 m/s / 340 m/s, ADR-0005)
 %   freestream_direction_{x,y,z}   - (0, 0, -1) PRODUCTIVE or (0, 0, +1) RETURN
 %   {{ cfl_number }}               - 5.0 default
 %

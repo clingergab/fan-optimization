@@ -42,7 +42,7 @@ def test_cross_tier_does_not_carry_mach() -> None:
 
 
 def test_tier_specific_mach_values() -> None:
-    """Steady tiers use 0.0064 (V_tip-based); unsteady tier uses 1e-9."""
+    """Steady tiers use MACH_STEADY (V_tip-based); unsteady tier uses 1e-9."""
     assert TIER_SPECIFIC[-1]["mach_number"] == MACH_STEADY
     assert TIER_SPECIFIC[0]["mach_number"] == MACH_STEADY
     assert TIER_SPECIFIC[1]["mach_number"] == MACH_UNSTEADY
@@ -53,9 +53,10 @@ def test_mach_unsteady_is_1e_minus_9() -> None:
     assert MACH_UNSTEADY == 1e-9
 
 
-def test_mach_steady_is_0_0064() -> None:
-    """Steady tiers use V_tip = 2.20 m/s freestream → Mach 0.0064."""
-    assert MACH_STEADY == 0.0064
+def test_mach_steady_is_0_0070() -> None:
+    """Steady tiers use the peak tip speed as freestream. Re-derived for the 22 cm trapezoid
+    (ADR-0005): V_tip ≈ 8.77 rad/s × 0.27 m ≈ 2.38 m/s ⇒ Mach ≈ 2.38 / 340 ≈ 0.0070."""
+    assert MACH_STEADY == 0.0070
 
 
 def test_tier_1_uses_dual_time_stepping() -> None:
@@ -80,7 +81,9 @@ def test_steady_tiers_have_time_domain_no() -> None:
 
 
 def test_global_reynolds_number_locked() -> None:
-    assert REYNOLDS_NUMBER_GLOBAL == 37000.0
+    """Re-derived + self-consistent for the 22 cm trapezoid (ADR-0005): V_tip ≈ 2.37 m/s AND
+    L = 0.27 m (both from the 0.27 m lever) ⇒ ≈ 43000 (the earlier 40000 mixed 2.37 m/s with 0.25 m)."""
+    assert REYNOLDS_NUMBER_GLOBAL == 43000.0
 
 
 # ---- unsteady cfg renderer ------------------------------------------------
@@ -234,9 +237,9 @@ def test_unsteady_n_cycles_propagates() -> None:
 
 
 def test_render_steady_default_renders() -> None:
-    """Default render must succeed and emit MACH = 0.0064."""
+    """Default render must succeed and emit the steady-tier MACH lock."""
     out = render_steady_cfg(mesh_filename="fan3d.su2")
-    assert "MACH_NUMBER= 0.0064" in out
+    assert f"MACH_NUMBER= {MACH_STEADY}" in out
 
 
 def test_render_steady_default_freestream_is_productive() -> None:
@@ -398,10 +401,10 @@ def test_benchmark_marker_airfoil_propagates() -> None:
 # ---- render_slice_steady (Tier -1, 2D mid-radius slice) -------------------
 
 
-def test_slice_steady_renders_mach_0_0064() -> None:
+def test_slice_steady_renders_mach_steady() -> None:
     """Tier -1 uses the same MACH lock as Tier 0 (steady tiers, V_tip-based)."""
     out = render_slice_steady_cfg(mesh_filename="slice.su2")
-    assert "MACH_NUMBER= 0.0064" in out
+    assert f"MACH_NUMBER= {MACH_STEADY}" in out
 
 
 def test_slice_steady_default_freestream_is_productive_2d() -> None:

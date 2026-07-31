@@ -1,9 +1,9 @@
 """Unit tests for fanopt.physical.click_rig.
 
 Validates the Spike 0.4 sub-gates against analytic-known inputs and
-boundary cases. The H8 lever-arm lock (L_wrist_to_tip = 0.25 m) is pinned
-by the first test — if anyone re-introduces 0.20 m from the pivot, this
-test fails immediately.
+boundary cases. The H8 lever-arm lock (L_wrist_to_tip = 0.27 m per ADR-0005;
+= d_handle + live 22 cm blade tip) is pinned by the first test — if anyone
+re-introduces 0.22 m from the pivot, this test fails immediately.
 
 Spec reference: docs/plan_R11.md §Phase 0 Spike 0.4; protocol in
 docs/spike_0_4_protocol.md.
@@ -44,9 +44,9 @@ from fanopt.physical.click_rig import (
 
 
 def test_module_constants_match_h8_h6_locks() -> None:
-    """Spec locks: α_max = 110 rad/s² (H8/H6), L_wrist_to_tip = 0.25 m (H8)."""
+    """Spec locks: α_max = 110 rad/s² (H8/H6), L_wrist_to_tip = 0.27 m (H8, ADR-0005 22 cm blade)."""
     assert ALPHA_MAX_RAD_PER_S2 == 110.0
-    assert L_WRIST_TO_TIP_M == 0.25
+    assert L_WRIST_TO_TIP_M == 0.27
     assert FORCE_BALANCE_SAFETY_FACTOR == 2.0
 
 
@@ -77,14 +77,14 @@ def test_cycle_targets() -> None:
 
 
 def test_inertial_force_at_click_uses_h8_lever_arm() -> None:
-    """`I=1e-3 kg·m²` × `α=110 rad/s²` / `0.25 m` = 0.44 N exactly.
+    """`I=1e-3 kg·m²` × `α=110 rad/s²` / `0.27 m` ≈ 0.407 N exactly (ADR-0005 lever).
 
-    If anyone divides by 0.20 m (the pivot-to-tip distance) instead of
-    0.25 m (the wrist-to-tip distance, H8 lock), this test fires.
+    If anyone divides by 0.22 m (the pivot-to-tip distance) instead of
+    0.27 m (the wrist-to-tip distance, H8 lock), this test fires.
     """
     F = inertial_force_at_click(I_wrist_kgm2=1.0e-3, alpha_max=110.0)
-    assert pytest.approx(0.001 * 110.0 / 0.25, rel=1e-12) == F
-    assert pytest.approx(0.44, rel=1e-12) == F
+    assert pytest.approx(0.001 * 110.0 / 0.27, rel=1e-12) == F
+    assert pytest.approx(0.4074, abs=1e-4) == F
 
 
 def test_inertial_force_at_click_custom_args() -> None:
@@ -123,21 +123,22 @@ def test_force_balance_fails_just_below_2x() -> None:
 
 def test_force_balance_arms_v1_fallback_when_failing() -> None:
     """Failing the H6 force balance auto-arms the V1 rib-tab fallback."""
-    # I_wrist = 1e-3 kg·m² → F_inertial = 0.44 N → required friction 0.88 N.
+    # I_wrist = 1e-3 kg·m² → F_inertial = 1e-3·110/0.27 ≈ 0.407 N → required friction ≈ 0.815 N.
+    f_inertial = 1.0e-3 * 110.0 / L_WRIST_TO_TIP_M
     res = analyze_force_balance(
         I_wrist_kgm2=1.0e-3,
-        F_friction_cumulative_N=0.50,  # well below 0.88 N
+        F_friction_cumulative_N=0.50,  # below required 2× ≈ 0.815 N
     )
     assert res.passed is False
     assert res.v1_lock_fallback_armed is True
-    assert res.required_friction_N == pytest.approx(0.88, rel=1e-12)
-    assert res.margin_ratio == pytest.approx(0.50 / 0.44, rel=1e-12)
+    assert res.required_friction_N == pytest.approx(2.0 * f_inertial, rel=1e-12)
+    assert res.margin_ratio == pytest.approx(0.50 / f_inertial, rel=1e-12)
 
 
 def test_force_balance_does_not_arm_fallback_when_passing() -> None:
     res = analyze_force_balance(
         I_wrist_kgm2=1.0e-3,
-        F_friction_cumulative_N=1.50,  # > 2 × 0.44 = 0.88
+        F_friction_cumulative_N=1.50,  # > 2 × F_inertial (≈ 0.815 N at the 0.27 m lever)
     )
     assert res.passed is True
     assert res.v1_lock_fallback_armed is False

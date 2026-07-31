@@ -43,7 +43,7 @@ Exit codes:
 
 Pass criteria (§Phase 0 Spike 0.4):
   - V1-lock force balance: F_friction_cumulative ≥ 2 × F_inertial_at_click
-    (H6 lock; H8 lever-arm lock: L_wrist_to_tip = 0.25 m).
+    (H6 lock; H8 lever-arm lock: L_wrist_to_tip = 0.27 m, ADR-0005).
   - Clearance: every measurement within [0.15, 0.20] mm per mating surface.
   - Engagement force (low regime): every trial within [0.5, 2.0] N.
   - Cycle life: no fracture across 1000 deploy/fold cycles.

@@ -10,13 +10,23 @@ When a spec changes: update `effective_spec.yaml` first, then this `.md`, then `
 
 ---
 
+> **⚠ SUPERSEDED BY ADR-0005** (trapezoid blade redesign, 2026-07-29..30) — see
+> `adr/0005-trapezoid-blade-geometry-redesign.md`. The V1 aero blade is now a **220 mm
+> surface-of-revolution TRAPEZOID** (root = 12 mm boss dia at r=0, tip ≈ 51 mm), not the pie-slice
+> V-unit. Live overrides of the values below: blade length **200 → 220 mm** (live tip =
+> `geometry.blade.RIB_TIP_RADIUS_M`), **blade_count fixed 12** (the {8,10,12} bandit dropped, span
+> ≈ 43 cm), **L_wrist_to_tip 0.25 → 0.27 m**, **V_tip 2.20 → 2.37 m/s**, **CFD Re → 43000 / Mach
+> 0.0070**, pie-slice width (`r·Δθ`) → Cartesian trapezoid, **mass cap 300 g** (`MAX_TOTAL_MASS_KG`;
+> the 100 g C9 text is superseded). The legacy 200 mm values below still drive the retired
+> 2D-slice / plano-convex / rib-TO stack.
+
 ## Architecture
 
-- **Blade type:** V-unit (2 ribs + 1 panel as one rigid body)
+- **Blade type:** V-unit (2 ribs + 1 panel) — **LEGACY; superseded by the ADR-0005 trapezoid for the live aero path**
 - **Material:** single-material PETG except **steel or brass** pivot pin (~2.5 g; PETG pin not permitted)
-- **Default n_blades:** 10 (BO bandit explores {8, 10, 12, 14})
-- **L_blade:** 200 mm (pinned, NOT a BO variable)
-- **L_wrist_to_tip:** 250 mm (d_handle + L_blade; **the canonical lever arm for τ→F conversions outside the pivot region**)
+- **Default n_blades:** 10 legacy → **fixed 12 live (ADR-0005)** (the {8, 10, 12, 14} bandit is dropped)
+- **L_blade:** 200 mm legacy parametric length → **live aero blade 220 mm (ADR-0005)**
+- **L_wrist_to_tip:** **270 mm** (d_handle + live 220 mm blade tip; **canonical lever arm for τ→F conversions**; ADR-0005, was 250 mm)
 - **Pivot architecture:** pin through panel at y = 0; ribs carry no pivot holes.
 - **Pivot center (base-relative):** `pivot_center_x = 8 mm`
 - **Boss:** 12 mm-OD circular boss × `panel_thickness` centered at `(pivot_center_x, 0)`
@@ -37,9 +47,9 @@ When a spec changes: update `effective_spec.yaml` first, then this `.md`, then `
 | Blade tangential width at radius r | `r · 0.232 − 2·rib_width(r) − 0.5 mm` (panel widens with r) |
 | **Panel thickness control points** | **2.2-3.8 mm** (cleanup lock — lower bumped from 2.0 to give the click chamfer 0.1 mm Z-clearance on each side) |
 | Panel thickness named derivations | `panel_thickness_pivot`, `panel_thickness_tip`, `panel_thickness_max`, `panel_thickness_mid` |
-| Deployed fan extent (C-2 lock) | 10 × 13.3° = **133.3°** at default 10 blades; derived from blade pitch × blade count (not an independent BO axis) |
+| Deployed fan extent | **12 × 13.3° ≈ 159.6°** (ADR-0005: blade_count fixed at EXACTLY 12, never more or less; span ≈ 43 cm over the 220 mm blade). Legacy: 10 × 13.3° = 133.3°. |
 | Inter-blade angle | 13.3° |
-| Folded stack (10 blades) | 22-42 mm |
+| Folded stack (12 blades) | ≤ 90 mm (ADR-0005 `MAX_FOLDED_STACK_HEIGHT_M`; legacy 10-blade was 22-42 mm) |
 
 ## Click features
 
@@ -61,23 +71,23 @@ When a spec changes: update `effective_spec.yaml` first, then this `.md`, then `
 | `ω_SHM` | 12.566 rad/s | SU2 PITCHING_OMEGA |
 | `ω_blade_max` | 8.8 rad/s | V_tip, V_local |
 | `α_max` | 110 rad/s² | §2.4, Filter 2 |
-| `V_tip` | 2.20 m/s | Re_global, Mach |
+| `V_tip` | 2.37 m/s (ADR-0005; was 2.20) | Re_global, Mach |
 | `V_local(r)` | `ω_blade_max · r_wrist` | §3.2.4 BL, C6 multi-radius |
-| `Re_global` | 37000 (Tier 0/1) | SU2 cfg |
+| `Re_global` | 43000 (Tier 0/1; ADR-0005, was 37000) | SU2 cfg |
 | `k_reduced` | 0.57 | §3.2.3 |
-| `L_blade` | 0.20 m | TO domain |
-| `L_wrist_to_tip` | **0.25 m** | **all torque→force conversions** |
+| `L_blade` | 0.20 m legacy → live 0.22 m (ADR-0005) | TO domain |
+| `L_wrist_to_tip` | **0.27 m** (ADR-0005; was 0.25) | **all torque→force conversions** |
 
-**Lever-arm audit:** torque-to-force conversions outside the pivot region MUST use `L_wrist_to_tip = 0.25 m`, NOT `L_blade = 0.20 m`. CI gate `tests/test_audit/test_lever_arm_uses_wrist_to_tip.py`.
+**Lever-arm audit:** torque-to-force conversions outside the pivot region MUST use `L_wrist_to_tip = 0.27 m` (ADR-0005; = d_handle + live 220 mm blade tip), NOT `L_blade`.
 
 ## SU2 / CFD lock (C2 sign convention)
 
 | Key | Value |
 |-----|-------|
-| MACH_NUMBER | 0.0064 |
+| MACH_NUMBER (steady tiers) | 0.0070 (ADR-0005; was 0.0064) |
 | REYNOLDS_LENGTH (Tier -1) | 0.20 m |
-| REYNOLDS_LENGTH (Tier 0, Tier 1) | 0.25 m |
-| REYNOLDS_NUMBER (Tier -1 / 0/1) | 18000 / 37000 |
+| REYNOLDS_LENGTH (Tier 0, Tier 1) | 0.27 m (ADR-0005; was 0.25) |
+| REYNOLDS_NUMBER (Tier -1 / 0/1) | 18000 / 43000 (ADR-0005; was 37000) |
 | MOTION_ORIGIN | (0, 0, 0) (wrist-grip at world origin) |
 | **PITCHING_OMEGA_AXIS** | (0, 1, 0) — **TIER_SPECIFIC[1] only** (L5 lock; Tier -1/0 have no pitching motion) |
 | **PITCHING_AMPL_AXIS** | (0, 1, 0) — TIER_SPECIFIC[1] |
@@ -123,7 +133,7 @@ When a spec changes: update `effective_spec.yaml` first, then this `.md`, then `
 | Rib-panel fillet | 1.5 | bending | 9.00 MPa |
 | Slot end (louver) | 2.0 | mixed | 6.75 MPa |
 
-**§59.5 stress-test load (H9 stagnation pressure):** `p_uniform = p_stagnation_peak = ½·ρ_0·V_local_max² ≈ 3.0 Pa` (canonical); `p_stress_test = 2.5 · p_stagnation_peak ≈ 7.5 Pa`. `V_local_max = ω_blade_max · L_wrist_to_tip = 2.20 m/s`. The 2.5× multiplier stacks on top of the spatial-distribution conservatism of using stagnation pressure (NOT spatial-average F_peak / A_panel).
+**§59.5 stress-test load (H9 stagnation pressure):** `p_uniform = p_stagnation_peak = ½·ρ_0·V_local_max² ≈ 3.0 Pa` (canonical); `p_stress_test = 2.5 · p_stagnation_peak ≈ 7.5 Pa`. `V_local_max = ω_blade_max · L_wrist_to_tip = 2.37 m/s` (ADR-0005; was 2.20 at the 0.25 m lever). The 2.5× multiplier stacks on top of the spatial-distribution conservatism of using stagnation pressure (NOT spatial-average F_peak / A_panel).
 
 ## Print-frame ↔ deployed-frame mapping (M15 single canonical table)
 
@@ -233,7 +243,7 @@ From 32 = 2⁵: drop 6 at {4, 5}-active; drop 4 with both {noise, TPMS}; drop 2 
 ## H6 V1 lock (Spike 0.4 force balance + fallback)
 
 - Pass criterion: `F_friction_cumulative ≥ 2 × F_inertial_at_click`
-- `F_inertial_at_click = τ_inertial_peak / L_wrist_to_tip = I_wrist · α_max / 0.25` (NOT `/0.20`)
+- `F_inertial_at_click = τ_inertial_peak / L_wrist_to_tip = I_wrist · α_max / 0.27` (ADR-0005; NOT `/0.22` pivot-to-tip, was `/0.25`)
 - Fallback geometry: 3 mm × 5 mm × 1.5 mm printed rib-tab on each guard blade
 - Flag: `params.layer4.v1_lock_fallback_enabled` (default `False`; auto-armed if Spike 0.4 force balance fails)
 

@@ -56,19 +56,32 @@ def _reversals(profile: np.ndarray) -> int:
 
 
 def classify_panel(panel_offsets_m) -> str:
-    """Name the panel aero-surface *shape type* from its 4x3 offset grid.
+    """Name the panel aero-surface *shape type* from its 4x3 offset grid, DIRECTION-AWARE.
 
-    ``flat`` (offsets below the aero-flat floor), else by the interior extrema of the dominant
-    (radial base->tip or chordwise) profile: ``camber`` (<=1 — a monotone tilt or single
-    dish/hump) or ``zigzag`` (>=2 — pleated / multi-hump / alternating). The panel analogue of
-    the rib-bow ``interp`` label — the thing the free displacement grid exists to discover.
+    Distinguishes the operator's fold-safe axis (base->tip / radial) from the fold-limited one
+    (side-to-side / tangential), so a zigzag/stairs shape is never reported without saying which
+    way it runs (the wave/zigzag axes must not silently swap):
+
+    - ``flat`` — offsets below the aero-flat floor;
+    - ``radial-zigzag`` — the base->tip (radial-row) profile alternates (>=2 interior extrema):
+      a pleat/stairs running hub->tip, the fold-safe direction the meridian is meant to carry;
+    - ``tangential-ripple`` — a pure side-to-side (across the 3 tangential columns) wave with no
+      base->tip structure: fold-limited, the direction that does NOT nest at large amplitude;
+    - ``camber`` — otherwise (a monotone tilt or a single radial dish/hump).
+
+    (With only 3 tangential columns a side-to-side profile has at most 1 interior extremum, so a
+    true >=2 zigzag can only ever be radial — the asymmetry that keeps big pleats base->tip.)
     """
     g = np.asarray(panel_offsets_m, dtype=float)
     if g.size == 0 or np.max(np.abs(g)) < _PANEL_FLAT_EPS_M:
         return "flat"
-    return (
-        "zigzag" if max(_reversals(g.mean(axis=1)), _reversals(g.mean(axis=0))) >= 2 else "camber"
-    )
+    radial_rev = _reversals(g.mean(axis=1))  # base->tip profile (average over tangential cols)
+    tangential_rev = _reversals(g.mean(axis=0))  # side-to-side profile (average over radial rows)
+    if radial_rev >= 2:
+        return "radial-zigzag"
+    if tangential_rev >= 1 and radial_rev == 0:
+        return "tangential-ripple"
+    return "camber"
 
 
 def load_rows(shard_files: list[str | Path]) -> list[dict]:

@@ -38,9 +38,9 @@ def test_angular_acceleration_points_negative_y():
 
 
 def test_tip_force_uses_wrist_lever_arm_not_blade():
-    # H8 lock: τ→F divides by 0.25 m, so 1 N·m → 4 N.
+    # H8 lock: τ→F divides by 0.27 m (ADR-0005 lever), so 1 N·m → ≈ 3.70 N.
     assert tip_force_from_wrist_torque(1.0) == pytest.approx(1.0 / L_WRIST_TO_TIP_M)
-    assert tip_force_from_wrist_torque(1.0) == pytest.approx(4.0)
+    assert tip_force_from_wrist_torque(1.0) == pytest.approx(3.7037, abs=1e-4)
 
 
 def test_pressure_load_total_force_is_minus_pnA():
