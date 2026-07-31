@@ -30,7 +30,7 @@ Three independent measurements feed one Spike 0.4 verdict:
    - Deployed-state alignment gap variation < 1 mm across adjacent blade tips.
 
    Fallback on detent fracture → embedded neodymium magnetic catch
-   (~20-40 g, within the 100 g C9 mass constraint).
+   (~20-40 g, well within the 300 g C9 cap per ADR-0005).
 
 All functions are pure: no file I/O, no globals, no side effects. The CLI
 wrapper (`scripts/run_spike_0_4.py`) is responsible for CSV ingestion and
@@ -141,7 +141,7 @@ def inertial_force_at_click(
     ----------
     I_wrist_kgm2 : measured I_wrist from Spike 0.2, kg·m².
     alpha_max : peak wrist angular acceleration, rad/s² (default 110).
-    lever_arm_m : wrist-to-tip lever arm, m (default 0.25 — H8 lock).
+    lever_arm_m : wrist-to-tip lever arm, m (default 0.27 — H8 lock, ADR-0005).
 
     Returns
     -------
@@ -229,7 +229,7 @@ def analyze_force_balance(
         9 inter-blade pairs at the deployed position, N. Force gauge applied
         tangentially at `(x = L_blade, y = ±panel_tangential_outer)`.
     alpha_max : peak wrist angular acceleration, rad/s² (default 110).
-    lever_arm_m : wrist-to-tip lever arm, m (default 0.25 — H8 lock).
+    lever_arm_m : wrist-to-tip lever arm, m (default 0.27 — H8 lock, ADR-0005).
     safety_factor : safety factor in the pass criterion (default 2.0).
 
     Returns

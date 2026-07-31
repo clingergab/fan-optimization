@@ -2,13 +2,13 @@
 
 Renders the templates under `configs/su2/*.cfg.j2` from a typed parameter
 dict. Maintains the cross-tier vs tier-specific separation locked in plan
-§9.4.1: MACH is **tier-specific** (0.0064 for steady tiers, 1e-9 for the
+§9.4.1: MACH is **tier-specific** (0.0070 for steady tiers, 1e-9 for the
 unsteady tier per the Round-9 HIGH-12 lock), so the cross-tier dict does
 NOT carry MACH.
 
 Public API:
     render_unsteady_cfg(params)     -> str  # Tier 1 (3D unsteady, MACH=1e-9)
-    render_steady_cfg(params)       -> str  # Tier 0 (3D steady, MACH=0.0064)
+    render_steady_cfg(params)       -> str  # Tier 0 (3D steady, MACH=0.0070)
     render_slice_steady_cfg(params) -> str  # Tier -1 (2D mid-radius slice)
     render_benchmark_cfg(params)    -> str  # wind-tunnel NACA 0012 (Phase 5 prep)
     render_thin_plate_2d_pitching_cfg(params) -> str  # Spike 0.6d.2 (H10 supplement)
@@ -258,7 +258,7 @@ def render_steady_cfg(
 ) -> str:
     """Render `fan3d_steady.cfg.j2` (Tier 0 — 3D steady).
 
-    Steady tiers use V_tip as freestream, MACH = 0.0064. `freestream_direction`
+    Steady tiers use V_tip as freestream, MACH = 0.0070 (ADR-0005; was 0.0064). `freestream_direction`
     defaults to the C2 PRODUCTIVE direction (-z).
     """
     env = _env()
@@ -303,7 +303,7 @@ def render_slice_steady_cfg(
     """Render `slice_steady.cfg.j2` (Tier -1 — 2D mid-radius slice).
 
     Tier -1 is the Phase 4 architecture-bandit screening tier. The 2D
-    cross-section at r = r_mid uses the same MACH = 0.0064 lock as
+    cross-section at r = r_mid uses the same MACH = 0.0070 lock as
     Tier 0 (steady tiers, per the Round-9 HIGH-12 tier-specific MACH
     placement — MACH lives in TIER_SPECIFIC[-1] and TIER_SPECIFIC[0],
     NOT in CROSS_TIER).
