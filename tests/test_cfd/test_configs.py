@@ -81,8 +81,9 @@ def test_steady_tiers_have_time_domain_no() -> None:
 
 
 def test_global_reynolds_number_locked() -> None:
-    """Re-derived for the 22 cm trapezoid (ADR-0005): V_tip ≈ 2.38 m/s at L = 0.25 m ⇒ ≈ 40000."""
-    assert REYNOLDS_NUMBER_GLOBAL == 40000.0
+    """Re-derived + self-consistent for the 22 cm trapezoid (ADR-0005): V_tip ≈ 2.37 m/s AND
+    L = 0.27 m (both from the 0.27 m lever) ⇒ ≈ 43000 (the earlier 40000 mixed 2.37 m/s with 0.25 m)."""
+    assert REYNOLDS_NUMBER_GLOBAL == 43000.0
 
 
 # ---- unsteady cfg renderer ------------------------------------------------

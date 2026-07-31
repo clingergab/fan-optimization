@@ -130,10 +130,10 @@ Dependencies flow forward (per plan §Phase 0 dependency table): 0.0 → 0.1 (pa
 **V1 lock force balance (H6):**
 - [ ] Measure `F_friction_cumulative` across 9 inter-blade pairs at deployed position (force gauge tangential at the panel tip)
 - [ ] Compute `τ_inertial_peak = I_wrist · α_max` using Spike 0.2 I_wrist and α_max = 110 rad/s²
-- [ ] Convert: `F_inertial_at_click = τ_inertial_peak / 0.25 m` (wrist-to-tip lever arm, NOT 0.20 m from pivot)
+- [ ] Convert: `F_inertial_at_click = τ_inertial_peak / 0.27 m` (wrist-to-tip lever arm, ADR-0005; NOT 0.22 m from pivot; was 0.25 m)
 - [ ] **Pass:** `F_friction_cumulative ≥ 2 × F_inertial_at_click`
 - [ ] **If fail:** arm `params.layer4.v1_lock_fallback_enabled = True` (printed rib-tab fallback)
-- [ ] **If detent fracture/wear:** plan magnetic-catch upgrade (~20–40 g, still inside C9 100 g)
+- [ ] **If detent fracture/wear:** plan magnetic-catch upgrade (~20–40 g, well inside C9 300 g per ADR-0005)
 
 ### Spike 0.5 — Single-blade fabrication-noise floor *(depends on 0.4)*  `[→V2]` DEFERRED
 

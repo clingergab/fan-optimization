@@ -111,8 +111,17 @@ L_BLADE_M: float = 0.200
 D_HANDLE_M: float = 0.050
 """Wrist-axis-to-pivot offset along +x (§0 row 27)."""
 
-L_WRIST_TO_TIP_M: float = D_HANDLE_M + L_BLADE_M
-"""0.25 m. The canonical lever arm for τ → F at the click region (H8 lock)."""
+L_WRIST_TO_TIP_M: float = D_HANDLE_M + 0.220  # 0.05 + 0.22 = 0.27 m
+"""0.27 m. The canonical lever arm for τ → F at the click region (H8 lock).
+
+Re-derived for the trapezoid redesign (ADR-0005): the LIVE blade tip sits at
+``geometry.blade.RIB_TIP_RADIUS_M`` = 0.220 m — **not** the legacy ``L_BLADE_M`` = 0.200 m, which
+now only drives the retired 2D-slice / plano-convex / rib-TO stack — so wrist→tip =
+``D_HANDLE_M`` + 0.220 = 0.27 m (was 0.25 m at the old 0.20 m tip). Only the physics lever moved;
+``L_BLADE_M`` stays 0.200 for the legacy geometry. The 0.220 here is deliberately NOT imported from
+``blade`` (that module is a higher layer — schema must not depend on it); instead
+``tests/test_geometry/test_schema.py`` pins ``L_WRIST_TO_TIP_M == D_HANDLE_M +
+blade.RIB_TIP_RADIUS_M`` so the two can never silently drift again."""
 
 HUB_RADIUS_M: float = 0.020
 """Inner rib boundary; rib is absent for x < HUB_RADIUS (C7 / Architectural D)."""
@@ -261,7 +270,8 @@ ALPHA_MAX_RAD_PER_S2: float = THETA_MAX_RAD * OMEGA_SHM_RAD_PER_S**2
 """≈ 110 rad/s². Peak angular acceleration (Phase 2 inertial load)."""
 
 V_TIP_M_PER_S: float = OMEGA_BLADE_MAX_RAD_PER_S * L_WRIST_TO_TIP_M
-"""≈ 2.20 m/s. Peak tip velocity."""
+"""≈ 2.37 m/s. Peak tip velocity (≈ 8.77 rad/s × 0.27 m; was 2.20 at the old 0.25 m lever —
+grew with the 22 cm blade per ADR-0005)."""
 
 
 # ---------------------------------------------------------------------------

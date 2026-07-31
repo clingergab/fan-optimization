@@ -97,11 +97,12 @@ scaffolding only; Phase 0 Step 0.0 extends them to full coverage.
   - §Phase 3 step 33 (cascade arc-length spacing)
   - GEOMETRY_LOCKS (INTER_BLADE_ANGLE_RAD)
 
-### C9 — m_total < 100 g
+### C9 — m_total < 300 g (SUPERSEDED to 300 g by ADR-0005)
 
 - **Definition:** §0 row 28
-- **Value:** 0.100 kg (was 0.060 kg pre-Round-5; relaxed for trapezoidal panel
-  mass budget)
+- **Value:** **0.300 kg** (`schema.MAX_TOTAL_MASS_KG`; ADR-0005 exploration budget,
+  100 g → 120 g → 300 g, operator-authorized). Mass is now a SOFT Pareto objective,
+  NOT a hard gate. Was 0.100 kg (0.060 kg pre-Round-5).
 - **Consumed by:**
   - §0 row 28 (mass constraint lock)
   - §0 row 32 (Pareto objective: hard constraints)
@@ -300,9 +301,11 @@ K_tb = 3.2; K_t_bearing = 1.5; cyclic allowables 5.58 / 4.22 / 2.00 MPa.
 
 Scaffolding placeholder. Phase 0 Step 0.0 extends to full coverage.
 
-Known locks: MACH_NUMBER (steady/unsteady tier-specific per HIGH-12 Round-9);
-REYNOLDS_LENGTH = 0.20 m (Tier -1) / 0.25 m (Tier 0/1); cycle count = 5
-canonical (extend to 8 if cycle-2 vs cycle-3 > 5%); cost tuple (2, 10, 50).
+Known locks: MACH_NUMBER (steady/unsteady tier-specific per HIGH-12 Round-9;
+steady 0.0070 per ADR-0005, was 0.0064); REYNOLDS_LENGTH = 0.20 m (Tier -1) /
+**0.27 m (Tier 0/1; ADR-0005, was 0.25)**; REYNOLDS_NUMBER 43000 (Tier 0/1;
+ADR-0005, was 37000); cycle count = 5 canonical (extend to 8 if cycle-2 vs
+cycle-3 > 5%); cost tuple (2, 10, 50).
 
 ---
 

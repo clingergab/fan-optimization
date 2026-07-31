@@ -65,14 +65,15 @@ MACH_STEADY: float = 0.0070
 """Steady tiers (-1 / 0) use the peak blade tip speed as freestream. Re-derived for the
 2026-07-29 trapezoid redesign (ADR-0005): the blade tip moved from r = L_BLADE_M (0.20 m) to
 ``geometry.blade.RIB_TIP_RADIUS_M`` (0.22 m), so the wrist→tip lever grew to
-D_HANDLE_M + 0.22 = 0.27 m and V_tip = OMEGA_BLADE_MAX (≈ 8.77 rad/s) × 0.27 m ≈ 2.38 m/s
-⇒ Mach = 2.38 / 340 ≈ 0.0070 (was 0.0064 at the 0.20 m tip / 2.20 m/s)."""
+D_HANDLE_M + 0.22 = 0.27 m and V_tip = OMEGA_BLADE_MAX (≈ 8.77 rad/s) × 0.27 m ≈ 2.37 m/s
+⇒ Mach = 2.37 / 340 ≈ 0.0070 (was 0.0064 at the 0.20 m tip / 2.20 m/s)."""
 
-REYNOLDS_NUMBER_GLOBAL: float = 40000.0
-"""Re_global = V_tip · L_wrist_to_tip / ν_air ≈ 2.38 m/s · 0.25 m / 1.5e-5 m²/s ≈ 40000 (was
-37000 at the old 0.20 m tip / 2.20 m/s). Re-derived for the trapezoid redesign (ADR-0005): only
-the tip speed changed with the longer blade; the reference length stays L_WRIST_TO_TIP_M (the
-emitted REYNOLDS_LENGTH), so the (Re, L) pair handed to SU2 stays self-consistent."""
+REYNOLDS_NUMBER_GLOBAL: float = 43000.0
+"""Re_global = V_tip · L_wrist_to_tip / ν_air ≈ 2.37 m/s · 0.27 m / 1.5e-5 m²/s ≈ 43000. Re-derived
+for the trapezoid redesign (ADR-0005) and made SELF-CONSISTENT at the 0.27 m lever: the earlier
+40000 mixed a 0.27 m tip speed (2.37 m/s) with the old 0.25 m reference length. Now both the tip
+speed AND the emitted REYNOLDS_LENGTH (= ``L_WRIST_TO_TIP_M`` = 0.27 m) use the live 22 cm blade, so
+the (Re, L) pair handed to SU2 is internally consistent (was 37000 at the old 0.20 m tip)."""
 
 
 CROSS_TIER: dict[str, Any] = {

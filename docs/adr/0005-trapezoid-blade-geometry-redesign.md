@@ -149,18 +149,34 @@ retained as an offline deep-verify cross-check; the lofted-solid density (`N_RAD
 - **Mass cap = 300 g** (operator, 2026-07-29). `schema.py MAX_TOTAL_MASS_KG = 0.300` is
   authoritative for the rerun (a pre-TO fold/mass feasibility bound; TO trims mass later). The
   `< 100 g` references in `report-final.md` / `CLAUDE.md` / `locks_index.md` are superseded.
+- **Wrist-to-tip lever = 0.27 m** (operator, 2026-07-30). The 220 mm blade moves the H8 τ→F lever
+  to `D_HANDLE_M` + live tip `blade.RIB_TIP_RADIUS_M` (0.22) = 0.27 m (was 0.25 m at the 0.20 m
+  blade). `schema.L_WRIST_TO_TIP_M` is decoupled from the legacy `L_BLADE_M` (0.20, retained for
+  the retired 2D/plano-convex/rib-TO stack) and a cross-check test pins it to the live tip. CFD
+  Stage-1 re-derived and made self-consistent: `V_TIP` 2.20 → 2.37 m/s, `REYNOLDS_NUMBER_GLOBAL`
+  40000 → **43000** (both tip speed AND `REYNOLDS_LENGTH` now use 0.27 m), `MACH_STEADY` = 0.0070.
+- **Blade count = EXACTLY 12, always** (operator, 2026-07-30, reaffirmed). Not a BO variable, never
+  {8,10,12,14}. `blade.BLADE_COUNT = 12`; the codec carries no blade-count dimension and every
+  vector decodes to 12 (`test_decode_blade_count_is_fixed_at_12` pins it over 20 random vectors).
 
-## Open items (resolved by the implementation)
+## Open items — resolved by the landed implementation
 
-- **`RIB_TIP_TAPER`** (rib ends 15 mm short of the tip): does it still apply to a flush trapezoid
-  tip, or do mode-A ribs run to the tip?
-- **Inner `HUB_RADIUS` band** (rib-absent for r < 20 mm): void now that the blade starts at r = 0?
-- **Pivot keep-out region** `PANEL_PIVOT_REGION` / `PIVOT_CENTER_X`: reconcile with boss = root
-  at r = 0.
-- **Mode-B rib-coupled locks:** which of H12 rib-width, containment, `folded_stack_height`
-  (rib-only) are relaxed vs retained for the no-rib mode.
-- **Panel-vs-rib thickness ordering (mode A):** 4 mm rib > 3 mm panel inverts the old
-  `panel ≥ rib + 0.2` click-chamfer clearance assumption — confirm the click clearance still holds.
-
-These are being settled by the `blade-redesign-trapezoid` implementation and its adversarial
-verification; this ADR will be finalized to match the landed code.
+- **`RIB_TIP_TAPER`** — the live trapezoid has NO tip taper: `blade.half_width_at(r)` grows linearly
+  root→tip and the rib rails (`blade_cad._is_rib_rail`) run within `rib_width_at(r)` of the edge for
+  the full radial extent to the flush 51 mm tip. `schema.RIB_TIP_TAPER_M` (0.015) is legacy (retired
+  rib-TO stack only).
+- **Inner `HUB_RADIUS` band** — void for the live blade: it starts at `BLADE_ROOT_RADIUS_M = 0` and
+  overlaps the boss. The near-hub region is governed by the boss-flat meridian
+  (`MERIDIAN_ROOT_FLAT_RADIUS_M = 9 mm`) + panel `_root_taper`, not the legacy 20 mm rib-absent band.
+- **Pivot keep-out** — the live blade root **is** the boss (union at r = 0, one solid, pin bore left
+  open by `_boss_solid`). `PANEL_PIVOT_REGION` / `PIVOT_CENTER_X` are legacy panel-pivot concepts,
+  not used by the live trapezoid.
+- **Mode-B (uniform) rib-coupled locks** — resolved: the no-rib sheet has no rails, so H12 rib-width
+  does not apply; nesting is bounded by the fold stack-height instead of rib containment
+  (`containment_margin_m` returns `fold_margin_m` for `uniform`), and `folded_stack_height_m` /
+  `layer_spacing_m` are panel-aware so the sheet folds correctly.
+- **Panel-vs-rib thickness ordering (mode A)** — the ribbed rib (fold-capped, up to 12 mm) is ≥ the
+  panel (3–10 mm) by codec containment (`panel_thickness ≤ min(t_rib, P_HI)`); the analytic fold gate
+  confirms the assembly folds. The legacy `panel ≥ rib + 0.2` click-chamfer ordering does not apply
+  to the live trapezoid; the click-feature geometry for the trapezoid is a separately-deferred item
+  (it is off the live aero path — see the legacy click footprint in `schema`).

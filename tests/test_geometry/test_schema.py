@@ -15,6 +15,7 @@ import math
 import pytest
 
 from fanopt.geometry import schema as s
+from fanopt.geometry.blade import RIB_TIP_RADIUS_M
 
 # ---- radial geometry (§0 row 45 dual rib-band lock) ------------------------
 
@@ -27,9 +28,15 @@ def test_handle_offset_locked() -> None:
     assert s.D_HANDLE_M == 0.050
 
 
-def test_wrist_to_tip_is_handle_plus_blade() -> None:
-    """L_WRIST_TO_TIP_M = d_handle + L_blade = 0.25 m (H8 lever-arm lock)."""
-    assert pytest.approx(0.250, abs=1e-12) == s.L_WRIST_TO_TIP_M
+def test_wrist_to_tip_is_handle_plus_live_blade_tip() -> None:
+    """L_WRIST_TO_TIP_M = d_handle + live blade tip radius = 0.27 m (H8 lever-arm lock, ADR-0005)."""
+    assert pytest.approx(0.270, abs=1e-12) == s.L_WRIST_TO_TIP_M
+
+
+def test_wrist_to_tip_tracks_live_blade_tip_radius() -> None:
+    # No-drift lock: the H8 lever MUST equal d_handle + the LIVE blade tip radius (blade.py), not
+    # the legacy L_BLADE_M. Schema can't import blade (layer direction), so this test enforces it.
+    assert s.L_WRIST_TO_TIP_M == pytest.approx(s.D_HANDLE_M + RIB_TIP_RADIUS_M, abs=1e-12)
 
 
 def test_hub_radius_locked() -> None:
@@ -184,7 +191,7 @@ def test_kinematics_h8_symbol_table() -> None:
     assert pytest.approx(2.0 * math.pi * 2.0, abs=1e-9) == s.OMEGA_SHM_RAD_PER_S
     assert pytest.approx(8.77, abs=0.05) == s.OMEGA_BLADE_MAX_RAD_PER_S
     assert pytest.approx(110.0, abs=1.0) == s.ALPHA_MAX_RAD_PER_S2
-    assert pytest.approx(2.20, abs=0.02) == s.V_TIP_M_PER_S
+    assert pytest.approx(2.37, abs=0.02) == s.V_TIP_M_PER_S  # 8.77 × 0.27 m (ADR-0005 lever)
 
 
 # ---- C11 sign lock --------------------------------------------------------

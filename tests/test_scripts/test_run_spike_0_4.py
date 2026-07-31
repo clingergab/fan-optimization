@@ -22,7 +22,7 @@ import run_spike_0_4 as cli
 
 
 def _write_force_balance(path: Path, I_wrist: float = 1.0e-3, F_fric: float = 1.50) -> Path:
-    """Default: I=1e-3 → F_inertial=0.44 N; F_fric=1.5 N >> 0.88 N → passes."""
+    """Default: I=1e-3 → F_inertial≈0.407 N (0.27 m lever); F_fric=1.5 N >> 0.815 N → passes."""
     path.write_text(
         "# operator notes\n"
         "I_wrist_kgm2,F_friction_cumulative_N,notes\n"
@@ -119,7 +119,7 @@ def test_cli_pass(tmp_path: Path) -> None:
     # Schema sanity — Phase 6 consumer relies on these keys.
     assert payload["spec_reference"].startswith("docs/plan_R11.md")
     assert payload["gates"]["alpha_max_rad_per_s2"] == 110.0
-    assert payload["gates"]["L_wrist_to_tip_m"] == 0.25
+    assert payload["gates"]["L_wrist_to_tip_m"] == 0.27
     assert payload["gates"]["force_balance_safety_factor"] == 2.0
     assert payload["gates"]["clearance_band_mm"] == [0.15, 0.20]
     assert payload["gates"]["cycle_target"] == 1000
@@ -418,7 +418,7 @@ def _common_args_without_force_balance(tmp_path: Path) -> list[str]:
 
 def test_cli_analytic_iwrist_pass_uses_3x_safety_factor(tmp_path: Path) -> None:
     """With --i-wrist-analytic, the 3x factor is applied. F_fric=1.50 vs
-    F_inertial = 1e-3 · 110 / 0.25 = 0.44 → 1.50 / 0.44 ≈ 3.4 > 3.0 → pass."""
+    F_inertial = 1e-3 · 110 / 0.27 ≈ 0.407 → 1.50 / 0.407 ≈ 3.68 > 3.0 → pass."""
     out = tmp_path / "results.json"
     rc = cli.main(
         [
@@ -437,7 +437,7 @@ def test_cli_analytic_iwrist_pass_uses_3x_safety_factor(tmp_path: Path) -> None:
 
 
 def test_cli_analytic_iwrist_fails_under_3x_when_2x_would_have_passed(tmp_path: Path) -> None:
-    """F_fric = 1.00 vs F_inertial = 0.44: 1.00 / 0.44 ≈ 2.27. Passes 2x
+    """F_fric = 1.00 vs F_inertial ≈ 0.407: 1.00 / 0.407 ≈ 2.45. Passes 2x
     (canonical) but fails 3x (analytic). Demonstrates the bumped factor."""
     out = tmp_path / "results.json"
     rc = cli.main(
