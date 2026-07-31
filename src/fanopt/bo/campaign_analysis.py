@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from fanopt.bo.blade_codec import SEARCH_SPACE, decode
+from fanopt.geometry.schema import MAX_TOTAL_MASS_KG
 
 __all__ = [
     "load_rows",
@@ -113,8 +114,15 @@ def pareto_indices(objectives: np.ndarray) -> list[int]:
     return keep
 
 
-def campaign_report(shard_files: list[str | Path], *, top_k: int = 10) -> dict:
-    """Pool + dedup the shards and summarize the campaign (see module docstring)."""
+def campaign_report(
+    shard_files: list[str | Path], *, top_k: int = 10, mass_cap_g: float | None = None
+) -> dict:
+    """Pool + dedup the shards and summarize the campaign (see module docstring).
+
+    ``mass_cap_g`` defaults to the schema soft mass reference
+    (:data:`~fanopt.geometry.schema.MAX_TOTAL_MASS_KG`, 300 g). Mass is a **soft** Pareto objective
+    (TO trims it later), NOT a hard gate — this cap only labels the lighter end of the front.
+    """
     rows = load_rows(shard_files)
     by_hash: dict[str, dict] = {}
     for r in rows:
@@ -227,8 +235,10 @@ def campaign_report(shard_files: list[str | Path], *, top_k: int = 10) -> dict:
         ),
         key=lambda d: -d["j_fan"],
     )[:top_k]
-    # mass-cap-eligible best (C9 <100 g): the top-J_fan designs are often too heavy — the V1 pick
-    # must come from designs under the cap, so surface the best ones that actually qualify.
+    # Lighter end of the front under the SOFT mass reference (default schema 300 g; mass is a soft
+    # Pareto objective TO trims later, NOT a hard gate). Surfaces the best-J_fan designs that also
+    # sit under the reference — often empty for the aero-first search, which deliberately runs heavy.
+    cap = MAX_TOTAL_MASS_KG * 1e3 if mass_cap_g is None else float(mass_cap_g)
     report["top_under_mass_cap"] = {
         f"{cap}g": sorted(
             (
@@ -243,7 +253,6 @@ def campaign_report(shard_files: list[str | Path], *, top_k: int = 10) -> dict:
             ),
             key=lambda d: -d["j_fan"],
         )[:top_k]
-        for cap in (100.0,)
     }
     return report
 

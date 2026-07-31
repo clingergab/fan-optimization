@@ -101,7 +101,9 @@ def test_top_under_mass_cap_excludes_heavy(tmp_path):
             _row("light", 3.0e12, 0.09, 1e-3),  # 90 g — eligible
         ],
     )
-    elig = campaign_report([shard])["top_under_mass_cap"]["100.0g"]
+    # mass_cap_g is explicit here (default is the schema 300 g soft reference); this exercises the
+    # filter logic against a 100 g cap: 90 g eligible, 180 g excluded.
+    elig = campaign_report([shard], mass_cap_g=100.0)["top_under_mass_cap"]["100.0g"]
     assert all(d["mass_g"] <= 100 for d in elig)
     assert elig and elig[0]["design_hash"] == "light"[:8]
 
