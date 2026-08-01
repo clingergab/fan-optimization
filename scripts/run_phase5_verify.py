@@ -63,7 +63,7 @@ def run(
                 {
                     "name": r.name,
                     "j_fan_3d": r.j_fan_3d,
-                    "j_fan_slice": r.j_fan_slice,
+                    "j_fan_coarse": r.j_fan_coarse,
                     "n_nodes": r.meta.get("n_nodes"),
                 }
                 for r in results

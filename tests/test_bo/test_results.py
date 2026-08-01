@@ -80,6 +80,14 @@ def test_select_diverse_empty():
     assert results.select_diverse(np.zeros((0, 35)), [], 3) == []
 
 
+def test_select_diverse_accepts_custom_span_bounds():
+    # span_bounds lets a different codec (e.g. the Stage-3 blade campaign) normalize the spread.
+    x = np.array([_vec(10, 0.00221), _vec(10, 0.00222), _vec(10, 0.00223), _vec(10, 0.0038)])
+    lo, hi = np.zeros(x.shape[1]), np.ones(x.shape[1])
+    picked = results.select_diverse(x, [0, 1, 2, 3], 2, span_bounds=(lo, hi))
+    assert 3 in picked and len(picked) == 2  # the thick outlier still selected under custom bounds
+
+
 # --- load + analyze ---
 
 
@@ -131,8 +139,8 @@ def test_recommend_with_verification(tmp_path):
     ver = {
         "ranking": {"rank_preserved": True},
         "designs": [
-            {"name": "b8_i0", "j_fan_3d": 1.8, "j_fan_slice": 2.0},
-            {"name": "b10_i1", "j_fan_3d": 1.3, "j_fan_slice": 1.5},
+            {"name": "b8_i0", "j_fan_3d": 1.8, "j_fan_coarse": 2.0},
+            {"name": "b10_i1", "j_fan_3d": 1.3, "j_fan_coarse": 1.5},
         ],
     }
     vp = tmp_path / "verification.json"
@@ -155,19 +163,20 @@ def test_recommend_ranked_orders_all_verified_by_3d_jfan(tmp_path):
     ver = {
         "ranking": {},
         "designs": [
-            {"name": "b8_i0", "j_fan_3d": 1.8, "j_fan_slice": 2.0},
-            {"name": "b10_i1", "j_fan_3d": 3.3, "j_fan_slice": 1.5},  # best in 3D, 2nd in 2D
-            {"name": "b12_i2", "j_fan_3d": -5.0, "j_fan_slice": 1.0},  # negative → suspect
+            {"name": "b8_i0", "j_fan_3d": 1.8, "j_fan_coarse": 2.0},
+            {"name": "b10_i1", "j_fan_3d": 3.3, "j_fan_coarse": 1.5},  # best in 3D, 2nd in 2D
+            {"name": "b12_i2", "j_fan_3d": -5.0, "j_fan_coarse": 1.0},  # negative but a REAL result
         ],
     }
     vp = tmp_path / "verification.json"
     vp.write_text(json.dumps(ver), encoding="utf-8")
     ranked = results.recommend(tmp_path, top_k=3, verification_path=vp)["ranked"]
 
-    assert [d["index"] for d in ranked] == [1, 0, 2]  # 3.3 > 1.8 > -5.0 (suspect last)
+    assert [d["index"] for d in ranked] == [1, 0, 2]  # 3.3 > 1.8 > -5.0 (lowest last)
     assert ranked[0]["verified"] is True and ranked[0]["blade_count"] == 10
-    assert ranked[-1]["index"] == 2 and ranked[-1]["suspect"] is True
-    assert ranked[-1]["verified"] is False
+    # the negative design is a finite, real (bad) result → verified, NOT suspect (only failed runs are)
+    assert ranked[-1]["index"] == 2 and ranked[-1]["suspect"] is False
+    assert ranked[-1]["verified"] is True
 
 
 def test_recommend_ranked_sinks_failed_3d_runs_to_bottom(tmp_path):
@@ -175,8 +184,8 @@ def test_recommend_ranked_sinks_failed_3d_runs_to_bottom(tmp_path):
     ver = {
         "ranking": {},
         "designs": [
-            {"name": "b8_i0", "j_fan_3d": None, "j_fan_slice": 2.0},  # failed 3D run
-            {"name": "b10_i1", "j_fan_3d": 1.3, "j_fan_slice": 1.5},
+            {"name": "b8_i0", "j_fan_3d": None, "j_fan_coarse": 2.0},  # failed 3D run
+            {"name": "b10_i1", "j_fan_3d": 1.3, "j_fan_coarse": 1.5},
         ],
     }
     vp = tmp_path / "verification.json"

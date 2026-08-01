@@ -53,7 +53,7 @@ def test_main_writes_verification_json(tmp_path, monkeypatch):
 
     def fake_run_verification(designs, out_dir, **kwargs):
         return [
-            VerifyResult(name, j_fan_3d=float(i + 1), j_fan_slice=j, meta={"n_nodes": 100.0})
+            VerifyResult(name, j_fan_3d=float(i + 1), j_fan_coarse=j, meta={"n_nodes": 100.0})
             for i, (name, _vec_, j) in enumerate(designs)
         ]
 
@@ -65,7 +65,7 @@ def test_main_writes_verification_json(tmp_path, monkeypatch):
     v = json.loads((tmp_path / "out" / "verification.json").read_text())
     assert "ranking" in v
     assert len(v["designs"]) == 2
-    assert all("j_fan_3d" in d and "j_fan_slice" in d for d in v["designs"])
+    assert all("j_fan_3d" in d and "j_fan_coarse" in d for d in v["designs"])
 
 
 def test_designs_from_campaign_shapes(tmp_path):
@@ -86,7 +86,7 @@ def test_run_checkpoints_verification_json_after_each_design(tmp_path, monkeypat
     def fake_run_verification(designs, out_dir, *, on_result=None, **kwargs):
         results = []
         for i, (name, _v, j) in enumerate(designs):
-            r = VerifyResult(name, j_fan_3d=float(i + 1), j_fan_slice=j, meta={"n_nodes": 100.0})
+            r = VerifyResult(name, j_fan_3d=float(i + 1), j_fan_coarse=j, meta={"n_nodes": 100.0})
             results.append(r)
             if on_result is not None:
                 on_result(r)

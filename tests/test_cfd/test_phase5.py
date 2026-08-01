@@ -77,9 +77,9 @@ def test_extract_j_fan_3d_rejects_too_short(tmp_path):
 
 def test_verify_ranking_preserved_when_correlated():
     res = [
-        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0),
-        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
-        phase5.VerifyResult("c", j_fan_3d=3.0, j_fan_slice=3.0),
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_coarse=1.0),
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_coarse=2.0),
+        phase5.VerifyResult("c", j_fan_3d=3.0, j_fan_coarse=3.0),
     ]
     out = phase5.verify_ranking(res)
     assert out["rank_preserved"] is True
@@ -88,15 +88,15 @@ def test_verify_ranking_preserved_when_correlated():
 
 def test_verify_ranking_broken_when_anticorrelated():
     res = [
-        phase5.VerifyResult("a", j_fan_3d=3.0, j_fan_slice=1.0),
-        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
-        phase5.VerifyResult("c", j_fan_3d=1.0, j_fan_slice=3.0),
+        phase5.VerifyResult("a", j_fan_3d=3.0, j_fan_coarse=1.0),
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_coarse=2.0),
+        phase5.VerifyResult("c", j_fan_3d=1.0, j_fan_coarse=3.0),
     ]
     assert phase5.verify_ranking(res)["rank_preserved"] is False
 
 
 def test_verify_ranking_needs_two_points():
-    res = [phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0)]
+    res = [phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_coarse=1.0)]
     out = phase5.verify_ranking(res)
     assert out["rank_preserved"] is None
     assert out["n"] == 1
@@ -104,26 +104,26 @@ def test_verify_ranking_needs_two_points():
 
 def test_verify_ranking_ignores_missing_slice():
     res = [
-        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=None),
-        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_coarse=None),
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_coarse=2.0),
     ]
     assert phase5.verify_ranking(res)["n"] == 1
 
 
 def test_verify_ranking_skips_failed_3d_runs():
     res = [
-        phase5.VerifyResult("a", j_fan_3d=float("nan"), j_fan_slice=1.0),  # failed 3D
-        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
-        phase5.VerifyResult("c", j_fan_3d=3.0, j_fan_slice=3.0),
+        phase5.VerifyResult("a", j_fan_3d=float("nan"), j_fan_coarse=1.0),  # failed 3D
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_coarse=2.0),
+        phase5.VerifyResult("c", j_fan_3d=3.0, j_fan_coarse=3.0),
     ]
     assert phase5.verify_ranking(res)["n"] == 2  # the nan (failed) design skipped
 
 
 def test_verify_ranking_reports_all_three_metrics():
     res = [
-        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0),
-        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
-        phase5.VerifyResult("c", j_fan_3d=3.0, j_fan_slice=3.0),
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_coarse=1.0),
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_coarse=2.0),
+        phase5.VerifyResult("c", j_fan_3d=3.0, j_fan_coarse=3.0),
     ]
     v = phase5.verify_ranking(res)["valid_only"]
     assert v["kendall_tau"] == pytest.approx(1.0)
@@ -131,36 +131,43 @@ def test_verify_ranking_reports_all_three_metrics():
     assert v["pearson_r2"] == pytest.approx(1.0)
 
 
-def test_verify_ranking_flags_negative_jfan_as_suspect():
-    res = [
-        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0),
-        phase5.VerifyResult("b", j_fan_3d=-5.0, j_fan_slice=2.0),  # net reverse thrust
-    ]
-    out = phase5.verify_ranking(res)
-    assert out["n_suspect"] == 1
-    assert out["suspect_designs"] == ["b"]
-    assert out["valid_only"]["n"] == 1  # 'b' excluded from the valid set
+def test_verifyconfig_fine_is_the_stage3c_tier():
+    fine = phase5.VerifyConfig.fine()
+    assert (fine.n_cycles, fine.inner_iter) == (phase5.FINE_CYCLES, phase5.FINE_INNER)
+    assert fine.n_cycles > phase5.VerifyConfig().n_cycles  # finer than the coarse campaign default
 
 
-def test_verify_ranking_exposes_ranking_that_only_holds_via_suspect():
-    # slice ranks a>b (both positive); 3D inverts them; a degenerate negative
-    # design 'c' is worst by both. all_finite τ is dragged positive by 'c', but
-    # valid_only (excluding 'c') reveals the top-two ranking is actually broken.
+def test_verify_ranking_negative_jfan_is_valid_not_suspect():
+    # In the MACH=1e-9 regime a negative fine J_fan is a legitimate (bad) result, NOT a failure, so
+    # it stays in the correlation. Only a non-finite (failed/diverged) run is suspect.
     res = [
-        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=3.0),
-        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_slice=2.0),
-        phase5.VerifyResult("c", j_fan_3d=-9.0, j_fan_slice=1.0),  # degenerate worst
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_coarse=1.0),
+        phase5.VerifyResult("b", j_fan_3d=-5.0, j_fan_coarse=2.0),  # negative but a real result
+        phase5.VerifyResult("c", j_fan_3d=float("nan"), j_fan_coarse=3.0),  # FAILED run
     ]
     out = phase5.verify_ranking(res)
-    assert out["all_finite"]["kendall_tau"] > 0  # 'c' props it up
-    assert out["valid_only"]["kendall_tau"] < 0  # honest: top-two inverted
-    assert out["rank_preserved"] is False  # keys off valid_only
+    assert out["n_suspect"] == 1 and out["suspect_designs"] == ["c"]  # only the failed run
+    assert out["valid_only"]["n"] == 2  # a and b — the negative 'b' is included
+
+
+def test_verify_ranking_keeps_coarse_positive_fine_negative_flip():
+    # The key fidelity failure to catch: coarse says a design is BEST but fine says it's NEGATIVE.
+    # That flip must stay in the correlation (dragging τ down), never be excused as "suspect".
+    res = [
+        phase5.VerifyResult("a", j_fan_3d=3.0, j_fan_coarse=1.0),   # coarse-low,  fine-high
+        phase5.VerifyResult("b", j_fan_3d=2.0, j_fan_coarse=2.0),
+        phase5.VerifyResult("c", j_fan_3d=-9.0, j_fan_coarse=3.0),  # coarse-HIGH, fine-negative: flip
+    ]
+    out = phase5.verify_ranking(res)
+    assert out["kendall_tau"] == -1.0  # coarse order c>b>a vs fine a>b>c — perfectly inverted
+    assert out["valid_only"] == out["all_finite"]  # negatives no longer excluded
+    assert out["rank_preserved"] is False and out["n_suspect"] == 0
 
 
 def test_verify_ranking_pairs_carry_suspect_flag():
     res = [
-        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_slice=1.0),
-        phase5.VerifyResult("b", j_fan_3d=float("nan"), j_fan_slice=2.0),
+        phase5.VerifyResult("a", j_fan_3d=1.0, j_fan_coarse=1.0),
+        phase5.VerifyResult("b", j_fan_3d=float("nan"), j_fan_coarse=2.0),
     ]
     pairs = {p["name"]: p for p in phase5.verify_ranking(res)["pairs"]}
     assert pairs["a"]["suspect"] is False
@@ -209,7 +216,7 @@ def test_run_verification_happy_path(tmp_path, monkeypatch):
     )
     assert len(results) == 1
     assert np.isfinite(results[0].j_fan_3d)
-    assert results[0].j_fan_slice == 1.5
+    assert results[0].j_fan_coarse == 1.5
     assert results[0].meta["n_nodes"] > 0
 
 
@@ -235,6 +242,19 @@ def test_run_verification_progress_bar(tmp_path, monkeypatch):
     assert len(results) == 1
 
 
+def test_run_verification_applies_scale_fn(tmp_path, monkeypatch):
+    # scale_fn post-scales the per-blade fine J_fan (the blade path uses it for whole-fan × count).
+    monkeypatch.setattr(phase3.subprocess, "run", _fake_su2_writing([4.0] * 4))
+    scaled = phase5.run_verification(
+        [("d0", _mid_vector(), 1.0)], tmp_path / "s", su2_bin="/fake/SU2_CFD",
+        scale_fn=lambda _d, j: j * 3.0,
+    )
+    plain = phase5.run_verification(
+        [("d0", _mid_vector(), 1.0)], tmp_path / "p", su2_bin="/fake/SU2_CFD",
+    )
+    assert scaled[0].j_fan_3d == pytest.approx(plain[0].j_fan_3d * 3.0)  # scale_fn applied vs not
+
+
 def test_run_verification_parallel_preserves_order(tmp_path):
     su2 = _make_fake_su2(tmp_path)
     designs = [("d0", _mid_vector(), 1.0), ("d1", _mid_vector(), 2.0)]
@@ -243,4 +263,4 @@ def test_run_verification_parallel_preserves_order(tmp_path):
     )
     assert [r.name for r in results] == ["d0", "d1"]  # order preserved across processes
     assert all(np.isfinite(r.j_fan_3d) for r in results)
-    assert [r.j_fan_slice for r in results] == [1.0, 2.0]
+    assert [r.j_fan_coarse for r in results] == [1.0, 2.0]
