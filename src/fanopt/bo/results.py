@@ -96,17 +96,25 @@ def pareto_designs(x: np.ndarray, y_raw: np.ndarray) -> list[dict[str, Any]]:
     return out
 
 
-def select_diverse(x: np.ndarray, indices: list[int], k: int) -> list[int]:
+def select_diverse(
+    x: np.ndarray,
+    indices: list[int],
+    k: int,
+    *,
+    span_bounds: tuple[np.ndarray, np.ndarray] | None = None,
+) -> list[int]:
     """Pick ``k`` maximally-spread designs from ``indices`` (greedy max-min).
 
     Distances are in the bounds-normalized vector space, so no single axis (e.g.
     thickness scale) dominates the spread. Seeds from the most off-centre design.
+    ``span_bounds`` is the ``(low, high)`` box to normalize against — pass the blade
+    codec's for a Stage-3 shard campaign; defaults to the Phase-4 codec's ``bounds()``.
     """
     if k <= 0 or not indices:
         return []
     if len(indices) <= k:
         return list(indices)
-    low, high = bounds()
+    low, high = span_bounds if span_bounds is not None else bounds()
     span = np.where(high > low, high - low, 1.0)
     xn = (x[indices] - low) / span
     centre = xn.mean(axis=0)
@@ -157,7 +165,7 @@ def recommend(
 
     Merges the Phase-4 Pareto (``analyze``'s structurally-diverse picks) with a
     Phase-5 ``verification.json`` (if present) so each recommended design shows its
-    2D-slice **and** 3D ``J_fan`` side by side, flagged ``verified``. The 3–5
+    coarse **and** fine 3D ``J_fan`` side by side, flagged ``verified``. The 3–5
     designs to print for the Phase-6 blinded A/B test. Works before verification
     exists (``verification`` = ``"absent"``, 3D fields ``None``).
     """
@@ -175,7 +183,7 @@ def recommend(
                 "index": r["index"],
                 "blade_count": r["blade_count"],
                 "edge_profile": r["edge_profile"],
-                "j_fan_slice": r["j_fan"],
+                "j_fan_coarse": r["j_fan"],
                 "j_fan_3d": j3d,
                 "i_wrist_kgm2": r["i_wrist_kgm2"],
                 "structural_m": r["structural_m"],
@@ -197,12 +205,12 @@ def recommend(
                 "name": vr.get("name", f"i{idx}"),
                 "blade_count": p.get("blade_count"),
                 "edge_profile": p.get("edge_profile"),
-                "j_fan_slice": vr.get("j_fan_slice", p.get("j_fan")),
+                "j_fan_coarse": vr.get("j_fan_coarse", p.get("j_fan")),
                 "j_fan_3d": jf3,
                 "i_wrist_kgm2": p.get("i_wrist_kgm2"),
                 "structural_m": p.get("structural_m"),
-                "verified": jf3 is not None and jf3 > 0,
-                "suspect": jf3 is None or jf3 <= 0,  # failed 3D run or net reverse thrust
+                "verified": jf3 is not None,  # a finite fine-3D value (negative is a real, bad result)
+                "suspect": jf3 is None,  # only a FAILED fine run (diverged/non-finite) is suspect
                 "recommended_for_print": idx in diverse_idx,
             }
         )

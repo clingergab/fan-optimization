@@ -1,16 +1,21 @@
 #!/usr/bin/env python
-"""Phase 5 — 3D verification of the aero-first campaign's top Pareto blades.
+"""Stage 3.C — fine-tier 3D verification of the aero-first campaign's top designs.
 
-Loads a finished aero campaign's ``pareto.json`` (from the distributed Stage-3 campaign),
-picks the top-k designs by slice ``J_fan``, and re-evaluates each with a 3D unsteady SU2
-run (single redesigned blade, external flow) — then checks the cheap 2D-slice ranking
-survives the 3D physics (Kendall τ between slice and 3D ``J_fan``). Writes
-``verification.json``, rewritten after each design so a mid-run disconnect keeps progress.
+Reads the finished distributed Stage-3 campaign's Drive shards (``evaluations_*.jsonl`` under
+``--shared-dir``, e.g. the ``campaign_trapezoid`` folder — the async campaign writes NO
+``pareto.json``), picks the top-k designs by their **coarse** ``J_fan``, decodes each stored 33-D
+vector to its blade, and re-evaluates it at the **fine** 3D tier (default 5 cycles / 60 inner-iter,
+vs the campaign's coarse 3/30). Then checks the coarse ranking the campaign screened on survives the
+higher fidelity (Kendall τ between coarse and fine ``J_fan``; ≥ 0.7 ⇒ the top-by-coarse designs are
+the top-by-fine designs → the V1 pick comes from the fine ranking). Writes ``verification.json``,
+rewritten after each design so a mid-run disconnect keeps progress.
 
     export SU2_RUN="$HOME/su2-local/extracted/bin"
-    python scripts/run_phase5_verify_blade.py --pareto data/phase4_aero/pareto.json --top-k 3
+    python scripts/run_phase5_verify_blade.py \\
+        --shared-dir /content/drive/MyDrive/fanopt/campaign_trapezoid --top-k 10 --workers 10
 
-The 3D unsteady runs are expensive; geometry + meshing + cfg are local.
+Fine runs are expensive (~10-12h each) but parallelize across designs (``--workers`` ≈ min(top_k,
+cores)); geometry + meshing + cfg are local. Pass ``--pareto`` instead for a legacy pareto.json.
 """
 
 from __future__ import annotations
@@ -20,8 +25,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fanopt.cfd.blade_verify import load_pareto, verify_blades
-from fanopt.cfd.phase5 import VerifyConfig, VerifyResult, verify_ranking
+from fanopt.cfd.blade_verify import load_campaign_rows, load_pareto, verify_blades
+from fanopt.cfd.phase5 import FINE_CYCLES, FINE_INNER, VerifyConfig, VerifyResult, verify_ranking
 
 
 def _summary(results: list[VerifyResult]) -> dict[str, Any]:
@@ -31,7 +36,7 @@ def _summary(results: list[VerifyResult]) -> dict[str, Any]:
             {
                 "name": r.name,
                 "j_fan_3d": r.j_fan_3d,
-                "j_fan_slice": r.j_fan_slice,
+                "j_fan_coarse": r.j_fan_coarse,
                 "n_nodes": r.meta.get("n_nodes"),
             }
             for r in results
@@ -41,17 +46,31 @@ def _summary(results: list[VerifyResult]) -> dict[str, Any]:
 
 def run(
     *,
-    pareto_path: Path,
     out_dir: Path,
     top_k: int | None,
+    shared_dir: Path | None = None,
+    pareto_path: Path | None = None,
     su2_bin: str | None = None,
     cfg: VerifyConfig | None = None,
     n_workers: int = 1,
     progress: bool = True,
 ) -> dict[str, object]:
-    """Verify the top-k blades and write ``verification.json``; return the summary."""
+    """Fine-verify the top-k blades and write ``verification.json``; return the summary.
+
+    Reads the campaign's top designs from ``shared_dir`` (Drive shards) or ``pareto_path`` (legacy).
+    """
+    top_k = top_k or None  # 0 (or None) → verify ALL designs, matching the CLI's "0 = all"
+    if shared_dir is not None:
+        records = load_campaign_rows(shared_dir)
+    elif pareto_path is not None:
+        records = load_pareto(pareto_path)
+    else:
+        raise ValueError("provide shared_dir (campaign shards) or pareto_path")
+    if not records:
+        raise ValueError(
+            "no finite-J_fan designs found — is the campaign folder correct / has it produced evals?"
+        )
     out_dir.mkdir(parents=True, exist_ok=True)
-    pareto = load_pareto(pareto_path)
 
     done: list[VerifyResult] = []
 
@@ -62,10 +81,10 @@ def run(
         )
 
     results, _ = verify_blades(
-        pareto,
+        records,
         out_dir,
         top_k=top_k,
-        cfg=cfg or VerifyConfig(),
+        cfg=cfg or VerifyConfig.fine(),
         su2_bin=su2_bin,
         n_workers=n_workers,
         progress=progress,
@@ -78,10 +97,22 @@ def run(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pareto", type=Path, default=Path("data/phase4_aero/pareto.json"))
+    parser.add_argument(
+        "--shared-dir", type=Path, default=None,
+        help="Campaign folder with evaluations_*.jsonl shards (the async campaign's Drive output).",
+    )
+    parser.add_argument(
+        "--pareto", type=Path, default=None, help="Legacy pareto.json (alternative to --shared-dir)."
+    )
     parser.add_argument("--out-dir", type=Path, default=Path("data/phase5_verify_blade"))
     parser.add_argument(
-        "--top-k", type=int, default=3, help="Top designs by slice J_fan (0 = all)."
+        "--top-k", type=int, default=10, help="Top designs by coarse J_fan (0 = all)."
+    )
+    parser.add_argument(
+        "--n-cycles", type=int, default=FINE_CYCLES, help=f"Fine-tier cycles (default {FINE_CYCLES})."
+    )
+    parser.add_argument(
+        "--inner-iter", type=int, default=FINE_INNER, help=f"Fine-tier inner-iter (default {FINE_INNER})."
     )
     parser.add_argument(
         "--workers", type=int, default=1, help="Parallel designs (processes); ~ min(top_k, cores)."
@@ -89,12 +120,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--su2-bin", default=None, help="Path to SU2_CFD (default: $SU2_RUN/PATH)")
     parser.add_argument("--no-progress", action="store_true", help="Disable the tqdm progress bar.")
     args = parser.parse_args(argv)
+    if args.shared_dir is None and args.pareto is None:
+        parser.error("provide --shared-dir (campaign shards) or --pareto (legacy pareto.json)")
 
     summary = run(
-        pareto_path=args.pareto,
         out_dir=args.out_dir,
-        top_k=args.top_k or None,
+        top_k=args.top_k,  # run() normalizes 0 → None (all)
+        shared_dir=args.shared_dir,
+        pareto_path=args.pareto,
         su2_bin=args.su2_bin,
+        cfg=VerifyConfig(n_cycles=args.n_cycles, inner_iter=args.inner_iter),
         n_workers=args.workers,
         progress=not args.no_progress,
     )
