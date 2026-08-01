@@ -183,6 +183,150 @@ def test_stale_claim_is_reclaimed(tmp_path):
     assert len(got) == 1  # reclaimed
 
 
+# --- heartbeat leases: liveness decoupled from eval wall-time (fast reclaim of a dropped session) ---
+
+
+def _hb_aged(claims, session_id, age_s):
+    """Write ``session_id``'s heartbeat as if last refreshed ``age_s`` seconds ago (simulate a drop)."""
+    claims.mkdir(parents=True, exist_ok=True)
+    ts = dc._dt.datetime.now(dc._dt.timezone.utc) - dc._dt.timedelta(seconds=age_s)
+    dc._heartbeat_path(claims, session_id).write_text(ts.isoformat(), encoding="utf-8")
+
+
+def _h(v):
+    return design_hash(decode(v).to_dict())
+
+
+def test_touch_heartbeat_makes_session_alive(tmp_path):
+    dc.touch_heartbeat(tmp_path / "claims", "s0")
+    assert dc._session_alive(tmp_path / "claims", "s0", heartbeat_ttl=600)
+
+
+def test_session_dead_when_heartbeat_lapses(tmp_path):
+    _hb_aged(tmp_path / "claims", "s0", age_s=1000)  # last beat 1000s ago, ttl 600
+    assert not dc._session_alive(tmp_path / "claims", "s0", heartbeat_ttl=600)
+
+
+def test_session_dead_when_no_heartbeat_file(tmp_path):
+    assert not dc._session_alive(tmp_path / "claims", "never", heartbeat_ttl=600)
+
+
+def test_live_owner_claim_not_stolen_even_when_marker_is_ancient(tmp_path):
+    # Headline property: a live session mid-long-eval keeps its claim no matter how old the marker
+    # is — liveness is the heartbeat, not the claim age (so a >6h eval is never falsely stolen).
+    claims = tmp_path / "claims"
+    v = _vec(40)
+    dc.touch_heartbeat(claims, "owner")
+    assert dc._claim_one(claims, _h(v), 60.0, v, session_id="owner", heartbeat_ttl=600)
+    marker = claims / f"{_h(v)}.claim"
+    old = os.stat(marker).st_mtime - 100_000  # marker ancient, far past any claim_ttl
+    os.utime(marker, (old, old))
+    assert dc._claim_one(claims, _h(v), 60.0, v, session_id="peer", heartbeat_ttl=600) is False
+
+
+def test_dead_owner_claim_reclaimed_fast_even_when_marker_is_fresh(tmp_path):
+    # Recovery property: a dropped session's claim frees on the heartbeat TTL (minutes), NOT the 6h
+    # claim_ttl backstop — even though the marker itself is brand new.
+    claims = tmp_path / "claims"
+    v = _vec(41)
+    _hb_aged(claims, "dead", age_s=1000)  # owner last beat 1000s ago → dead
+    assert dc._claim_one(claims, _h(v), 21_600.0, v, session_id="dead", heartbeat_ttl=600)
+    # marker fresh + claim_ttl 6h ⇒ legacy would NOT steal; heartbeat says dead ⇒ stolen
+    assert dc._claim_one(claims, _h(v), 21_600.0, v, session_id="peer", heartbeat_ttl=600) is True
+
+
+def test_owner_claim_falls_back_to_ttl_when_heartbeat_not_visible(tmp_path):
+    # If the owner's heartbeat isn't visible (just started / Drive lag), a fresh claim must NOT be
+    # stolen on that alone — fall back to the long claim_ttl backstop; but a truly old one still frees.
+    claims = tmp_path / "claims"
+    v = _vec(42)
+    assert dc._claim_one(claims, _h(v), 21_600.0, v, session_id="owner", heartbeat_ttl=600)  # no hb
+    assert dc._claim_one(claims, _h(v), 21_600.0, v, session_id="peer", heartbeat_ttl=600) is False
+    marker = claims / f"{_h(v)}.claim"
+    old = os.stat(marker).st_mtime - 21_601  # age it past claim_ttl
+    os.utime(marker, (old, old))
+    assert dc._claim_one(claims, _h(v), 21_600.0, v, session_id="peer", heartbeat_ttl=600) is True
+
+
+def test_active_claims_excludes_dead_owner_includes_live(tmp_path):
+    claims = tmp_path / "claims"
+    v_live, v_dead = _vec(43), _vec(44)
+    dc.touch_heartbeat(claims, "live")
+    _hb_aged(claims, "dead", age_s=1000)
+    dc._claim_one(claims, _h(v_live), 21_600.0, v_live, session_id="live", heartbeat_ttl=600)
+    dc._claim_one(claims, _h(v_dead), 21_600.0, v_dead, session_id="dead", heartbeat_ttl=600)
+    got = {h for h, _ in active_claims(claims, ttl_seconds=21_600, heartbeat_ttl=600)}
+    assert _h(v_live) in got and _h(v_dead) not in got  # live in flight; dead owner's is free
+
+
+def test_legacy_anonymous_marker_still_uses_age_ttl(tmp_path):
+    # Backward-compat / rolling upgrade: a marker with no session_id (old-code session) keeps the
+    # age-TTL behavior even when a new-code peer passes heartbeat_ttl.
+    claims = tmp_path / "claims"
+    v = _vec(45)
+    claims.mkdir(parents=True, exist_ok=True)
+    dc._write_claim(claims / f"{_h(v)}.claim", v, session_id=None)  # anonymous (old code)
+    assert dc._claim_one(claims, _h(v), 10_000.0, v, session_id="peer", heartbeat_ttl=600) is False
+    marker = claims / f"{_h(v)}.claim"
+    old = os.stat(marker).st_mtime - 20_000
+    os.utime(marker, (old, old))
+    assert dc._claim_one(claims, _h(v), 10_000.0, v, session_id="peer", heartbeat_ttl=600) is True
+
+
+def test_heartbeat_context_manager_beats_on_entry_and_refreshes(tmp_path):
+    claims = tmp_path / "claims"
+    cfg = DistributedConfig(heartbeat_interval_seconds=0.05, heartbeat_ttl_seconds=600)
+    with dc._heartbeat(claims, "s0", cfg):
+        assert dc._session_alive(claims, "s0", heartbeat_ttl=600)  # written before the body runs
+        first = dc._heartbeat_path(claims, "s0").read_text()
+        for _ in range(40):  # poll for a refresh (avoid a fixed-sleep flake)
+            time.sleep(0.05)
+            if dc._heartbeat_path(claims, "s0").read_text() != first:
+                break
+        assert dc._heartbeat_path(claims, "s0").read_text() != first  # the daemon refreshed it
+    assert dc._heartbeat_path(claims, "s0").exists()  # not deleted on exit → goes stale by TTL
+
+
+def test_release_own_claims_frees_only_this_sessions_markers(tmp_path):
+    claims = tmp_path / "claims"
+    va, vb = _vec(50), _vec(51)
+    dc.touch_heartbeat(claims, "s0"); dc.touch_heartbeat(claims, "other")
+    dc._claim_one(claims, _h(va), 21_600.0, va, session_id="s0", heartbeat_ttl=600)
+    dc._claim_one(claims, _h(vb), 21_600.0, vb, session_id="other", heartbeat_ttl=600)
+    dc._release_own_claims(claims, "s0")
+    assert not (claims / f"{_h(va)}.claim").exists()  # own orphan freed
+    assert (claims / f"{_h(vb)}.claim").exists()  # a peer's claim is untouched
+
+
+def test_same_id_restart_orphan_is_undeadlockable_without_release(tmp_path):
+    # A same-id restart writes a FRESH heartbeat, so its pre-crash claims look 'live' forever — neither
+    # it nor a peer can steal them (the sync-path deadlock the release fix addresses).
+    claims = tmp_path / "claims"
+    v = _vec(52)
+    dc.touch_heartbeat(claims, "s0")  # restart: fresh heartbeat
+    dc._claim_one(claims, _h(v), 21_600.0, v, session_id="s0", heartbeat_ttl=600)  # phantom pre-crash claim
+    assert dc._claim_one(claims, _h(v), 21_600.0, v, session_id="peer", heartbeat_ttl=600) is False
+    dc._release_own_claims(claims, "s0")  # the fix: session frees its own orphans on (re)start
+    assert dc._claim_one(claims, _h(v), 21_600.0, v, session_id="s0", heartbeat_ttl=600) is True
+
+
+def test_corrupt_heartbeat_does_not_crash(tmp_path):
+    # A naive/unparseable heartbeat must NOT raise (that would kill a live session mid-claim).
+    claims = tmp_path / "claims"; claims.mkdir(parents=True)
+    dc._heartbeat_path(claims, "naive").write_text("2020-01-01T00:00:00", encoding="utf-8")  # tz-naive
+    assert dc._heartbeat_age_seconds(claims, "naive") is not None  # coerced to utc, no TypeError
+    dc._heartbeat_path(claims, "junk").write_text("not-a-timestamp", encoding="utf-8")
+    assert dc._heartbeat_age_seconds(claims, "junk") is None  # unparseable → not-alive
+
+
+def test_pool_honors_start_method(tmp_path):
+    from concurrent.futures import ProcessPoolExecutor
+    for method in (None, "spawn", "forkserver"):
+        ex = dc._pool(2, method)  # constructing doesn't start workers → cheap
+        assert isinstance(ex, ProcessPoolExecutor)
+        ex.shutdown()
+
+
 # --- config validation ---
 
 
