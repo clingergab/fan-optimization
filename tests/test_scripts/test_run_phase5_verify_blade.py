@@ -92,6 +92,45 @@ def test_run_top_k_zero_verifies_all_designs(tmp_path, monkeypatch):
     assert len(summary["designs"]) == 3  # all three shard designs, not zero
 
 
+def test_run_resume_skips_already_verified_and_merges(tmp_path, monkeypatch):
+    # A Colab drop during the multi-hour fine run must resume: keep the finite results already in
+    # verification.json and re-verify ONLY the not-yet-done designs.
+    d = _fake_shards(tmp_path)  # coarse J_fan: _vec(0.6)=3.0 (top), _vec(0.5)=2.0, _vec(0.3)=1.0
+    out = tmp_path / "out"
+    out.mkdir()
+    top_hash = design_hash(decode(_vec(0.6)).to_dict())
+    (out / "verification.json").write_text(  # pre-seed the top design as already verified
+        json.dumps({"ranking": {}, "designs": [
+            {"name": f"00_{top_hash}", "j_fan_3d": 9.9e12, "j_fan_coarse": 3.0, "n_nodes": 100.0}]}),
+        encoding="utf-8",
+    )
+    seen = {}
+
+    def fake(records, out_dir, *, top_k=None, on_result=None, skip_hashes=None, **kw):
+        from fanopt.cfd.phase5 import verify_ranking
+
+        seen["skip"] = skip_hashes
+        ranked = sorted(records, key=lambda e: -float(e["j_fan"]))[:top_k] if top_k else records
+        results = []
+        for i, e in enumerate(ranked):
+            name = f"{i:02d}_{design_hash(decode(np.asarray(e['vector'], dtype=float)).to_dict())}"
+            if skip_hashes and name.split("_", 1)[1] in skip_hashes:
+                continue  # honor resume-skip like the real verify_blades
+            r = VerifyResult(name, j_fan_3d=float(i + 1), j_fan_coarse=float(e["j_fan"]),
+                             meta={"n_nodes": 100.0})
+            results.append(r)
+            if on_result is not None:
+                on_result(r)
+        return results, verify_ranking(results)
+
+    monkeypatch.setattr(script, "verify_blades", fake)
+    summary = script.run(out_dir=out, top_k=3, shared_dir=d)
+    assert top_hash in seen["skip"]  # the done design was passed to be skipped, not re-run
+    by_name = {x["name"]: x for x in summary["designs"]}
+    assert len(by_name) == 3  # 1 prior (kept) + 2 newly verified
+    assert by_name[f"00_{top_hash}"]["j_fan_3d"] == 9.9e12  # prior result preserved, not recomputed
+
+
 def test_main_requires_shared_dir_or_pareto(tmp_path):
     with pytest.raises(SystemExit):  # argparse error → SystemExit
         script.main(["--out-dir", str(tmp_path / "out")])

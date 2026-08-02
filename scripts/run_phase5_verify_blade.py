@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,31 @@ def _summary(results: list[VerifyResult]) -> dict[str, Any]:
     }
 
 
+def _prior_results(verification_path: Path) -> tuple[list[VerifyResult], set[str]]:
+    """Already-verified designs (finite fine ``J_fan``) from an existing ``verification.json``, as
+    ``(results, done_hashes)`` — so a resumed run keeps them and re-verifies only the rest. Only
+    finite results are kept; a prior failed/non-finite run is retried (its hash is not in the skip
+    set). ``done_hashes`` are the ``design_hash`` suffix of the ``{rank}_{hash}`` design names.
+    """
+    if not verification_path.exists():
+        return [], set()
+    prior: list[VerifyResult] = []
+    done: set[str] = set()
+    for d in json.loads(verification_path.read_text(encoding="utf-8")).get("designs", []):
+        jf3 = d.get("j_fan_3d")
+        if isinstance(jf3, (int, float)) and math.isfinite(jf3):
+            done.add(str(d.get("name", "")).split("_", 1)[-1])
+            prior.append(
+                VerifyResult(
+                    name=str(d["name"]),
+                    j_fan_3d=float(jf3),
+                    j_fan_coarse=d.get("j_fan_coarse"),
+                    meta={"n_nodes": float(d.get("n_nodes") or 0.0)},
+                )
+            )
+    return prior, done
+
+
 def run(
     *,
     out_dir: Path,
@@ -54,10 +80,14 @@ def run(
     cfg: VerifyConfig | None = None,
     n_workers: int = 1,
     progress: bool = True,
+    resume: bool = True,
 ) -> dict[str, object]:
     """Fine-verify the top-k blades and write ``verification.json``; return the summary.
 
     Reads the campaign's top designs from ``shared_dir`` (Drive shards) or ``pareto_path`` (legacy).
+    ``resume`` (default): keep the finite results already in ``out_dir/verification.json`` and
+    re-verify only the not-yet-done designs — so a Colab drop during the multi-hour fine run resumes
+    instead of restarting from scratch. Each design is also checkpointed as it completes.
     """
     top_k = top_k or None  # 0 (or None) → verify ALL designs, matching the CLI's "0 = all"
     if shared_dir is not None:
@@ -72,7 +102,8 @@ def run(
         )
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    done: list[VerifyResult] = []
+    prior, skip = _prior_results(out_dir / "verification.json") if resume else ([], set())
+    done: list[VerifyResult] = list(prior)  # resumed run keeps the already-verified designs
 
     def _checkpoint(r: VerifyResult) -> None:
         done.append(r)
@@ -80,7 +111,7 @@ def run(
             json.dumps(_summary(done), indent=2), encoding="utf-8"
         )
 
-    results, _ = verify_blades(
+    verify_blades(
         records,
         out_dir,
         top_k=top_k,
@@ -89,8 +120,9 @@ def run(
         n_workers=n_workers,
         progress=progress,
         on_result=_checkpoint,
+        skip_hashes=skip,
     )
-    summary = _summary(results)  # final write with order-preserved results
+    summary = _summary(done)  # prior (resumed) + newly-verified
     (out_dir / "verification.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary
 
