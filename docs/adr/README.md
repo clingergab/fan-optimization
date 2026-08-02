@@ -21,6 +21,7 @@ current-decision table are enough to avoid confusion.
 | **Optimization approach** (objective, fidelity, BO) | **ADR-0004** — redo on a correct 3D objective (CFz thrust, whole-fan periodic cascade, cold-start coarse→fine BO) | [`0004-optimization-3d-objective-redo.md`](0004-optimization-3d-objective-redo.md) |
 | **Blade geometry / architecture** | **ADR-0003** — aero-first solid blade (surface-of-revolution, thick rib + thin panel, N_RADIAL_SECTIONS=40) | [`../blade_architecture_redesign.md`](../blade_architecture_redesign.md) |
 | **Locked constants** (geometry / kinematics / CFD) | unchanged by the pivot | [`../locks_index.md`](../locks_index.md) |
+| **Unsteady CFD regime** | **MACH=1e-9 compressible** (V1, `../locks_index.md §9.4.1`); switch to incompressible **proposed for V2** | [`0006-unsteady-cfd-regime-incompressible.md`](0006-unsteady-cfd-regime-incompressible.md) |
 | **Product scope / V1↔V2 split** | unchanged | [`../phase_logs/phase_0_signoff.md`](../phase_logs/phase_0_signoff.md) |
 | **V2 / deferred ideas** | backlog | [`../V2_backlog.md`](../V2_backlog.md) |
 
@@ -30,6 +31,12 @@ If two docs seem to conflict, the table above wins.
 
 ## ADR ledger (supersession chain, newest first)
 
+- **ADR-0006 — Unsteady CFD regime → incompressible** (2026-08). Doc:
+  [`0006-unsteady-cfd-regime-incompressible.md`](0006-unsteady-cfd-regime-incompressible.md).
+  **Status: 🕐 PROPOSED (V2).** Does not change V1. Would supersede the unsteady-tier MACH=1e-9 regime in
+  `../locks_index.md §9.4.1` (Round-9 HIGH-12) if accepted — switching the pitching-fan tier from
+  compressible-forced-to-MACH=1e-9 to a truly incompressible solver to remove the low-Mach stiffness that
+  drives the ~3h eval cost + divergences. From the `docs/audit_2026-08_toolchain_and_approach.md` retrospective.
 - **ADR-0004 — Optimization redo on a 3D objective** (2026-07-26). Doc:
   [`0004-optimization-3d-objective-redo.md`](0004-optimization-3d-objective-redo.md).
   **Status: ✅ ACCEPTED — CURRENT.** Supersedes the *optimization approach* of ADR-0001 and
