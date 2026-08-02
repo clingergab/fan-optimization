@@ -23,11 +23,26 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any
 
 from fanopt.cfd.blade_verify import load_campaign_rows, load_pareto, verify_blades
 from fanopt.cfd.phase5 import FINE_CYCLES, FINE_INNER, VerifyConfig, VerifyResult, verify_ranking
+
+
+def _write_verification(path: Path, summary: dict[str, Any]) -> None:
+    """Write ``verification.json`` ATOMICALLY: dump to a ``.tmp`` sibling, then ``os.replace`` it in.
+
+    An in-place ``write_text`` truncates the file first, so a crash mid-write (a Colab drop over the
+    ~day-long run) would leave a half-written file that a resumed run can't parse — losing every
+    completed design. Writing the full temp then swapping means the live file is always a complete
+    prior version or the complete new one; if the swap itself is interrupted, the intact ``.tmp`` is
+    recovered by :func:`_prior_results`.
+    """
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _summary(results: list[VerifyResult]) -> dict[str, Any]:
@@ -51,23 +66,31 @@ def _prior_results(verification_path: Path) -> tuple[list[VerifyResult], set[str
     finite results are kept; a prior failed/non-finite run is retried (its hash is not in the skip
     set). ``done_hashes`` are the ``design_hash`` suffix of the ``{rank}_{hash}`` design names.
     """
-    if not verification_path.exists():
-        return [], set()
-    prior: list[VerifyResult] = []
-    done: set[str] = set()
-    for d in json.loads(verification_path.read_text(encoding="utf-8")).get("designs", []):
-        jf3 = d.get("j_fan_3d")
-        if isinstance(jf3, (int, float)) and math.isfinite(jf3):
-            done.add(str(d.get("name", "")).split("_", 1)[-1])
-            prior.append(
-                VerifyResult(
-                    name=str(d["name"]),
-                    j_fan_3d=float(jf3),
-                    j_fan_coarse=d.get("j_fan_coarse"),
-                    meta={"n_nodes": float(d.get("n_nodes") or 0.0)},
+    # Try the live file, then the ``.tmp`` an interrupted atomic swap may have left — and NEVER crash
+    # on a corrupt/half-written file (that would abort the whole resume). A parse failure falls back
+    # to the next candidate, and if none parses we return empty (re-verify all — wasteful but safe),
+    # rather than raising and forcing the operator to delete everything.
+    for candidate in (verification_path, verification_path.with_name(verification_path.name + ".tmp")):
+        try:
+            designs = json.loads(candidate.read_text(encoding="utf-8")).get("designs", [])
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+        prior: list[VerifyResult] = []
+        done: set[str] = set()
+        for d in designs:
+            jf3 = d.get("j_fan_3d")
+            if isinstance(jf3, (int, float)) and math.isfinite(jf3):
+                done.add(str(d.get("name", "")).split("_", 1)[-1])
+                prior.append(
+                    VerifyResult(
+                        name=str(d["name"]),
+                        j_fan_3d=float(jf3),
+                        j_fan_coarse=d.get("j_fan_coarse"),
+                        meta={"n_nodes": float(d.get("n_nodes") or 0.0)},
+                    )
                 )
-            )
-    return prior, done
+        return prior, done
+    return [], set()
 
 
 def run(
@@ -107,9 +130,7 @@ def run(
 
     def _checkpoint(r: VerifyResult) -> None:
         done.append(r)
-        (out_dir / "verification.json").write_text(
-            json.dumps(_summary(done), indent=2), encoding="utf-8"
-        )
+        _write_verification(out_dir / "verification.json", _summary(done))
 
     verify_blades(
         records,
@@ -123,7 +144,7 @@ def run(
         skip_hashes=skip,
     )
     summary = _summary(done)  # prior (resumed) + newly-verified
-    (out_dir / "verification.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    _write_verification(out_dir / "verification.json", summary)
     return summary
 
 
