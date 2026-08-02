@@ -41,33 +41,22 @@ gain. See `docs/phase_logs/phase_0_signoff.md`.
 
 ## 3. Architectural locks (non-negotiable)
 
-These flow from the plan's §0. Code that contradicts any of them is wrong.
+The design decisions — *what* is locked (geometry, kinematics, CFD regime, blade count, mass cap,
+hardware, phase gates) — are NOT restated here; this is a how-to-work doc, not a design store. They
+live in their authoritative homes:
 
-- **Panel-pivot architecture** (Architectural A / C7 / D / E): the 3 mm pivot
-  pin runs through the panel at `y = 0`, NOT through the rib. Rib radial
-  extent is `[HUB_RADIUS = 0.020 m, L_blade − RIB_TIP_TAPER = 0.185 m]`.
-- **C11 PITCHING_OMEGA sign**: `(0, -12.5664, 0)` — **negative y** is part of
-  the lock, not just the magnitude. Right-hand-rule on productive stroke.
-- **CFD cfg regime (MACH, tier freestream, dimensionalization)**: not a rule — the locked values
-  live in `docs/locks_index.md §9.4` (authoritative) and CFD-regime decisions in `docs/adr/`. Don't
-  reverse a locked cfg regime in code without a superseding ADR (the unsteady MACH=1e-9 regime is
-  under reconsideration for V2 — see `docs/adr/0006-unsteady-cfd-regime-incompressible.md`).
-- **Round-9 HIGH-8 Option A click chamfer**: 0.5–1 mm corner bevel at the
-  panel's outer tangential edge — NOT a full-panel-thickness face. Adjacent
-  panels meet at a 45° butt-joint LINE; no Z-axis overlap.
-- **H8 lever-arm lock**: τ → F conversions at the click region use
-  `L_WRIST_TO_TIP = 0.27 m` (ADR-0005: `D_HANDLE` + the live 220 mm blade tip
-  `blade.RIB_TIP_RADIUS_M`; was 0.25 m at the 200 mm blade), NOT the legacy
-  `L_blade = 0.20 m`.
-- **Blade count lock (ADR-0005)**: EXACTLY 12 blades, always — not a BO variable,
-  not {8,10,12,14}. `blade.BLADE_COUNT = 12`; the codec carries no blade-count
-  dimension and every vector decodes to 12.
-- **C9 mass cap**: `MAX_TOTAL_MASS_KG = 300 g` (ADR-0005 exploration budget;
-  the `< 100 g` C9 text is superseded). Mass is a SOFT Pareto objective, not a gate.
-- **Round-9 HIGH-11 hardware**: PyFR p=3 (Phase 5 verification only) needs
-  Colab Pro G4 GPU (95 GB VRAM). T4 (16 GB) OOMs.
-- **Round-9 H10 Phase 4 gate**: Phase 4 launch is gated on
-  `data/spike_0_6c/PASS` — `scripts/launch_phase4.py` enforces this.
+- **Locked constants + the "why"** → `docs/locks_index.md` (the authoritative index).
+- **Design decisions + supersession history** → `docs/adr/` (start at `docs/adr/README.md`).
+- **The executable truth for any locked *value*** → the code constants in
+  `src/fanopt/geometry/schema.py`, `geometry/blade.py`, and `cfd/configs.py`.
+
+**How to work with them (this is the rule):**
+- Code that contradicts a lock is wrong. Don't reverse a locked decision in code without a superseding
+  ADR + operator authorization (§7.2, §7.3).
+- **On drift, the code constant wins and the doc is stale — fix the doc, never silently change the code
+  value.** (These docs accumulated across pivots; treat `locks_index.md`/ADRs as descriptions of the code,
+  and reconcile a mismatch toward the code + the newest ADR.)
+- The most safety-critical "don't"s are also in §9 (e.g. no pivot hole through the rib).
 
 ## 4. Code rules
 

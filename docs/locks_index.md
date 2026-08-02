@@ -265,13 +265,13 @@ scaffolding only; Phase 0 Step 0.0 extends them to full coverage.
 - **Value:** Primary: FREESTREAM_OPTION = FREESTREAM_VELOCITY + MACH = 1e-9 +
   FREESTREAM_VELOCITY = (0, 0, 0.001); FREESTREAM_DIRECTION NOT set. Fallback:
   MACH = 1e-9 + REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE.
-- **MACH is tier-specific (Round-10 follow-up):**
-  - Tier -1 (2D steady): MACH = 0.0064 (V_tip as freestream, body stationary)
-  - Tier 0 (3D steady): MACH = 0.0064 (V_tip as freestream, body stationary)
+- **MACH is tier-specific (Round-10 follow-up; steady re-derived by ADR-0005):**
+  - Tier -1 (2D steady): MACH = 0.0070 (V_tip as freestream, body stationary; was 0.0064 at the 200 mm blade)
+  - Tier 0 (3D steady): MACH = 0.0070 (V_tip as freestream, body stationary; was 0.0064 at the 200 mm blade)
   - Tier 1 (3D unsteady): MACH = 1e-9 (ambient near-zero; body via GRID_MOVEMENT)
-  MACH lives in `TIER_SPECIFIC`, NOT `CROSS_TIER`. A single cross-tier MACH
-  would fire `config_mismatch` on every Tier-1 run because the rendered .cfg
-  has `MACH = 1e-9` while the lock would assert `0.0064`.
+  Executable truth: `cfd.configs.MACH_STEADY = 0.0070`, `MACH_UNSTEADY = 1e-9`. MACH lives in
+  `TIER_SPECIFIC`, NOT `CROSS_TIER`. A single cross-tier MACH would fire `config_mismatch` on every
+  Tier-1 run because the rendered .cfg has `MACH = 1e-9` while the lock would assert the steady value.
 - **Consumed by:**
   - §9.4.1 CROSS_TIER / TIER_SPECIFIC dicts (MACH tier-specific; config-hash
     assertion)
