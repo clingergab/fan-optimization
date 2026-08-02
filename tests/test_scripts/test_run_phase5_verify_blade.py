@@ -131,6 +131,33 @@ def test_run_resume_skips_already_verified_and_merges(tmp_path, monkeypatch):
     assert by_name[f"00_{top_hash}"]["j_fan_3d"] == 9.9e12  # prior result preserved, not recomputed
 
 
+def test_prior_results_survives_a_truncated_verification_json(tmp_path):
+    # A crash mid-write can leave a half-written verification.json; resume must degrade to "nothing
+    # done" instead of raising JSONDecodeError (which would force deleting all completed work).
+    vpath = tmp_path / "verification.json"
+    vpath.write_text('{"designs": [{"name": "00_abc", "j_fan_3d":', encoding="utf-8")  # truncated
+    assert script._prior_results(vpath) == ([], set())
+
+
+def test_prior_results_recovers_from_tmp_when_main_is_corrupt(tmp_path):
+    # If the atomic swap itself was interrupted, the intact .tmp holds the latest write — recover it.
+    (tmp_path / "verification.json").write_text("garbage{", encoding="utf-8")
+    (tmp_path / "verification.json.tmp").write_text(
+        json.dumps({"designs": [
+            {"name": "00_abc", "j_fan_3d": 1.5e12, "j_fan_coarse": 1.0, "n_nodes": 10.0}]}),
+        encoding="utf-8",
+    )
+    prior, skip = script._prior_results(tmp_path / "verification.json")
+    assert skip == {"abc"} and len(prior) == 1 and prior[0].j_fan_3d == 1.5e12
+
+
+def test_write_verification_is_atomic_leaving_no_tmp(tmp_path):
+    vpath = tmp_path / "verification.json"
+    script._write_verification(vpath, {"designs": [{"name": "x", "j_fan_3d": 1.0}]})
+    assert json.loads(vpath.read_text())["designs"][0]["name"] == "x"
+    assert not (tmp_path / "verification.json.tmp").exists()  # swapped in, no leftover partial
+
+
 def test_main_requires_shared_dir_or_pareto(tmp_path):
     with pytest.raises(SystemExit):  # argparse error → SystemExit
         script.main(["--out-dir", str(tmp_path / "out")])

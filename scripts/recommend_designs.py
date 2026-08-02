@@ -69,7 +69,8 @@ def _print_blade_table(summary: dict[str, Any]) -> None:
               f"{_fmt(rk['j_fan_3d'], '.3e'):>12}{_fmt(rk['j_fan_coarse'], '.3e'):>12}"
               f"{_fmt(rk['mass_kg'], '.1f', 1000):>8}{_fmt(rk['deflection_m'], '.3f', 1000):>9}"
               f"  {status}")
-    print("\n  ★ = recommended for the Phase-6 blinded A/B print set (top-k structurally diverse).")
+    print("\n  ★ = top-k by fine whole-fan J_fan — the set to PROMOTE TO TO (Phase 2). The final "
+          "3-to-print set is chosen after TO.")
 
 
 def _print_legacy_table(summary: dict[str, Any]) -> None:

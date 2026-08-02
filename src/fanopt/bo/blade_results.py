@@ -209,6 +209,13 @@ def recommend_blades(
             }
         )
     ranked.sort(key=lambda d: (d["j_fan_3d"] is not None, d["j_fan_3d"] or 0.0), reverse=True)
+    if ver_by_hash:
+        # Verification is in → promote the top-`top_k` by FINE whole-fan J_fan (the aero truth this
+        # stage exists to establish), NOT the pre-verify coarse-Pareto diversity: these are the
+        # designs to carry into TO. (Diversity is the criterion for the FINAL print set, after TO.)
+        promote = set([r["design_hash"] for r in ranked if r["verified"]][:top_k])
+        for r in ranked:
+            r["recommended_for_print"] = r["design_hash"] in promote
 
     return {
         "top_k": top_k,

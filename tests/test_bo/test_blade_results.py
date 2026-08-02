@@ -178,6 +178,23 @@ def test_recommend_blades_skips_verification_design_without_hash_name(tmp_path):
     assert out["verification"] == "absent" and out["ranked"] == []  # unparseable name yields no join
 
 
+def test_recommend_blades_stars_top_k_by_fine_jfan_when_verified(tmp_path):
+    # With verification in, the ★ (recommended_for_print = the promote-to-TO set) must follow the
+    # FINE J_fan, NOT the coarse-Pareto diversity — the whole point of the fine tier is that coarse
+    # can mislead. Here the fine order is INVERTED vs coarse.
+    va, vb, vc = _vec(0.3), _vec(0.6), _vec(0.9)
+    _write(tmp_path, [_row(va, 3.0, mass=0.006), _row(vb, 2.0, mass=0.005), _row(vc, 1.0, mass=0.004)])
+    ver = tmp_path / "verification.json"
+    ver.write_text(json.dumps(_verification([
+        {"name": f"00_{_hash(va)}", "j_fan_3d": 1.0e12, "j_fan_coarse": 3.0},  # coarse-best, fine-worst
+        {"name": f"01_{_hash(vb)}", "j_fan_3d": 2.0e12, "j_fan_coarse": 2.0},
+        {"name": f"02_{_hash(vc)}", "j_fan_3d": 3.0e12, "j_fan_coarse": 1.0},  # coarse-worst, fine-BEST
+    ])), encoding="utf-8")
+    out = blade_results.recommend_blades(tmp_path, top_k=2, verification_path=ver)
+    starred = {r["design_hash"] for r in out["ranked"] if r["recommended_for_print"]}
+    assert starred == {_hash(vc), _hash(vb)}  # top-2 by FINE J_fan (c, b) — not coarse (a, b)
+
+
 def test_recommend_blades_picks_top_k_diverse_from_pareto(tmp_path):
     # 4 non-dominated designs (J_fan↓ with mass↓ — a real tradeoff so all are Pareto); 3 cluster in
     # vector space + 1 outlier. top_k=2 diverse must include the outlier _vec(0.95).
