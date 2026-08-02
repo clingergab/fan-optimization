@@ -37,6 +37,13 @@ from fanopt.geometry.blade_cad import (
 import fanopt.geometry.blade_cad as blade_cad_mod
 from fanopt.geometry.schema import PIVOT_BOSS_RADIUS_M
 
+
+def test_n_radial_sections_default_is_the_campaign_lock():
+    # ADR-0003 locks the geometry resolution to 40. The module DEFAULT must equal it so a run that
+    # doesn't set it at runtime (or a spawn-based pool worker that re-imports fresh) can't silently
+    # mesh at a resolution the campaign objective never used — which would make results non-comparable.
+    assert blade_cad_mod.N_RADIAL_SECTIONS == 40
+
 _SAMPLE_GRID = (
     (0.0003, 0.0005, 0.0003),
     (0.0004, 0.0006, 0.0004),

@@ -57,15 +57,19 @@ __all__ = [
     "fold_collision_clear",
 ]
 
-N_RADIAL_SECTIONS: int = 60
+N_RADIAL_SECTIONS: int = 40
 """Radial cross-sections lofted into the CAD solid (:func:`make_blade_solid`, used by the CFD/FEA
 mesh export and the offline CAD-boolean fold cross-check :func:`fold_collision_volume_m3`).
 
-60 (not 12): the meridian is faceted between these stations, so a coarse count chops a ``smooth``
-(Catmull-Rom) rib into a straight-segment zigzag — indistinguishable from ``linear`` and, worse,
-feeding the CFD spurious sharp edges that can drive divergence. This density does NOT drive the
-in-loop fold gate: that is the analytic :func:`fold_penetration_m`, which evaluates the smooth
-height field directly (no facets), so the fold verdict is mesh-independent."""
+**40 is the campaign-locked resolution (ADR-0003).** It was previously set at runtime in every
+notebook while the module default drifted to 60; it is now the DEFAULT so a run that forgets to set
+it — or a spawn-based pool worker that re-imports this module fresh — cannot silently mesh at a
+different resolution than the campaign objective did, which would make its results non-comparable.
+Must stay well above the shipped-12: at a coarse count the meridian is faceted so a ``smooth``
+(Catmull-Rom) rib gets chopped into a straight-segment zigzag — indistinguishable from ``linear`` and,
+worse, feeding the CFD spurious sharp edges that can drive divergence. This density does NOT drive the
+in-loop fold gate: that is the analytic :func:`fold_penetration_m`, which evaluates the smooth height
+field directly (no facets), so the fold verdict is mesh-independent."""
 
 N_TANGENTIAL_SAMPLES: int = 18
 """Tangential samples per cross-section across the wedge (paired with :data:`N_RADIAL_SECTIONS` for

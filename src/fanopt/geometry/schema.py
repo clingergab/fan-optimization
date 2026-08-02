@@ -106,7 +106,13 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 L_BLADE_M: float = 0.200
-"""Blade length from pivot to tip (§2.1). Panel spans full L_BLADE_M radially."""
+"""**LEGACY blade length (200 mm), pre-ADR-0005.** The LIVE aero-first blade is 220 mm — its length is
+``geometry.blade.RIB_TIP_RADIUS_M = 0.220`` (used by `blade_cad`, `blade_objective_3d`, `topopt`, and
+the whole current campaign/verify/TO path). ``L_BLADE_M`` remains ONLY for the superseded pre-redesign
+subsystem (`envelope_cad`, `assembly_cad`, `panel_slice`, `bo/structural.py`, `bo/objective.py`,
+`spike_0_7a`). Do NOT import this into a new/live geometry path — use ``blade.RIB_TIP_RADIUS_M``. (These
+two lengths are a known duality carried since the 200→220 redesign; deleting the legacy subsystem is a
+V2 cleanup — see `docs/audit_2026-08_toolchain_and_approach.md`.)"""
 
 D_HANDLE_M: float = 0.050
 """Wrist-axis-to-pivot offset along +x (§0 row 27)."""
