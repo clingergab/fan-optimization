@@ -4,6 +4,27 @@ Canonical, expanded V2 plan. The in-spec summary lives at `../report-final.md` �
 
 ---
 
+## Audit 2026-08 — toolchain & approach retrospective (V2 input)
+
+A near-end-of-V1 clean-slate evaluation (5 domain deep-dives + 2 adversarial passes; the metric was
+recomputed from raw SU2 data). Full record: **`docs/audit_2026-08_toolchain_and_approach.md`**. Headline:
+the toolchain and the V1 *result* are sound (the campaign optimized a **validated** signed-rectification
+signal, not noise); **none of the findings improve the existing V1 designs** — they are V2 input, plus one
+cheap V1 validation correction. Findings map onto existing backlog sections:
+- **Validation instrument must be directional** → Spike 0.3 above (⚠ correction added there). *The one V1-relevant item.*
+- **Collapse the 12 panel-offset dims → 1-2 tangential scalars** (radial offsets redundant with the ±20mm
+  meridian; tangential fold-locked) → "Deferred design-space relaxations" below.
+- **Real 2-fidelity MF-BO (gated on coarse↔fine R²>0.75) · √D GP prior · Ax migration · feasibility-classifier
+  for NaN failures** → "Alternative MFBO architectures" below.
+- **CFD regime compressible@1e-9 → incompressible** (kills the stiffness cost + divergence) → touches the
+  C12/HIGH-12 lock, so it is an **ADR decision** (`docs/adr/`), not a silent change.
+- **Cheap analytic added-mass+drag surrogate as a screening FILTER** (not a ranker — the `gentle>deep`
+  non-monotonicity would invert a quasi-steady model) → new V2 item; pairs with MF-BO.
+- **Substrate**: shrink the campaign first (surrogate + fewer dims → fits one node/session); migrate to
+  Modal / one-box+Postgres / gcsfuse-`ttl-secs=0` **only if** the campaign stays big.
+
+---
+
 ## Deferred design-space relaxations (trapezoid redesign, 2026-07-29)
 
 The trapezoid blade redesign (ADR-0005) freed several arbitrary pre-decisions so the BO can
@@ -84,6 +105,8 @@ These spikes were originally Phase 0 deliverables. They are deferred to V2 to ke
 1. **Kitchen scale + cardboard target** (~$0, ~15 min protocol) — see `docs/spike_0_3_protocol.md` Appendix A.
 2. **Phyphox phone IMU** (free; phone already owned) — `src/fanopt/physical/imu.py` already reads CSVs in the right format.
 3. The original anemometer + IMU rig per `docs/spike_0_3_protocol.md` body.
+
+**⚠ Audit 2026-08 correction (see `docs/audit_2026-08_toolchain_and_approach.md`) — the instrument must be DIRECTIONAL.** The optimized `J_fan` is the *signed cycle-mean* (net directed rectification: flat nets ≈0/slightly negative, a cupped blade nets positive *toward* the user). A plain/thermal anemometer reads *unsigned* speed magnitude (~RMS/peak), which the N1 data shows is ~equal across all designs — so it would fail to distinguish a good fan from the flat baseline. Priority therefore INVERTS: path **#1 (kitchen scale + light target)** measures net directed *force* and is the correctly-aligned cheap validator; a **vane** (propeller) anemometer read in **AVG mode** over a fixed fanning window is acceptable (it's directional); a **thermal/hot-wire** anemometer is NOT. The blinded feel test (Spike-0.3 V1 substitute) is itself aligned — a human feels the directed puff. Any V1 quantitative check should print the **flat baseline** and measure the *net* flat-vs-candidate gap.
 
 **V2 acceptance:** any V2 path must produce a `J_fan` baseline that V1's printed top-3 can be compared against. The ≥15% gain target only applies once a measured baseline exists; until then, V1 reports sim-vs-sim deltas.
 
