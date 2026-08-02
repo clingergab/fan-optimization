@@ -176,6 +176,7 @@ def verify_blades(
     n_workers: int = 1,
     progress: bool = False,
     on_result: Callable[[VerifyResult], None] | None = None,
+    skip_hashes: set[str] | None = None,
 ) -> tuple[list[VerifyResult], dict[str, object]]:
     """Fine-tier verify the campaign's top blades; return ``(results, ranking-metrics)``.
 
@@ -184,11 +185,15 @@ def verify_blades(
     prep; ``cfg`` should be the FINE tier (:meth:`VerifyConfig.fine`) so this re-runs at higher
     fidelity than the coarse campaign screen. Each fine ``J_fan`` is scaled to **whole-fan**
     (× ``blade_count``, via ``_whole_fan_scale``) so it is the same quantity as the campaign's
-    coarse ``j_fan``. ``results`` are per-design (whole-fan fine ``J_fan`` beside the coarse
-    ``J_fan``); the ranking dict is :func:`verify_ranking`'s coarse-vs-fine agreement
-    (Kendall τ, Spearman ρ, Pearson R², failed-run flags).
+    coarse ``j_fan``. ``skip_hashes`` (design_hash suffixes) are dropped from the top-k before
+    verifying — the caller passes the already-done designs so a resumed run re-verifies only the
+    rest. ``results`` are per-design (whole-fan fine ``J_fan`` beside the coarse ``J_fan``); the
+    ranking dict is :func:`verify_ranking`'s coarse-vs-fine agreement (Kendall τ, Spearman ρ,
+    Pearson R², failed-run flags).
     """
     designs = designs_from_pareto(records, top_k=top_k)
+    if skip_hashes:  # resume: drop designs already verified (name is "{rank}_{design_hash}")
+        designs = [d for d in designs if d[0].split("_", 1)[1] not in skip_hashes]
     results = run_verification(
         designs,
         Path(workdir),
