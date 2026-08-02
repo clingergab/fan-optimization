@@ -48,12 +48,10 @@ These flow from the plan's §0. Code that contradicts any of them is wrong.
   extent is `[HUB_RADIUS = 0.020 m, L_blade − RIB_TIP_TAPER = 0.185 m]`.
 - **C11 PITCHING_OMEGA sign**: `(0, -12.5664, 0)` — **negative y** is part of
   the lock, not just the magnitude. Right-hand-rule on productive stroke.
-- **Round-9 HIGH-12 unsteady cfg**: SU2 unsteady cfg uses `MACH = 1e-9` with
-  `FREESTREAM_OPTION = FREESTREAM_VELOCITY` override (or fallback
-  `REF_DIMENSIONALIZATION = FREESTREAM_PRESS_EQ_ONE`). MACH is **tier-
-  specific**: steady tiers (-1 / 0) use 0.0070 (ADR-0005, re-derived for the
-  220 mm blade / 0.27 m lever; was 0.0064), unsteady tier (1) uses 1e-9.
-  `CROSS_TIER` dict does NOT carry MACH.
+- **CFD cfg regime (MACH, tier freestream, dimensionalization)**: not a rule — the locked values
+  live in `docs/locks_index.md §9.4` (authoritative) and CFD-regime decisions in `docs/adr/`. Don't
+  reverse a locked cfg regime in code without a superseding ADR (the unsteady MACH=1e-9 regime is
+  under reconsideration for V2 — see `docs/adr/0006-unsteady-cfd-regime-incompressible.md`).
 - **Round-9 HIGH-8 Option A click chamfer**: 0.5–1 mm corner bevel at the
   panel's outer tangential edge — NOT a full-panel-thickness face. Adjacent
   panels meet at a 45° butt-joint LINE; no Z-axis overlap.
@@ -271,7 +269,7 @@ If any of 1–4 fails, the work is not done. Fix and re-verify.
 | New CadQuery primitive | `src/fanopt/geometry/primitives.py` (Layer 3) or `fields.py` (Layer 2) |
 | New SU2 config template | `configs/su2/*.cfg.j2` + renderer in `src/fanopt/cfd/configs.py` |
 | New locked geometry constant | `src/fanopt/geometry/schema.py` + a test in `tests/test_geometry/test_schema.py` |
-| New CFD tier constant | `src/fanopt/cfd/configs.py` `TIER_SPECIFIC` or `CROSS_TIER` (NOT MACH in CROSS_TIER) |
+| New CFD tier constant | `src/fanopt/cfd/configs.py` `TIER_SPECIFIC` or `CROSS_TIER` |
 | Phase entry-point script | `scripts/run_phase{N}_*.py` |
 | Spike runner | `scripts/run_spike_<N>.py` or `scripts/<spike-name>_<verb>.py` |
 | New retired phrase to gate | `docs/retired_phrases.yaml` + verify `tests/test_audit/test_no_stale_architecture_refs.py` |
@@ -281,12 +279,10 @@ If any of 1–4 fails, the work is not done. Fix and re-verify.
 ## 9. What NOT to do
 
 - Don't drill a pivot hole through the rib (panel-pivot architecture).
-- Don't set MACH = 0.0064 in the unsteady cfg (Round-9 HIGH-12 retired this).
 - Don't add `rib_base_width` / `rib_tip_width` as BO variables (locked to
   4 mm / 6 mm per H12).
 - Don't reintroduce 14-blade or rib-crank architectures (MED-10 Round 7 /
   CRIT-1).
-- Don't put MACH in `CROSS_TIER` — it's tier-specific per HIGH-12.
 - Don't use inline imports, anywhere, ever — including inside `try`/`except`,
   inside notebooks, inside test functions. Top of file / top of cell only.
 - Don't add abstract base classes, Protocols, or interfaces speculatively —
