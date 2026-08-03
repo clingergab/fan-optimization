@@ -166,6 +166,35 @@ def top_designs_from_shards(
     return designs_from_pareto(load_campaign_rows(shared_dir), top_k=top_k)
 
 
+def top_verified_designs(
+    shared_dir: Path | str, verification_path: Path | str, top_k: int | None = None
+) -> list[tuple[str, BladeParams, float | None]]:
+    """Top-k designs by **fine 3D** ``J_fan`` → ``(name, params, j_fan_3d)``, best first.
+
+    Joins a Stage-3.C ``verification.json`` (whose design names are ``{rank:02d}_{hash}``, each
+    carrying the fine whole-fan ``j_fan_3d``) to the campaign shards by ``design_hash`` to recover
+    each winner's absolute :class:`BladeParams`. This is the correct input to the per-design 3D
+    structural TO — the designs promoted to print are ranked by the fine aero truth, not the coarse
+    screen. Designs missing from the shards or without a finite ``j_fan_3d`` are dropped.
+    """
+    by_hash = {str(r.get("design_hash")): r for r in load_campaign_rows(shared_dir)}
+    ver = json.loads(Path(verification_path).read_text(encoding="utf-8"))
+    scored: list[tuple[float, str, BladeParams]] = []
+    for d in ver.get("designs", []):
+        name = str(d.get("name", ""))
+        j3d = d.get("j_fan_3d")
+        if "_" not in name or not isinstance(j3d, (int, float)) or not np.isfinite(j3d):
+            continue
+        row = by_hash.get(name.split("_", 1)[1])
+        if row is None:
+            continue
+        scored.append((float(j3d), name, decode(np.asarray(row["vector"], dtype=float))))
+    scored.sort(key=lambda t: t[0], reverse=True)
+    if top_k is not None:
+        scored = scored[:top_k]
+    return [(name, params, j3d) for j3d, name, params in scored]
+
+
 def verify_blades(
     records: list[dict[str, object]],
     workdir: Path,

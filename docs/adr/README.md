@@ -20,6 +20,7 @@ current-decision table are enough to avoid confusion.
 |---|---|---|
 | **Optimization approach** (objective, fidelity, BO) | **ADR-0004** — redo on a correct 3D objective (CFz thrust, whole-fan periodic cascade, cold-start coarse→fine BO) | [`0004-optimization-3d-objective-redo.md`](0004-optimization-3d-objective-redo.md) |
 | **Blade geometry / architecture** | **ADR-0003** — aero-first solid blade (surface-of-revolution, thick rib + thin panel, N_RADIAL_SECTIONS=40) | [`../blade_architecture_redesign.md`](../blade_architecture_redesign.md) |
+| **Phase-2 structural TO** | **ADR-0007** — per-design 3D SIMP on each solid blade (freeze aero skin, carve rib/interior); supersedes the 2D representative-rib TO | [`0007-phase2-per-design-3d-blade-to.md`](0007-phase2-per-design-3d-blade-to.md) |
 | **Locked constants** (geometry / kinematics / CFD) | unchanged by the pivot | [`../locks_index.md`](../locks_index.md) |
 | **Unsteady CFD regime** | **MACH=1e-9 compressible** (V1, `../locks_index.md §9.4.1`); switch to incompressible **proposed for V2** | [`0006-unsteady-cfd-regime-incompressible.md`](0006-unsteady-cfd-regime-incompressible.md) |
 | **Product scope / V1↔V2 split** | unchanged | [`../phase_logs/phase_0_signoff.md`](../phase_logs/phase_0_signoff.md) |
@@ -31,6 +32,13 @@ If two docs seem to conflict, the table above wins.
 
 ## ADR ledger (supersession chain, newest first)
 
+- **ADR-0007 — Phase-2 per-design 3D blade TO** (2026-08-02). Doc:
+  [`0007-phase2-per-design-3d-blade-to.md`](0007-phase2-per-design-3d-blade-to.md).
+  **Status: ✅ ACCEPTED — CURRENT.** Supersedes the Phase-2 TO *approach* of ADR-0001 /
+  `report-final.md` (single 2D representative-rib SIMP by symmetry) — the aero-first solid blade
+  (ADR-0003) has no single representative rib, so TO runs **per-design 3D SIMP** on each of the
+  top-10 winners (freeze the aero skin, carve rib cores + interior). Retires
+  `scripts/run_phase2_to.py`. Geometry, locks, and the optimization redo (ADR-0004) are unaffected.
 - **ADR-0006 — Unsteady CFD regime → incompressible** (2026-08). Doc:
   [`0006-unsteady-cfd-regime-incompressible.md`](0006-unsteady-cfd-regime-incompressible.md).
   **Status: 🕐 PROPOSED (V2).** Does not change V1. Would supersede the unsteady-tier MACH=1e-9 regime in
