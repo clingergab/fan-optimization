@@ -49,8 +49,13 @@ Phase-2 structural TO for V1 is **per-design 3D SIMP on each design's own solid 
   (`solve_displacements_multi`), keeping a finer mesh tractable. Measured: 1.0 mm ≈ 63 s/iter / 5.6 GB;
   0.8 mm needs ~15 GB (a >50 GB session). Default 0.8 mm mesh / 0.6 mm skin.
 
-Entry points: `scripts/run_phase2_blade_to.py`, `notebooks/colab_phase2_blade_to.ipynb`;
-design selection via `cfd/blade_verify.top_verified_designs` (ranks by fine 3D `J_fan`).
+Entry points: `scripts/run_phase2_blade_to.py`, `notebooks/colab_stage4_blade_to.ipynb` (Stage 4 in
+the campaign numbering — TO follows the Stage-3 BO campaign); design selection via
+`cfd/blade_verify.top_verified_designs` (ranks by fine 3D `J_fan`). Designs are independent, so the
+batch parallelizes across them (`run_blade_to_batch(n_workers=...)`, a process pool) — **RAM-bound**
+(each worker holds a full factorization: ~30 GB at 0.6 mm, ~15 GB at 0.8 mm), so
+`n_workers ≈ session_RAM / per_design_RAM`. The CPU sparse direct solve is not GPU-accelerated;
+parallel CPU is the throughput lever.
 
 ## Consequences
 - `scripts/run_phase2_to.py` and its test are **retired** (removed). The 2D machinery it used
