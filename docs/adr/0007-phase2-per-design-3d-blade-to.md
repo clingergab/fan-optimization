@@ -49,9 +49,11 @@ Phase-2 structural TO for V1 is **per-design 3D SIMP on each design's own solid 
   (`solve_displacements_multi`, which also frees the factorization + `malloc_trim`s each iteration so
   RSS does not climb — a SuperLU factorization otherwise piled up in uncollected reference cycles and
   OOM'd the run), keeping a finer mesh tractable. Post-fix steady-state is one factorization's working
-  set: ~10-20 GB per worker at 0.6 mm. The unstructured density filter is built via
-  `sparse_distance_matrix` (C level) — a per-neighbour Python loop otherwise spikes setup RAM to tens
-  of GB at a fine mesh (the 123M-entry filter). Default 0.6 mm mesh / 0.5 mm skin.
+  set: ~10-20 GB per worker at 0.6 mm. The unstructured density filter (hundreds of millions of
+  nonzeros at 0.6 mm, since a fixed 2 mm min-feature radius spans ~140-350 elements) is built
+  **block by block** into a preallocated CSR: the transient above the output is one 20k-row block,
+  not the whole matrix, so it cannot spike — a one-shot COO→concatenate→CSR→normalize build made
+  several full-size copies and spiked setup RAM to ~40 GB at 0.6 mm. Default 0.6 mm mesh / 0.5 mm skin.
 
 Entry points: `scripts/run_phase2_blade_to.py`, `notebooks/colab_stage4_blade_to.ipynb` (Stage 4 in
 the campaign numbering — TO follows the Stage-3 BO campaign); design selection via

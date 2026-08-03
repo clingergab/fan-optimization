@@ -78,6 +78,24 @@ def test_filter_matches_reference_neighbor_loop():
     assert np.allclose(got, ref, atol=1e-12)
 
 
+def test_filter_block_size_does_not_change_result():
+    # The block-wise build must be invariant to block_rows: a tiny block (many blocks) must equal
+    # a single block covering all rows. Locks the cross-block indptr/scatter accumulation.
+    rng = np.random.default_rng(1)
+    c = rng.random((250, 3)) * 0.05
+    vols = rng.random(250) * 1e-7
+    one_block = build_density_filter_unstructured(c, 0.012, vols, block_rows=1000).toarray()
+    many_blocks = build_density_filter_unstructured(c, 0.012, vols, block_rows=7).toarray()
+    assert np.allclose(one_block, many_blocks, atol=1e-15)
+
+
+def test_filter_multi_block_rows_still_sum_to_one():
+    # Row-normalization must hold when the build spans several blocks.
+    c = np.random.default_rng(2).uniform(0, 1, size=(40, 3))
+    w = build_density_filter_unstructured(c, r_min=0.5, block_rows=9)
+    assert np.allclose(np.asarray(w.sum(axis=1)).ravel(), 1.0)
+
+
 def test_frozen_skin_flags_near_surface_elements():
     surface = np.array([[x, y, 0.0] for x in np.linspace(0, 1, 5) for y in np.linspace(0, 1, 5)])
     centroids = np.array([[0.5, 0.5, 0.0008], [0.5, 0.5, 0.005]])
