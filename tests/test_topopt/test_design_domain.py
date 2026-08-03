@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from scipy.spatial import cKDTree
 
 from fanopt.topopt.design_domain import (
     build_density_filter_unstructured,
@@ -57,6 +58,24 @@ def test_filter_volume_weighting_favors_larger_neighbor():
     vols = np.array([1.0, 5.0, 1.0])
     w = build_density_filter_unstructured(centroids, r_min=1.5, element_volumes=vols).toarray()
     assert w[0, 1] > w[0, 2]
+
+
+def test_filter_matches_reference_neighbor_loop():
+    # Lock the C-level (sparse_distance_matrix) build to the plain per-neighbor reference, incl.
+    # the self term and column-volume weighting, on a random cloud with unequal volumes.
+    rng = np.random.default_rng(0)
+    c = rng.random((300, 3)) * 0.05
+    vols = rng.random(300) * 1e-7
+    r_min = 0.012
+    tree = cKDTree(c)
+    n = len(c)
+    ref = np.zeros((n, n))
+    for i, nbrs in enumerate(tree.query_ball_point(c, r_min)):
+        nbrs = np.asarray(nbrs, dtype=int)
+        w = (r_min - np.linalg.norm(c[nbrs] - c[i], axis=1)) * vols[nbrs]
+        ref[i, nbrs] = w / w.sum()
+    got = build_density_filter_unstructured(c, r_min, vols).toarray()
+    assert np.allclose(got, ref, atol=1e-12)
 
 
 def test_frozen_skin_flags_near_surface_elements():

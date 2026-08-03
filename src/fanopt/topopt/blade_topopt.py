@@ -561,12 +561,12 @@ def run_blade_to_batch(
     bad blade never aborts the batch.
 
     ``n_workers > 1`` runs designs concurrently in a process pool (each design is independent).
-    Concurrency is **RAM-bound**: every worker holds a full FEA factorization whose memory scales
-    *superlinearly* with mesh size (3D direct-solve fill-in) — measured ~6 GB at 1.0 mm, ~18 GB at
-    0.8 mm, **~57 GB at 0.6 mm**. Set ``n_workers ≈ session_RAM / per_design_RAM`` **minus headroom**
-    (peak varies by design) — over-subscribing RAM will OOM the run. ``optimize`` must be picklable
-    in parallel mode (a module-level function or a ``functools.partial`` of one — not a
-    closure/lambda). ``on_result`` fires as each design finishes. Returns the aggregate summary dict.
+    Concurrency is **RAM-bound**: each worker's steady-state footprint is one factorization's working
+    set — observed ~10-20 GB per worker at 0.6 mm (less at a coarser mesh), with the filter setup
+    peaking ~7 GB below that. Set ``n_workers ≈ session_RAM / ~20 GB`` at 0.6 mm **minus headroom** —
+    over-subscribing RAM will OOM the run. ``optimize`` must be picklable in parallel mode (a
+    module-level function or a ``functools.partial`` of one — not a closure/lambda). ``on_result``
+    fires as each design finishes. Returns the aggregate summary dict.
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
