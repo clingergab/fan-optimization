@@ -23,14 +23,18 @@ from fanopt.bo.blade_codec import N_DIMS, decode
 from fanopt.topopt.blade_fea_mesh import BladeFeaMeshResult, FeaMeshParams
 from fanopt.topopt.blade_topopt import (
     BladeTOResult,
+    _fsync_path,
     _passes_screen,
     _screen_ladder,
+    _write_json_durable,
     build_blade_to_problem,
     run_blade_to_batch,
     run_blade_topology_optimization,
     topology_optimize_blade_screened,
     von_mises,
 )
+
+_LOAD_CASE_NAMES = ("productive_stroke", "return_stroke", "inertial", "click_engagement")
 
 
 def _slab_mesh(nx=5, ny=4, nz=4, x0=0.05, x1=0.06, y=0.004, t=0.008) -> BladeFeaMeshResult:
@@ -307,3 +311,68 @@ def test_batch_isolates_a_failing_design(tmp_path):
     bad = next(r for r in summary["designs"] if r["name"] == "01_bad")
     assert "error" in bad and "mesh blew up" in bad["error"]
     assert not (tmp_path / "01_bad_density.npy").exists()  # no artifact for the failure
+
+
+# --- per-load-case breakdown (persisted, not just the max-across-loads) ------------------
+
+def test_to_records_all_four_loads_in_breakdown():
+    _prob, res = _run_slab(max_iters=3)
+    assert set(res.u_tip_by_load_m) == set(_LOAD_CASE_NAMES)
+    assert set(res.vm_by_load_pa) == set(_LOAD_CASE_NAMES)
+
+
+def test_to_max_equals_worst_of_the_per_load_breakdown():
+    _prob, res = _run_slab(max_iters=3)
+    assert res.u_tip_max_m == pytest.approx(max(res.u_tip_by_load_m.values()))
+    assert res.max_von_mises_pa == pytest.approx(max(res.vm_by_load_pa.values()))
+
+
+def _fake_result_with_loads():
+    return BladeTOResult(
+        density=np.array([1.0, 0.2]), compliance_history=(2.0, 1.0), design_volume_fraction=0.4,
+        volume_removed_frac=0.3, mass_kg=0.02, u_tip_max_m=5e-4, max_von_mises_pa=1e6,
+        u_tip_by_load_m={"productive_stroke": 3e-4, "inertial": 5e-4},
+        vm_by_load_pa={"productive_stroke": 1e6, "inertial": 4e5},
+        converged=True, iterations=3, meta={"n_design": 1.0, "n_frozen": 1.0},
+    )
+
+
+def test_batch_serial_fires_on_result_per_design(tmp_path):
+    seen = []
+    stub = types.SimpleNamespace(uniform=False)
+    run_blade_to_batch(
+        [("00_a", stub), ("01_b", stub)], tmp_path, n_workers=1,
+        optimize=lambda *a, **k: _fake_result(), on_result=lambda name, res: seen.append(name),
+    )
+    assert seen == ["00_a", "01_b"]  # serial path invokes the callback in order
+
+
+def test_batch_sidecar_persists_per_load_breakdown(tmp_path):
+    stub = types.SimpleNamespace(uniform=False)
+    run_blade_to_batch([("00_a", stub)], tmp_path, optimize=lambda *a, **k: _fake_result_with_loads())
+    rec = json.loads((tmp_path / "00_a.json").read_text())
+    assert rec["u_tip_by_load_mm"]["inertial"] == pytest.approx(0.5)  # 5e-4 m -> 0.5 mm
+    assert rec["vm_by_load_mpa"]["productive_stroke"] == pytest.approx(1.0)  # 1e6 Pa -> 1 MPa
+
+
+# --- durable-write helpers (Colab Drive crash safety) -----------------------------------
+
+def test_fsync_path_flushes_existing_file(tmp_path):
+    p = tmp_path / "x.bin"
+    p.write_bytes(b"payload")
+    _fsync_path(p)  # must not raise on a plain file
+    assert p.read_bytes() == b"payload"
+
+
+def test_write_json_durable_is_atomic_and_leaves_no_tmp(tmp_path):
+    p = tmp_path / "rec.json"
+    _write_json_durable(p, {"a": 1, "b": [2, 3]})
+    assert json.loads(p.read_text()) == {"a": 1, "b": [2, 3]}
+    assert not (tmp_path / "rec.json.tmp").exists()  # tmp renamed away, not left behind
+
+
+def test_write_json_durable_overwrites_previous(tmp_path):
+    p = tmp_path / "rec.json"
+    _write_json_durable(p, {"v": 1})
+    _write_json_durable(p, {"v": 2})
+    assert json.loads(p.read_text()) == {"v": 2}
