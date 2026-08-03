@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.sparse import coo_matrix, csr_matrix, diags
+from scipy.sparse import csr_matrix
 from scipy.spatial import cKDTree
 
 __all__ = [
@@ -69,7 +69,11 @@ def tet_centroids_and_volumes(nodes: np.ndarray, tets: np.ndarray) -> tuple[np.n
 
 
 def build_density_filter_unstructured(
-    centroids: np.ndarray, r_min: float, element_volumes: np.ndarray | None = None
+    centroids: np.ndarray,
+    r_min: float,
+    element_volumes: np.ndarray | None = None,
+    *,
+    block_rows: int = 20_000,
 ) -> csr_matrix:
     """Row-normalized cone density filter on element centroids (``filtered = W @ ρ``).
 
@@ -78,29 +82,52 @@ def build_density_filter_unstructured(
     average (mesh-independent, preserves a uniform field). This is the standard SIMP
     regularizer that removes checkerboarding and imposes a minimum feature size ``r_min``.
 
-    Built at the C level via ``sparse_distance_matrix`` — a per-element Python loop over
-    neighbours blows up transient RAM at a fine mesh (~10s of GB from the intermediate lists
-    at sub-mm resolution) and is the dominant setup-time cost; this stays in numpy/scipy.
+    **Memory-bounded build.** At a fine mesh with a fixed physical ``r_min`` each element has
+    hundreds of neighbours, so the whole filter is ~10⁸–10⁹ nonzeros. Building it in one shot
+    (a full COO, then a concatenate, then ``tocsr``, then a ``diags @`` product) materialises
+    several transient copies of that whole structure and spikes RAM into the tens of GB. Instead
+    this fills a preallocated CSR **block by block** (``block_rows`` query points at a time via
+    ``sparse_distance_matrix`` against the full tree), so the transient is one block's pair set,
+    not the whole matrix — peak ≈ the output CSR itself. A first cheap pass (neighbour counts only,
+    ``return_length``) sizes ``indptr`` so nothing is over-allocated or concatenated.
     """
     n = len(centroids)
-    tree = cKDTree(centroids)
-    # Off-diagonal pairs within r_min as a COO (C-level; no per-point Python lists). The
-    # zero-distance self pairs are the sparse blank, so they are added back explicitly below.
-    dmat = tree.sparse_distance_matrix(tree, r_min, output_type="coo_matrix")
-    off = dmat.row != dmat.col
-    rows, cols, dist = dmat.row[off], dmat.col[off], dmat.data[off]
-    w = r_min - dist  # cone weight, ≥ 0 since dist ≤ r_min
-    self_w = np.full(n, r_min)  # self pair: dist 0 → weight r_min
-    if element_volumes is not None:
-        vols = np.asarray(element_volumes, dtype=float)
-        w = w * vols[cols]  # volume-weight by the neighbour (column) j
-        self_w = self_w * vols
-    rows = np.concatenate([rows, np.arange(n)])
-    cols = np.concatenate([cols, np.arange(n)])
-    data = np.concatenate([w, self_w])
-    unnormalized = coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
-    row_sums = np.asarray(unnormalized.sum(axis=1)).ravel()
-    return (diags(1.0 / row_sums) @ unnormalized).tocsr()
+    c = np.ascontiguousarray(centroids, dtype=float)
+    tree = cKDTree(c)
+    vols = None if element_volumes is None else np.asarray(element_volumes, dtype=float)
+
+    # Pass 1: neighbour count per row (incl. self), memory-cheap — just an int array of length n.
+    counts = np.asarray(tree.query_ball_point(c, r_min, return_length=True), dtype=np.int64)
+    indices = np.empty(int(counts.sum()), dtype=np.int32)
+    data = np.empty(int(counts.sum()), dtype=np.float64)
+    indptr = np.empty(n + 1, dtype=np.int64)
+    indptr[0] = 0
+
+    # Pass 2: fill the CSR one row-block at a time; the only large transient is this block's COO.
+    pos = 0
+    for start in range(0, n, block_rows):
+        stop = min(start + block_rows, n)
+        rows_here = stop - start
+        dmat = cKDTree(c[start:stop]).sparse_distance_matrix(tree, r_min, output_type="coo_matrix")
+        loc, col = dmat.row, dmat.col  # loc: local row in [0, rows_here); col: global neighbour
+        off = (start + loc) != col  # drop the zero-distance self pair; re-added explicitly below
+        loc, col, w = loc[off], col[off], r_min - dmat.data[off]
+        if vols is not None:
+            w = w * vols[col]  # volume-weight by the neighbour (column) j
+        self_w = np.full(rows_here, r_min) if vols is None else r_min * vols[start:stop]
+        loc = np.concatenate([loc, np.arange(rows_here)])
+        col = np.concatenate([col, np.arange(start, stop)])
+        w = np.concatenate([w, self_w])
+        order = np.argsort(loc, kind="stable")  # group by row so each row's entries are contiguous
+        loc, col, w = loc[order], col[order], w[order]
+        seg = np.bincount(loc, minlength=rows_here)
+        w = w / np.repeat(np.bincount(loc, weights=w, minlength=rows_here), seg)  # per-row normalize
+        indices[pos : pos + col.size] = col
+        data[pos : pos + col.size] = w
+        indptr[start + 1 : stop + 1] = pos + np.cumsum(seg)
+        pos += col.size
+
+    return csr_matrix((data[:pos], indices[:pos], indptr), shape=(n, n))
 
 
 def classify_frozen_skin(
