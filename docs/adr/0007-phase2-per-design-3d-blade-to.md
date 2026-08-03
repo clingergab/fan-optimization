@@ -39,6 +39,15 @@ Phase-2 structural TO for V1 is **per-design 3D SIMP on each design's own solid 
 - **Screen (not binding):** worst tip deflection (< 1 mm) and worst von Mises over all four load
   cases, over all elements. This is **screening**; the binding structural certification remains
   the **§59.5 combined-blade FEA gate** (`report-final.md` §Phase 2 — not yet built).
+- **Screened default (max removal that keeps integrity):** rather than a fixed volume fraction, the
+  default per design searches a volfrac ladder (most-aggressive first) and accepts the lowest that
+  still passes the screen with a safety factor (`topology_optimize_blade_screened`) — "remove as
+  much as possible while keeping integrity", decided by the measured screen, not a guess.
+- **Fidelity is a knob:** finer meshes resolve internal beam structure in the thick ribs and allow
+  a thinner frozen skin (more carvable interior), at steeply rising RAM/time. The four load cases
+  share each iteration's stiffness, so it is factorized once and back-substituted per load
+  (`solve_displacements_multi`), keeping a finer mesh tractable. Measured: 1.0 mm ≈ 63 s/iter / 5.6 GB;
+  0.8 mm needs ~15 GB (a >50 GB session). Default 0.8 mm mesh / 0.6 mm skin.
 
 Entry points: `scripts/run_phase2_blade_to.py`, `notebooks/colab_phase2_blade_to.ipynb`;
 design selection via `cfd/blade_verify.top_verified_designs` (ranks by fine 3D `J_fan`).

@@ -19,12 +19,16 @@ for _dep in ("skfem", "gmsh", "cadquery"):
     if importlib.util.find_spec(_dep) is None:  # pragma: no cover - env-dependent
         pytest.skip(f"{_dep} not installed", allow_module_level=True)
 
-from fanopt.topopt.blade_fea_mesh import BladeFeaMeshResult
+from fanopt.bo.blade_codec import N_DIMS, decode
+from fanopt.topopt.blade_fea_mesh import BladeFeaMeshResult, FeaMeshParams
 from fanopt.topopt.blade_topopt import (
     BladeTOResult,
+    _passes_screen,
+    _screen_ladder,
     build_blade_to_problem,
     run_blade_to_batch,
     run_blade_topology_optimization,
+    topology_optimize_blade_screened,
     von_mises,
 )
 
@@ -150,6 +154,62 @@ def test_to_flags_convergence_and_stops_early():
     _prob, res = _run_slab(max_iters=40, tol=0.5)
     assert res.converged
     assert res.iterations < 40
+
+
+# --- screened search (min-mass-that-passes-the-screen) ----------------------------------
+
+def _screen_res(u_tip_mm, vm_mpa, removed=0.5):
+    return BladeTOResult(
+        density=np.array([1.0, 0.2]), compliance_history=(2.0, 1.0), design_volume_fraction=0.4,
+        volume_removed_frac=removed, mass_kg=0.02, u_tip_max_m=u_tip_mm * 1e-3,
+        max_von_mises_pa=vm_mpa * 1e6, converged=True, iterations=3, meta={},
+    )
+
+
+def test_passes_screen_requires_both_limits():
+    assert _passes_screen(_screen_res(0.5, 5.0), 1e-3, 15e6)
+    assert not _passes_screen(_screen_res(2.0, 5.0), 1e-3, 15e6)  # deflection over limit
+    assert not _passes_screen(_screen_res(0.5, 20.0), 1e-3, 15e6)  # stress over allowable
+
+
+def test_screen_ladder_accepts_most_aggressive_that_passes():
+    calls = []
+
+    def run(vf):
+        calls.append(vf)
+        return _screen_res(0.5, 5.0)  # passes immediately at the lowest volfrac
+
+    res, vf, trace, passed = _screen_ladder(run, (0.25, 0.35, 0.45), 1e-3, 15e6)
+    assert passed and vf == 0.25 and calls == [0.25] and len(trace) == 1  # stopped at first pass
+
+
+def test_screen_ladder_climbs_until_it_passes():
+    def run(vf):
+        return _screen_res(2.0 if vf < 0.30 else 0.5, 5.0)  # 0.25 too soft, 0.35 ok
+
+    res, vf, trace, passed = _screen_ladder(run, (0.25, 0.35, 0.45), 1e-3, 15e6)
+    assert passed and vf == 0.35 and len(trace) == 2
+
+
+def test_screen_ladder_all_fail_returns_safest_flagged():
+    def run(vf):
+        return _screen_res(5.0, 5.0)  # never meets the deflection limit
+
+    res, vf, trace, passed = _screen_ladder(run, (0.25, 0.35, 0.45), 1e-3, 15e6)
+    assert not passed and vf == 0.45 and len(trace) == 3  # safest attempt, flagged
+
+
+def test_screened_real_design_records_ladder_meta():
+    # Relaxed limits so the first (lowest) rung passes -> one OC run, fast; checks the real path
+    # meshes once and stamps the screen metadata onto the result.
+    params = decode(np.full(N_DIMS, 0.5))
+    res = topology_optimize_blade_screened(
+        params, mesh_params=FeaMeshParams(mesh_size_m=0.006), max_iters=1,
+        volfrac_ladder=(0.4, 0.6), u_tip_limit_m=1.0, sigma_allow_pa=1e12,
+    )
+    assert res.meta["accepted_volfrac"] == 0.4
+    assert res.meta["screen_passed"] == 1.0
+    assert len(res.meta["ladder_trace"]) == 1  # stopped at the first passing rung
 
 
 # --- batch driver -----------------------------------------------------------------------

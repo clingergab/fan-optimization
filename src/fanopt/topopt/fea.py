@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from scipy.sparse.linalg import splu
 from skfem import Basis, BilinearForm, ElementTetP1, ElementVector, MeshTet, condense, solve
 from skfem.helpers import sym_grad
 
@@ -25,6 +26,7 @@ __all__ = [
     "build_fea_model",
     "assemble_global_stiffness",
     "solve_displacements",
+    "solve_displacements_multi",
     "element_strains",
     "element_stresses",
     "element_strain_energies",
@@ -167,6 +169,30 @@ def solve_displacements(model: FeaModel, node_forces: np.ndarray, k=None) -> tup
     f = _force_vector(model, node_forces)
     u = solve(*condense(stiffness, f, D=model.support_dofs))
     return u, f
+
+
+def solve_displacements_multi(
+    model: FeaModel, node_forces_list, k
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Solve ``K u = f`` for several RHS that share one ``K`` — factorize once, back-substitute each.
+
+    The SIMP loop's four load cases all use the current SIMP-scaled ``K``; factorizing it once and
+    solving each right-hand side is ~n× cheaper than re-factorizing per load (the dominant cost at
+    a fine mesh). Homogeneous Dirichlet at ``support_dofs`` (clamped hub) is applied by reducing to
+    the free DOFs, exactly as ``condense`` does. Returns ``[(u, f), ...]`` aligned with the inputs.
+    """
+    n = model.n_dofs
+    free = np.ones(n, dtype=bool)
+    free[np.asarray(model.support_dofs, dtype=int)] = False
+    k_ff = k.tocsr()[free][:, free].tocsc()
+    lu = splu(k_ff)
+    out = []
+    for node_forces in node_forces_list:
+        f = _force_vector(model, node_forces)
+        u = np.zeros(n)
+        u[free] = lu.solve(f[free])
+        out.append((u, f))
+    return out
 
 
 def element_strains(model: FeaModel, u: np.ndarray) -> np.ndarray:
