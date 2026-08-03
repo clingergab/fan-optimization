@@ -23,6 +23,7 @@ __all__ = [
     "build_density_filter",
     "apply_filter",
     "oc_update",
+    "oc_update_unstructured",
 ]
 
 
@@ -111,6 +112,65 @@ def oc_update(
         xe = np.clip(xe, np.maximum(xf - move, 0.0), np.minimum(xf + move, 1.0))
         x_new[free] = xe
         vol = apply_filter(hs, x_new)[active].sum()  # whole-domain physical volume
+        if vol > target:
+            l1 = lmid
+        else:
+            l2 = lmid
+    return x_new
+
+
+def oc_update_unstructured(
+    x: np.ndarray,
+    dc: np.ndarray,
+    volumes: np.ndarray,
+    filter_matrix: csr_matrix,
+    *,
+    volfrac: float,
+    design_mask: np.ndarray,
+    move: float = 0.2,
+    eta: float = 0.5,
+    volume_sensitivity: np.ndarray | None = None,
+) -> np.ndarray:
+    """One optimality-criteria step on an unstructured (tet) mesh — volume-weighted.
+
+    The 3D-solid analogue of :func:`oc_update`. Elements have unequal volumes, so both
+    the OC ratio and the volume constraint weight each element by ``volumes[e]`` (a plain
+    element count would bias material toward the small tets). ``x``/``dc``/``volumes`` are
+    flat ``(n,)``; ``dc = ∂C/∂x`` (already filter-chained). ``design_mask`` is the carvable
+    set — non-design elements (the frozen aero skin) keep their current value. The
+    bisection finds the Lagrange multiplier so the **filtered physical** volume
+    ``Σ V_e ρ̃_e`` over the design region hits ``volfrac · Σ_design V_e``.
+
+    ``volume_sensitivity`` is the filter-consistent ``∂V/∂x = Wᵀ V`` used in the OC ratio;
+    pass it so the update direction matches the filtered volume (top88 form). Defaults to the
+    raw element volumes (exact for an identity/unfiltered mesh). An empty design set returns
+    ``x`` unchanged (a fully-frozen mesh has nothing to update).
+    """
+    free = np.asarray(design_mask, dtype=bool)
+    if not free.any():
+        return x.copy()
+    dv = volumes if volume_sensitivity is None else volume_sensitivity
+    xf, dcf = x[free], dc[free]
+    vf = volumes[free]  # true element volumes → the volume constraint + target
+    sens = dv[free]  # filter-consistent ∂V/∂x → only the OC ratio denominator
+    # OC ratio B_e = −(∂C/∂x)/(∂V/∂x).
+    b = np.maximum(-dcf / np.maximum(sens, 1e-12), 0.0)
+    # Normalize by the sensitivity scale so the fixed multiplier bounds are scale-invariant
+    # (same fix as oc_update — a low-load design otherwise saturates the bisection).
+    bmax = b.max()
+    if bmax > 0.0:
+        b = b / bmax
+    target = volfrac * float(vf.sum())
+
+    l1, l2 = 1e-9, 1e9
+    x_new = x.copy()
+    while (l2 - l1) / (l1 + l2) > 1e-6:
+        lmid = 0.5 * (l1 + l2)
+        xe = xf * (b / lmid) ** eta
+        xe = np.clip(xe, np.maximum(xf - move, 0.0), np.minimum(xf + move, 1.0))
+        x_new[free] = xe
+        rho = filter_matrix @ x_new  # filtered physical density
+        vol = float((volumes * rho)[free].sum())
         if vol > target:
             l1 = lmid
         else:

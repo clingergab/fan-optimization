@@ -120,6 +120,49 @@ def test_designs_from_pareto_accepts_vector_only_rows():
     assert designs[0][2] == 2.0  # coarse J_fan carried through
 
 
+def _verification(tmp_path: Path, entries: list[tuple[str, float]]) -> Path:
+    """Write a Stage-3.C verification.json with (name, j_fan_3d) design entries."""
+    p = tmp_path / "verification.json"
+    p.write_text(
+        json.dumps({"designs": [{"name": n, "j_fan_3d": j} for n, j in entries]}),
+        encoding="utf-8",
+    )
+    return p
+
+
+def test_top_verified_designs_orders_by_fine_jfan(tmp_path):
+    v_lo, v_hi = _vec(0.3), _vec(0.7)
+    h_lo = design_hash(decode(v_lo).to_dict())
+    h_hi = design_hash(decode(v_hi).to_dict())
+    _write_shard(tmp_path / "evaluations_c0.jsonl",
+                 [_shard_row(v_lo, 1.0), _shard_row(v_hi, 2.0)])
+    # Coarse ranks lo<hi, but FINE flips them: the resolver must order by fine J_fan.
+    ver = _verification(tmp_path, [(f"00_{h_lo}", 9.0), (f"01_{h_hi}", 4.0)])
+    designs = blade_verify.top_verified_designs(tmp_path, ver, top_k=2)
+    assert [d[0] for d in designs] == [f"00_{h_lo}", f"01_{h_hi}"]  # best fine first
+    assert designs[0][1] == decode(v_lo)  # absolute params recovered by hash join
+    assert designs[0][2] == 9.0
+
+
+def test_top_verified_designs_top_k_and_drops_nonfinite(tmp_path):
+    v0, v1 = _vec(0.35), _vec(0.65)
+    h0 = design_hash(decode(v0).to_dict())
+    h1 = design_hash(decode(v1).to_dict())
+    _write_shard(tmp_path / "evaluations_c0.jsonl", [_shard_row(v0, 1.0), _shard_row(v1, 2.0)])
+    ver = _verification(tmp_path, [(f"00_{h0}", 5.0), (f"01_{h1}", float("nan"))])
+    designs = blade_verify.top_verified_designs(tmp_path, ver, top_k=10)
+    assert [d[0] for d in designs] == [f"00_{h0}"]  # non-finite fine J_fan dropped
+
+
+def test_top_verified_designs_skips_hash_absent_from_shards(tmp_path):
+    v0 = _vec(0.4)
+    h0 = design_hash(decode(v0).to_dict())
+    _write_shard(tmp_path / "evaluations_c0.jsonl", [_shard_row(v0, 1.0)])
+    ver = _verification(tmp_path, [(f"00_{h0}", 5.0), ("01_deadbeef", 9.0)])
+    designs = blade_verify.top_verified_designs(tmp_path, ver, top_k=10)
+    assert [d[0] for d in designs] == [f"00_{h0}"]  # unknown hash silently skipped
+
+
 def test_load_campaign_rows_dedups_across_shards_and_drops_nan(tmp_path):
     _write_shard(tmp_path / "evaluations_colab-0.jsonl",
                  [_shard_row(_vec(0.3), 1.0), _shard_row(_vec(0.6), 3.0)])
