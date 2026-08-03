@@ -29,6 +29,7 @@ the test module gates on them.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
@@ -153,6 +154,10 @@ class BladeTOResult:
     max_von_mises_pa: float  # worst element σ_VM over the four load cases (all elements)
     converged: bool
     iterations: int
+    # Per-load-case breakdown (keyed by LoadCase.name), so the screen result records WHICH of the
+    # four loads drives the worst deflection/stress — persisted, not just the max-across-loads.
+    u_tip_by_load_m: dict[str, float] = field(default_factory=dict)
+    vm_by_load_pa: dict[str, float] = field(default_factory=dict)
     meta: dict[str, float] = field(default_factory=dict)
     element_centroids: np.ndarray | None = None  # (m, 3) — saved so the render aligns to ρ̃
 
@@ -345,11 +350,14 @@ def run_blade_topology_optimization(
     # would hide the true peak; a single-load screen would miss the click/inertial worst case).
     rho = _physical_density(problem, x)
     k = assemble_global_stiffness(model, density=rho, penal=penal)
-    u_tip = 0.0
-    max_vm = 0.0
-    for u, _ in solve_displacements_multi(model, [lc.node_forces for lc in load_cases], k):
-        u_tip = max(u_tip, float(np.linalg.norm(u.reshape(-1, 3), axis=1).max()))
-        max_vm = max(max_vm, float(von_mises(element_stresses(model, u)).max()))
+    u_tip_by_load: dict[str, float] = {}
+    vm_by_load: dict[str, float] = {}
+    solved = solve_displacements_multi(model, [lc.node_forces for lc in load_cases], k)
+    for lc, (u, _) in zip(load_cases, solved):
+        u_tip_by_load[lc.name] = float(np.linalg.norm(u.reshape(-1, 3), axis=1).max())
+        vm_by_load[lc.name] = float(von_mises(element_stresses(model, u)).max())
+    u_tip = max(u_tip_by_load.values())
+    max_vm = max(vm_by_load.values())
 
     retained_vol = float((volumes * rho).sum())
     full_vol = float(volumes.sum())
@@ -363,6 +371,8 @@ def run_blade_topology_optimization(
         mass_kg=RHO_PETG_KG_PER_M3 * retained_vol,
         u_tip_max_m=u_tip,
         max_von_mises_pa=max_vm,
+        u_tip_by_load_m=u_tip_by_load,
+        vm_by_load_pa=vm_by_load,
         converged=converged,
         iterations=iterations,
         meta={**problem.meta, "n_design": float(design.sum()), "n_frozen": float(frozen.sum())},
@@ -487,6 +497,37 @@ def topology_optimize_blade_screened(
     )
 
 
+def _fsync_path(path: Path) -> None:
+    """Force ``path`` (and its directory entry) to durable storage.
+
+    On a Colab Google-Drive FUSE mount a plain write lands in a local buffer that only syncs to
+    the cloud lazily — an OOM crash in that window loses a design that had "finished". Flushing the
+    file descriptor + the directory pushes the bytes and the dir entry through the FUSE layer so a
+    completed design survives a crash. Best-effort: some backends reject ``fsync`` on a directory.
+    """
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    dir_fd = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    except OSError:  # pragma: no cover - some filesystems disallow directory fsync
+        pass
+    finally:
+        os.close(dir_fd)
+
+
+def _write_json_durable(path: Path, obj: dict) -> None:
+    """Atomically write ``obj`` as JSON to ``path`` and flush it to durable storage."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(obj, indent=2), encoding="utf-8")
+    _fsync_path(tmp)
+    tmp.replace(path)
+    _fsync_path(path)
+
+
 def _result_summary(name: str, params: BladeParams, res: BladeTOResult) -> dict:
     """JSON-friendly per-design record (the density field is written separately as .npy)."""
     return {
@@ -498,6 +539,8 @@ def _result_summary(name: str, params: BladeParams, res: BladeTOResult) -> dict:
         "mass_kg": res.mass_kg,
         "u_tip_max_mm": res.u_tip_max_m * 1e3,
         "max_von_mises_mpa": res.max_von_mises_pa / 1e6,
+        "u_tip_by_load_mm": {k: v * 1e3 for k, v in res.u_tip_by_load_m.items()},
+        "vm_by_load_mpa": {k: v / 1e6 for k, v in res.vm_by_load_pa.items()},
         "converged": res.converged,
         "iterations": res.iterations,
         "compliance_initial": res.compliance_history[0] if res.compliance_history else None,
@@ -526,11 +569,17 @@ def _optimize_one_design(
             params, mesh_params=mp, volfrac=volfrac, max_iters=max_iters, tol=tol,
             skin_thickness_m=skin_thickness_m, rmin_m=rmin_m,
         )
-        np.save(out / f"{name}_density.npy", res.density)
+        density_path = out / f"{name}_density.npy"
+        np.save(density_path, res.density)
+        _fsync_path(density_path)
         if res.element_centroids is not None:
-            np.save(out / f"{name}_centroids.npy", res.element_centroids)
+            centroids_path = out / f"{name}_centroids.npy"
+            np.save(centroids_path, res.element_centroids)
+            _fsync_path(centroids_path)
         rec = _result_summary(name, params, res)
-        (out / f"{name}.json").write_text(json.dumps(rec), encoding="utf-8")
+        # Sidecar written durably LAST: it is the resume marker, so it must not exist unless the
+        # density it points at is already flushed to Drive (else a crash-resume trusts a stale/absent field).
+        _write_json_durable(out / f"{name}.json", rec)
         return name, rec, res
     except Exception as exc:  # noqa: BLE001 - isolate a single bad design (incl. its I/O)
         return name, {"name": name, "error": f"{type(exc).__name__}: {exc}"}, None
@@ -553,11 +602,13 @@ def run_blade_to_batch(
     """Run per-design 3D TO over a batch of designs, writing artifacts under ``out_dir``.
 
     For each ``(name, params)`` writes ``<name>_density.npy`` (carved field), ``<name>_centroids.npy``
-    (element centroids, so the render aligns without re-meshing), and a ``<name>.json`` sidecar.
-    The aggregate ``summary.json`` is rewritten atomically **after every design**, so a crash
-    mid-batch never loses completed work. **Resumable:** a design whose sidecar already exists is
-    reloaded and skipped (delete the sidecar to force a re-run). A design that raises (mesh
-    failure, singular solve, or a write error) is recorded with an ``error`` and skipped, so one
+    (element centroids, so the render aligns without re-meshing), and a ``<name>.json`` sidecar (which
+    includes the per-load-case ``u_tip``/``σ_VM`` breakdown). Each artifact is **fsync-flushed** and the
+    sidecar is written last, so on a Colab Drive mount a completed design is durable on the cloud before
+    it counts as done — an OOM crash cannot lose or half-write a finished design. The aggregate
+    ``summary.json`` is rewritten atomically **after every design**. **Resumable:** a design whose sidecar
+    already exists is reloaded and skipped (delete the sidecar to force a re-run). A design that raises
+    (mesh failure, singular solve, or a write error) is recorded with an ``error`` and skipped, so one
     bad blade never aborts the batch.
 
     ``n_workers > 1`` runs designs concurrently in a process pool (each design is independent).
@@ -582,9 +633,7 @@ def run_blade_to_batch(
             "n_workers": n_workers,
             "designs": records,
         }
-        tmp = out / "summary.json.tmp"
-        tmp.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        tmp.replace(out / "summary.json")
+        _write_json_durable(out / "summary.json", summary)
         return summary
 
     # Resume: reuse completed designs' sidecars; only the rest are (re)computed.
