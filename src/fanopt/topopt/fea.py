@@ -12,6 +12,8 @@ Requires scikit-fem (the ``[topopt]`` extra); the test module gates on it.
 
 from __future__ import annotations
 
+import ctypes
+import gc
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -20,6 +22,11 @@ from skfem import Basis, BilinearForm, ElementTetP1, ElementVector, MeshTet, con
 from skfem.helpers import sym_grad
 
 from fanopt.topopt.material import rotate_stiffness
+
+try:
+    _LIBC = ctypes.CDLL("libc.so.6")  # glibc (Linux/Colab): lets us return freed pages to the OS
+except OSError:  # pragma: no cover - non-glibc (macOS/Windows) frees via the native allocator
+    _LIBC = None
 
 __all__ = [
     "FeaModel",
@@ -171,6 +178,19 @@ def solve_displacements(model: FeaModel, node_forces: np.ndarray, k=None) -> tup
     return u, f
 
 
+def _release_heap() -> None:
+    """Collect garbage and return freed pages to the OS (glibc ``malloc_trim``).
+
+    A fresh sparse LU factorization is built every SIMP iteration; even though each is freed when
+    it goes out of scope, glibc keeps the freed arenas, so RSS ratchets up across iterations until
+    the process OOMs (tens of GB at a fine mesh). Trimming after each solve keeps RSS flat. No-op
+    off glibc (macOS/Windows return freed memory promptly).
+    """
+    gc.collect()
+    if _LIBC is not None:  # pragma: no cover - glibc only (not exercised on the macOS test host)
+        _LIBC.malloc_trim(0)
+
+
 def solve_displacements_multi(
     model: FeaModel, node_forces_list, k
 ) -> list[tuple[np.ndarray, np.ndarray]]:
@@ -179,7 +199,8 @@ def solve_displacements_multi(
     The SIMP loop's four load cases all use the current SIMP-scaled ``K``; factorizing it once and
     solving each right-hand side is ~n× cheaper than re-factorizing per load (the dominant cost at
     a fine mesh). Homogeneous Dirichlet at ``support_dofs`` (clamped hub) is applied by reducing to
-    the free DOFs, exactly as ``condense`` does. Returns ``[(u, f), ...]`` aligned with the inputs.
+    the free DOFs, exactly as ``condense`` does. The factorization is explicitly freed and the heap
+    trimmed before returning, so RSS does not climb across iterations. Returns ``[(u, f), ...]``.
     """
     n = model.n_dofs
     free = np.ones(n, dtype=bool)
@@ -192,6 +213,8 @@ def solve_displacements_multi(
         u = np.zeros(n)
         u[free] = lu.solve(f[free])
         out.append((u, f))
+    del lu, k_ff  # free the (large) factorization now, not at some later GC
+    _release_heap()
     return out
 
 
