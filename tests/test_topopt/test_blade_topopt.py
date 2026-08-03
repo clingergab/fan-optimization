@@ -277,6 +277,22 @@ def test_batch_empty_designs_writes_zero_summary(tmp_path):
     assert (tmp_path / "summary.json").exists()
 
 
+def test_batch_parallel_runs_designs_concurrently(tmp_path):
+    # Two real designs via a process pool (default optimize is picklable). Coarse mesh + 1 iter.
+    # on_result fires in the MAIN process (not pickled to workers), so a closure is fine.
+    seen = []
+    designs = [("00_a", decode(np.full(N_DIMS, 0.5))), ("01_b", decode(np.full(N_DIMS, 0.45)))]
+    summary = run_blade_to_batch(
+        designs, tmp_path, n_workers=2, on_result=lambda name, res: seen.append(name),
+        mesh_params=FeaMeshParams(mesh_size_m=0.006), max_iters=1, tol=1e-6,
+    )
+    assert summary["n_succeeded"] == 2
+    assert summary["n_workers"] == 2
+    assert sorted(seen) == ["00_a", "01_b"]  # callback fired for each completed design
+    assert (tmp_path / "00_a_density.npy").exists()
+    assert (tmp_path / "01_b_density.npy").exists()
+
+
 def test_batch_isolates_a_failing_design(tmp_path):
     def flaky(params, **kw):
         if params.tag == "boom":

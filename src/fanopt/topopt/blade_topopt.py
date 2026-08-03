@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Sequence
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -510,6 +511,31 @@ def _result_summary(name: str, params: BladeParams, res: BladeTOResult) -> dict:
     }
 
 
+def _optimize_one_design(
+    name, params, out, mp, volfrac, max_iters, tol, skin_thickness_m, rmin_m, optimize
+):
+    """Run one design's TO and write its artifacts; return ``(name, record, result_or_None)``.
+
+    Module-level (picklable) so it can run in a process-pool worker. Isolates any failure —
+    mesh/solve error OR an I/O error — into an ``error`` record so one bad design never aborts
+    the batch. The ``<name>.json`` sidecar is written only on success (so a failure is retried
+    on the next resume).
+    """
+    try:
+        res = optimize(
+            params, mesh_params=mp, volfrac=volfrac, max_iters=max_iters, tol=tol,
+            skin_thickness_m=skin_thickness_m, rmin_m=rmin_m,
+        )
+        np.save(out / f"{name}_density.npy", res.density)
+        if res.element_centroids is not None:
+            np.save(out / f"{name}_centroids.npy", res.element_centroids)
+        rec = _result_summary(name, params, res)
+        (out / f"{name}.json").write_text(json.dumps(rec), encoding="utf-8")
+        return name, rec, res
+    except Exception as exc:  # noqa: BLE001 - isolate a single bad design (incl. its I/O)
+        return name, {"name": name, "error": f"{type(exc).__name__}: {exc}"}, None
+
+
 def run_blade_to_batch(
     designs: Sequence[tuple[str, BladeParams]],
     out_dir: str | Path,
@@ -520,6 +546,7 @@ def run_blade_to_batch(
     tol: float = 0.01,
     skin_thickness_m: float = DEFAULT_SKIN_THICKNESS_M,
     rmin_m: float = DEFAULT_RMIN_M,
+    n_workers: int = 1,
     optimize: Callable[..., BladeTOResult] = topology_optimize_blade,
     on_result: Callable[[str, BladeTOResult], None] | None = None,
 ) -> dict:
@@ -531,8 +558,14 @@ def run_blade_to_batch(
     mid-batch never loses completed work. **Resumable:** a design whose sidecar already exists is
     reloaded and skipped (delete the sidecar to force a re-run). A design that raises (mesh
     failure, singular solve, or a write error) is recorded with an ``error`` and skipped, so one
-    bad blade never aborts the batch. ``optimize`` is injected for testing; ``on_result`` fires
-    after each fresh success. Returns the aggregate summary dict.
+    bad blade never aborts the batch.
+
+    ``n_workers > 1`` runs designs concurrently in a process pool (each design is independent).
+    Concurrency is **RAM-bound**: every worker holds a full FEA factorization (~15 GB at a 0.8 mm
+    mesh, ~30 GB at 0.6 mm), so set ``n_workers ≈ session_RAM / per_design_RAM`` — over-subscribing
+    RAM will OOM the run. ``optimize`` must be picklable in parallel mode (a module-level function
+    or a ``functools.partial`` of one — not a closure/lambda). ``on_result`` fires as each design
+    finishes. Returns the aggregate summary dict.
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -545,6 +578,7 @@ def run_blade_to_batch(
             "volfrac": volfrac,
             "skin_thickness_m": skin_thickness_m,
             "mesh_size_m": mp.mesh_size_m,
+            "n_workers": n_workers,
             "designs": records,
         }
         tmp = out / "summary.json.tmp"
@@ -552,35 +586,35 @@ def run_blade_to_batch(
         tmp.replace(out / "summary.json")
         return summary
 
+    # Resume: reuse completed designs' sidecars; only the rest are (re)computed.
     records: list[dict] = []
-    summary: dict = {}
+    pending: list[tuple[str, BladeParams]] = []
     for name, params in designs:
         sidecar = out / f"{name}.json"
-        if sidecar.exists():  # resume: reuse a completed design's result
+        if sidecar.exists():
             records.append(json.loads(sidecar.read_text(encoding="utf-8")))
+        else:
+            pending.append((name, params))
+    summary = _write_summary(records)
+
+    args = [
+        (name, params, out, mp, volfrac, max_iters, tol, skin_thickness_m, rmin_m, optimize)
+        for name, params in pending
+    ]
+    if n_workers > 1 and len(args) > 1:
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            futures = [pool.submit(_optimize_one_design, *a) for a in args]
+            for future in as_completed(futures):
+                name, rec, res = future.result()
+                records.append(rec)
+                summary = _write_summary(records)
+                if res is not None and on_result is not None:
+                    on_result(name, res)
+    else:
+        for a in args:
+            name, rec, res = _optimize_one_design(*a)
+            records.append(rec)
             summary = _write_summary(records)
-            continue
-        res = None
-        try:
-            res = optimize(
-                params,
-                mesh_params=mp,
-                volfrac=volfrac,
-                max_iters=max_iters,
-                tol=tol,
-                skin_thickness_m=skin_thickness_m,
-                rmin_m=rmin_m,
-            )
-            np.save(out / f"{name}_density.npy", res.density)
-            if res.element_centroids is not None:
-                np.save(out / f"{name}_centroids.npy", res.element_centroids)
-            rec = _result_summary(name, params, res)
-            sidecar.write_text(json.dumps(rec), encoding="utf-8")  # only cached on success
-        except Exception as exc:  # noqa: BLE001 - isolate a single bad design (incl. its I/O)
-            rec = {"name": name, "error": f"{type(exc).__name__}: {exc}"}
-            res = None
-        records.append(rec)
-        summary = _write_summary(records)
-        if res is not None and on_result is not None:
-            on_result(name, res)
-    return summary or _write_summary(records)
+            if res is not None and on_result is not None:
+                on_result(name, res)
+    return summary

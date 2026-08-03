@@ -51,6 +51,7 @@ def run(
     max_iters: int,
     mesh_size_m: float,
     skin_thickness_m: float | None,
+    n_workers: int = 1,
     screen: bool = True,
     volfrac: float = DEFAULT_VOLFRAC,
     volfrac_ladder: tuple[float, ...] = DEFAULT_VOLFRAC_LADDER,
@@ -96,6 +97,7 @@ def run(
         mesh_params=FeaMeshParams(mesh_size_m=mesh_size_m),
         volfrac=volfrac,
         max_iters=max_iters,
+        n_workers=n_workers,
         on_result=_log,
         **kwargs,
     )
@@ -110,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-iters", type=int, default=40)
     parser.add_argument("--mesh-size-m", type=float, default=FeaMeshParams().mesh_size_m)
     parser.add_argument("--skin-thickness-m", type=float, default=None)
+    parser.add_argument("--n-workers", type=int, default=1,
+                        help="designs to run in parallel (RAM-bound: ~15 GB/design at 0.8mm, ~30 GB at 0.6mm)")
     parser.add_argument("--no-screen", dest="screen", action="store_false",
                         help="run a single fixed --volfrac instead of the screened ladder search")
     parser.add_argument("--volfrac", type=float, default=DEFAULT_VOLFRAC, help="fixed-mode volfrac")
@@ -127,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         max_iters=args.max_iters,
         mesh_size_m=args.mesh_size_m,
         skin_thickness_m=args.skin_thickness_m,
+        n_workers=args.n_workers,
         screen=args.screen,
         volfrac=args.volfrac,
         volfrac_ladder=tuple(args.volfrac_ladder),
