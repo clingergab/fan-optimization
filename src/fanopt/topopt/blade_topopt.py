@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +42,7 @@ from fanopt.geometry.schema import (
     HUB_RADIUS_M,
     NU_PETG,
     RHO_PETG_KG_PER_M3,
+    SIGMA_Y_PETG_Z_PA,
 )
 from fanopt.topopt.blade_fea_mesh import (
     BladeFeaMeshResult,
@@ -65,7 +66,7 @@ from fanopt.topopt.fea import (
     compliance,
     element_strain_energies,
     element_stresses,
-    solve_displacements,
+    solve_displacements_multi,
 )
 from fanopt.topopt.loadcases import assemble_load_cases
 from fanopt.topopt.loads import DEFAULT_AERO_PRESSURE_PA, EMIN_FACTOR, SIMP_PENALTY
@@ -79,8 +80,12 @@ __all__ = [
     "build_blade_to_problem",
     "run_blade_topology_optimization",
     "topology_optimize_blade",
+    "topology_optimize_blade_screened",
     "run_blade_to_batch",
     "DEFAULT_SKIN_THICKNESS_M",
+    "DEFAULT_VOLFRAC_LADDER",
+    "DEFAULT_U_TIP_LIMIT_M",
+    "DEFAULT_STRESS_FOS",
     "DEFAULT_RMIN_M",
     "DEFAULT_CLICK_FORCE_N",
     "DEFAULT_VOLFRAC",
@@ -97,6 +102,13 @@ DEFAULT_RMIN_M: float = 0.0020
 DEFAULT_CLICK_FORCE_N: float = 0.275
 # Design-region target volume fraction (SIMP retains this share of the carvable volume).
 DEFAULT_VOLFRAC: float = 0.40
+# Screened mode: volume fractions tried per design, most-aggressive (lowest) first. The search
+# accepts the first (lowest → most material removed) that passes the structural screen.
+DEFAULT_VOLFRAC_LADDER: tuple[float, ...] = (0.25, 0.35, 0.45, 0.60)
+# Rigid-blade tip-deflection limit (report-final §3.1) — the stiffness half of the screen.
+DEFAULT_U_TIP_LIMIT_M: float = 1.0e-3
+# Safety factor applied to the PETG weak-axis yield for the stress half of the screen.
+DEFAULT_STRESS_FOS: float = 2.0
 
 
 @dataclass(frozen=True)
@@ -307,8 +319,9 @@ def run_blade_topology_optimization(
 
         compliance_tot = 0.0
         dc_drho = np.zeros_like(x)
-        for lc in load_cases:
-            u, f = solve_displacements(model, lc.node_forces, k)
+        # All four load cases share this iteration's K — factorize once, back-substitute each.
+        solved = solve_displacements_multi(model, [lc.node_forces for lc in load_cases], k)
+        for lc, (u, f) in zip(load_cases, solved):
             compliance_tot += lc.weight * compliance(u, f)
             energy = element_strain_energies(model, u)  # uₑᵀKₑ⁰uₑ (full-density base)
             dc_drho += -lc.weight * penal * rho ** (penal - 1.0) * energy
@@ -333,8 +346,7 @@ def run_blade_topology_optimization(
     k = assemble_global_stiffness(model, density=rho, penal=penal)
     u_tip = 0.0
     max_vm = 0.0
-    for lc in load_cases:
-        u, _ = solve_displacements(model, lc.node_forces, k)
+    for u, _ in solve_displacements_multi(model, [lc.node_forces for lc in load_cases], k):
         u_tip = max(u_tip, float(np.linalg.norm(u.reshape(-1, 3), axis=1).max()))
         max_vm = max(max_vm, float(von_mises(element_stresses(model, u)).max()))
 
@@ -387,6 +399,93 @@ def topology_optimize_blade(
     return run_blade_topology_optimization(problem, max_iters=max_iters, tol=tol)
 
 
+def _passes_screen(res: BladeTOResult, u_tip_limit_m: float, sigma_allow_pa: float) -> bool:
+    """Structural screen: worst tip deflection under the limit AND worst σ_VM under the allowable."""
+    return res.u_tip_max_m <= u_tip_limit_m and res.max_von_mises_pa <= sigma_allow_pa
+
+
+def _screen_ladder(run_at_volfrac, volfrac_ladder, u_tip_limit_m, sigma_allow_pa):
+    """Try ``volfrac_ladder`` (most-aggressive/lowest first); accept the first that passes the screen.
+
+    ``run_at_volfrac(vf) -> BladeTOResult``. Returns ``(result, accepted_volfrac, trace, passed)``.
+    Assumes the screen is monotone in volfrac (more material → stiffer/lower stress → likelier to
+    pass), so the first passing rung is the minimum-mass design that keeps integrity. If none pass,
+    returns the safest (highest-volfrac) attempt with ``passed=False`` so the caller can flag it.
+    """
+    trace: list[dict] = []
+    result = None
+    for vf in volfrac_ladder:
+        result = run_at_volfrac(vf)
+        passed = _passes_screen(result, u_tip_limit_m, sigma_allow_pa)
+        trace.append(
+            {
+                "volfrac": vf,
+                "u_tip_mm": result.u_tip_max_m * 1e3,
+                "vm_mpa": result.max_von_mises_pa / 1e6,
+                "removed_pct": result.volume_removed_frac * 100.0,
+                "passed": passed,
+            }
+        )
+        if passed:
+            return result, vf, trace, True
+    return result, volfrac_ladder[-1], trace, False
+
+
+def topology_optimize_blade_screened(
+    params: BladeParams,
+    *,
+    mesh_params: FeaMeshParams | None = None,
+    max_iters: int = 40,
+    tol: float = 0.01,
+    skin_thickness_m: float = DEFAULT_SKIN_THICKNESS_M,
+    rmin_m: float = DEFAULT_RMIN_M,
+    volfrac: float | None = None,  # accepted for batch-call compat; screened mode uses the ladder
+    volfrac_ladder: tuple[float, ...] = DEFAULT_VOLFRAC_LADDER,
+    u_tip_limit_m: float = DEFAULT_U_TIP_LIMIT_M,
+    sigma_allow_pa: float | None = None,
+) -> BladeTOResult:
+    """Most aggressive (lowest-volfrac) TO that still passes the structural screen, per design.
+
+    Meshes + assembles the FEA model **once**, then re-runs only the SIMP OC loop at each rung of
+    ``volfrac_ladder`` (via :func:`dataclasses.replace` on the frozen problem — the big arrays are
+    shared, not rebuilt), stopping at the first volfrac whose result passes ``u_tip < u_tip_limit_m``
+    and ``σ_VM < yield/FOS``. This directly answers "remove as much material as possible while
+    keeping structural integrity" — the acceptance is decided by the measured screen, not a guess.
+    The accepted volfrac, whether the screen passed, and the full ladder trace are stored in
+    ``result.meta``.
+    """
+    sigma_allow = SIGMA_Y_PETG_Z_PA / DEFAULT_STRESS_FOS if sigma_allow_pa is None else sigma_allow_pa
+    mp = mesh_params or FeaMeshParams()
+    mesh = build_blade_fea_mesh(params, mesh_params=mp)
+    problem = build_blade_to_problem(
+        mesh,
+        hub_radius_m=mp.hub_radius_m,
+        tip_radius_m=mp.tip_radius_m,
+        click_band_m=mp.click_band_m,
+        skin_thickness_m=skin_thickness_m,
+        rmin_m=rmin_m,
+        volfrac=volfrac_ladder[0],
+    )
+
+    def run_at(vf: float) -> BladeTOResult:
+        return run_blade_topology_optimization(replace(problem, volfrac=vf), max_iters=max_iters, tol=tol)
+
+    result, accepted_vf, trace, passed = _screen_ladder(
+        run_at, volfrac_ladder, u_tip_limit_m, sigma_allow
+    )
+    return replace(
+        result,
+        meta={
+            **result.meta,
+            "accepted_volfrac": accepted_vf,
+            "screen_passed": float(passed),
+            "u_tip_limit_mm": u_tip_limit_m * 1e3,
+            "sigma_allow_mpa": sigma_allow / 1e6,
+            "ladder_trace": trace,
+        },
+    )
+
+
 def _result_summary(name: str, params: BladeParams, res: BladeTOResult) -> dict:
     """JSON-friendly per-design record (the density field is written separately as .npy)."""
     return {
@@ -404,6 +503,10 @@ def _result_summary(name: str, params: BladeParams, res: BladeTOResult) -> dict:
         "compliance_final": res.compliance_history[-1] if res.compliance_history else None,
         "n_design": res.meta.get("n_design"),
         "n_frozen": res.meta.get("n_frozen"),
+        # Present only in screened mode (topology_optimize_blade_screened).
+        "accepted_volfrac": res.meta.get("accepted_volfrac"),
+        "screen_passed": bool(res.meta["screen_passed"]) if "screen_passed" in res.meta else None,
+        "ladder_trace": res.meta.get("ladder_trace"),
     }
 
 

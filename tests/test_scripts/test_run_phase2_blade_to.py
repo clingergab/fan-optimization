@@ -43,7 +43,7 @@ def _campaign(tmp_path: Path, fracs_and_j3d):
     return v
 
 
-_COARSE = dict(top_k=1, volfrac=0.5, max_iters=1, mesh_size_m=0.006, skin_thickness_m=None)
+_COARSE = dict(top_k=1, volfrac=0.5, max_iters=1, mesh_size_m=0.006, skin_thickness_m=None, screen=False)
 
 
 def test_run_writes_summary_and_density(tmp_path):
@@ -83,7 +83,23 @@ def test_main_smoke(tmp_path):
             "--top-k", "1",
             "--max-iters", "1",
             "--mesh-size-m", "0.006",
+            "--no-screen",
         ]
     )
     assert rc == 0
     assert (out / "summary.json").exists()
+
+
+def test_run_screened_mode_records_accepted_volfrac(tmp_path):
+    # Screened ladder with relaxed limits -> passes at the first (most aggressive) rung.
+    ver = _campaign(tmp_path, [(0.5, 3.0)])
+    out = tmp_path / "to_out"
+    summary = run_phase2_blade_to.run(
+        shared_dir=tmp_path, verification=ver, out_dir=out, progress=False,
+        top_k=1, max_iters=1, mesh_size_m=0.006, skin_thickness_m=None,
+        screen=True, volfrac_ladder=(0.4, 0.6), u_tip_limit_m=1.0, stress_fos=1e-6,
+    )
+    rec = summary["designs"][0]
+    assert rec["accepted_volfrac"] == 0.4  # most-aggressive rung accepted
+    assert rec["screen_passed"] is True
+    assert rec["ladder_trace"][0]["volfrac"] == 0.4

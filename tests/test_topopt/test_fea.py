@@ -20,6 +20,7 @@ from fanopt.topopt.fea import (
     element_strain_energies,
     element_stresses,
     solve_displacements,
+    solve_displacements_multi,
 )
 from fanopt.topopt.material import isotropic_stiffness, transversely_isotropic_stiffness
 
@@ -101,6 +102,24 @@ def test_cantilever_deflects_in_load_direction():
     tip_dz = u[model.basis.nodal_dofs[2, tip]].mean()
     assert tip_dz > 0.0
     assert compliance(u, f) > 0.0
+
+
+def test_multi_solve_matches_single_solve_per_load():
+    # Factorize-once/back-substitute must reproduce the per-load direct solve exactly.
+    nodes, tets = _cube(3)
+    support = np.nonzero(nodes[:, 0] < 1e-9)[0]
+    model = build_fea_model(nodes, tets, _C_ISO, support)
+    tip = np.nonzero(nodes[:, 0] > 1 - 1e-9)[0]
+    loads = []
+    for axis in (0, 1, 2):
+        fce = np.zeros_like(nodes)
+        fce[tip, axis] = 1.0 / len(tip)
+        loads.append(fce)
+    k = assemble_global_stiffness(model)
+    multi = solve_displacements_multi(model, loads, k)
+    for fce, (u_m, _) in zip(loads, multi):
+        u_s, _ = solve_displacements(model, fce, k)
+        assert np.allclose(u_m, u_s, atol=1e-10)
 
 
 def test_element_energies_sum_to_compliance():
