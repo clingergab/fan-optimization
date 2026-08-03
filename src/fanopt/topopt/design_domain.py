@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.sparse import csr_matrix
+from scipy.sparse import coo_matrix, csr_matrix, diags
 from scipy.spatial import cKDTree
 
 __all__ = [
@@ -77,22 +77,30 @@ def build_density_filter_unstructured(
     for unequal tet volumes), then each row is normalized so the filter is a weighted
     average (mesh-independent, preserves a uniform field). This is the standard SIMP
     regularizer that removes checkerboarding and imposes a minimum feature size ``r_min``.
+
+    Built at the C level via ``sparse_distance_matrix`` — a per-element Python loop over
+    neighbours blows up transient RAM at a fine mesh (~10s of GB from the intermediate lists
+    at sub-mm resolution) and is the dominant setup-time cost; this stays in numpy/scipy.
     """
     n = len(centroids)
     tree = cKDTree(centroids)
-    neighbors = tree.query_ball_point(centroids, r_min)
-    rows, cols, data = [], [], []
-    for i, nbrs in enumerate(neighbors):
-        nbrs = np.asarray(nbrs, dtype=int)
-        d = np.linalg.norm(centroids[nbrs] - centroids[i], axis=1)
-        w = r_min - d  # > 0 within the radius
-        if element_volumes is not None:
-            w = w * element_volumes[nbrs]
-        total = w.sum()
-        rows.extend([i] * len(nbrs))
-        cols.extend(nbrs.tolist())
-        data.extend((w / total).tolist())
-    return csr_matrix((data, (rows, cols)), shape=(n, n))
+    # Off-diagonal pairs within r_min as a COO (C-level; no per-point Python lists). The
+    # zero-distance self pairs are the sparse blank, so they are added back explicitly below.
+    dmat = tree.sparse_distance_matrix(tree, r_min, output_type="coo_matrix")
+    off = dmat.row != dmat.col
+    rows, cols, dist = dmat.row[off], dmat.col[off], dmat.data[off]
+    w = r_min - dist  # cone weight, ≥ 0 since dist ≤ r_min
+    self_w = np.full(n, r_min)  # self pair: dist 0 → weight r_min
+    if element_volumes is not None:
+        vols = np.asarray(element_volumes, dtype=float)
+        w = w * vols[cols]  # volume-weight by the neighbour (column) j
+        self_w = self_w * vols
+    rows = np.concatenate([rows, np.arange(n)])
+    cols = np.concatenate([cols, np.arange(n)])
+    data = np.concatenate([w, self_w])
+    unnormalized = coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
+    row_sums = np.asarray(unnormalized.sum(axis=1)).ravel()
+    return (diags(1.0 / row_sums) @ unnormalized).tocsr()
 
 
 def classify_frozen_skin(

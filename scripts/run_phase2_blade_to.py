@@ -113,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mesh-size-m", type=float, default=FeaMeshParams().mesh_size_m)
     parser.add_argument("--skin-thickness-m", type=float, default=None)
     parser.add_argument("--n-workers", type=int, default=1,
-                        help="designs to run in parallel (RAM-bound: ~18 GB/design at 0.8mm, ~57 GB at 0.6mm)")
+                        help="designs to run in parallel (RAM-bound: ~10-20 GB/design steady-state at 0.6mm)")
     parser.add_argument("--no-screen", dest="screen", action="store_false",
                         help="run a single fixed --volfrac instead of the screened ladder search")
     parser.add_argument("--volfrac", type=float, default=DEFAULT_VOLFRAC, help="fixed-mode volfrac")
