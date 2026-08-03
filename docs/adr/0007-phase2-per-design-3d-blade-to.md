@@ -46,14 +46,16 @@ Phase-2 structural TO for V1 is **per-design 3D SIMP on each design's own solid 
 - **Fidelity is a knob:** finer meshes resolve internal beam structure in the thick ribs and allow
   a thinner frozen skin (more carvable interior), at steeply rising RAM/time. The four load cases
   share each iteration's stiffness, so it is factorized once and back-substituted per load
-  (`solve_displacements_multi`), keeping a finer mesh tractable. Measured: 1.0 mm ≈ 63 s/iter / 5.6 GB;
-  0.8 mm needs ~15 GB (a >50 GB session). Default 0.8 mm mesh / 0.6 mm skin.
+  (`solve_displacements_multi`, which also frees the factorization + `malloc_trim`s each iteration so
+  RSS does not climb), keeping a finer mesh tractable. Direct-solve RAM is **superlinear** in mesh:
+  measured 1.0 mm ≈ 63 s/iter / ~6 GB, 0.8 mm ~18 GB, **0.6 mm ~57 GB** (per worker). Default 0.6 mm
+  mesh / 0.5 mm skin.
 
 Entry points: `scripts/run_phase2_blade_to.py`, `notebooks/colab_stage4_blade_to.ipynb` (Stage 4 in
 the campaign numbering — TO follows the Stage-3 BO campaign); design selection via
 `cfd/blade_verify.top_verified_designs` (ranks by fine 3D `J_fan`). Designs are independent, so the
 batch parallelizes across them (`run_blade_to_batch(n_workers=...)`, a process pool) — **RAM-bound**
-(each worker holds a full factorization: ~30 GB at 0.6 mm, ~15 GB at 0.8 mm), so
+(each worker holds a full factorization: ~57 GB at 0.6 mm, ~18 GB at 0.8 mm — measured, superlinear), so
 `n_workers ≈ session_RAM / per_design_RAM`. The CPU sparse direct solve is not GPU-accelerated;
 parallel CPU is the throughput lever.
 
