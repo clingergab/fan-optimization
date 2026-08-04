@@ -24,6 +24,7 @@ from fanopt.topopt.blade_fea_mesh import BladeFeaMeshResult, FeaMeshParams
 from fanopt.topopt.blade_topopt import (
     BladeTOResult,
     _fsync_path,
+    _load_cases,
     _passes_screen,
     _screen_ladder,
     _write_json_durable,
@@ -311,6 +312,25 @@ def test_batch_isolates_a_failing_design(tmp_path):
     bad = next(r for r in summary["designs"] if r["name"] == "01_bad")
     assert "error" in bad and "mesh blew up" in bad["error"]
     assert not (tmp_path / "01_bad_density.npy").exists()  # no artifact for the failure
+
+
+# --- inertial mass: full-solid in the OC loop, carved (honest) in the final screen ------
+
+def test_carved_density_lightens_only_the_inertial_load():
+    prob = build_blade_to_problem(_slab_mesh(), skin_thickness_m=0.0025, volfrac=0.4)
+    rho = np.where(prob.domain.frozen_mask, 1.0, 0.5)  # interior half-carved, skin solid
+    full = _load_cases(prob, None)  # OC-loop loads (full-solid inertial)
+    carved = _load_cases(prob, element_density=rho)  # final-screen loads (as-printed mass)
+    # inertial is case index 2 (productive, return, inertial, click); a lighter blade -> less load.
+    assert np.abs(carved[2].node_forces).sum() < np.abs(full[2].node_forces).sum()
+
+
+def test_carved_density_leaves_aero_load_unchanged():
+    prob = build_blade_to_problem(_slab_mesh(), skin_thickness_m=0.0025, volfrac=0.4)
+    rho = np.where(prob.domain.frozen_mask, 1.0, 0.5)
+    full = _load_cases(prob, None)
+    carved = _load_cases(prob, element_density=rho)
+    assert np.allclose(full[0].node_forces, carved[0].node_forces)  # productive aero is ρ-independent
 
 
 # --- per-load-case breakdown (persisted, not just the max-across-loads) ------------------
