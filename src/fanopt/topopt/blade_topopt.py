@@ -257,16 +257,16 @@ def build_blade_to_problem(
     )
 
 
-def _load_cases(problem: BladeTOProblem):
-    """Build the four locked load cases at the FULL-SOLID mass (design-independent).
+def _load_cases(problem: BladeTOProblem, element_density: np.ndarray | None = None):
+    """Build the four locked load cases; ``element_density`` scales the inertial body mass.
 
-    The inertial body force is held at the full-density (solid-blade) mass rather than the
-    evolving SIMP density. This is deliberate on two counts: (1) it keeps every load case
-    independent of ρ, so the compliance sensitivity is the exact self-adjoint SIMP form
-    ``dC/dρ = −p ρ^(p−1) uₑᵀKₑ⁰uₑ`` — a ρ-dependent load would need the extra adjoint term
-    ``2 uᵀ ∂f/∂ρ`` (its omission flips the sign of many sensitivities when inertial load
-    dominates); (2) the solid blade is the heaviest, so the inertial load is a conservative
-    upper bound and the trimmed design (lighter, lower real inertial load) is only safer.
+    ``element_density=None`` (the default) holds the inertial load at the FULL-SOLID mass. Use
+    that inside the OC loop: it keeps every load case independent of ρ, so the compliance
+    sensitivity is the exact self-adjoint SIMP form ``dC/dρ = −p ρ^(p−1) uₑᵀKₑ⁰uₑ`` — a ρ-dependent
+    load would need the extra adjoint term ``2 uᵀ ∂f/∂ρ`` (its omission flips the sign of many
+    sensitivities when the inertial load dominates). Pass the carved ρ **only** for the final
+    screen readout (a pure evaluation, no gradient): the as-printed blade is lighter, so this is
+    the honest inertial deflection rather than the full-solid conservative upper bound.
     """
     dom = problem.domain
     return assemble_load_cases(
@@ -280,7 +280,7 @@ def _load_cases(problem: BladeTOProblem):
         dom.element_centroids,
         problem.click_node_ids,
         problem.click_force_vec,
-        element_density=None,  # full-solid mass -> ρ-independent load -> exact sensitivity
+        element_density=element_density,
         return_scale=problem.return_scale,
     )
 
@@ -348,12 +348,15 @@ def run_blade_topology_optimization(
     # Structural screen: worst deflection + peak von Mises over ALL FOUR load cases and ALL
     # elements (the frozen aero skin carries the extreme-fibre bending stress — excluding it
     # would hide the true peak; a single-load screen would miss the click/inertial worst case).
+    # The inertial load here tracks the CARVED mass (element_density=rho) — the honest as-printed
+    # deflection; the OC loop above kept full-solid inertial for the exact self-adjoint sensitivity.
     rho = _physical_density(problem, x)
     k = assemble_global_stiffness(model, density=rho, penal=penal)
+    screen_load_cases = _load_cases(problem, element_density=rho)
     u_tip_by_load: dict[str, float] = {}
     vm_by_load: dict[str, float] = {}
-    solved = solve_displacements_multi(model, [lc.node_forces for lc in load_cases], k)
-    for lc, (u, _) in zip(load_cases, solved):
+    solved = solve_displacements_multi(model, [lc.node_forces for lc in screen_load_cases], k)
+    for lc, (u, _) in zip(screen_load_cases, solved):
         u_tip_by_load[lc.name] = float(np.linalg.norm(u.reshape(-1, 3), axis=1).max())
         vm_by_load[lc.name] = float(von_mises(element_stresses(model, u)).max())
     u_tip = max(u_tip_by_load.values())
