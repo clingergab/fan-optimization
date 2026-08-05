@@ -75,7 +75,8 @@ def run(
             print(
                 f"  [TO] {name}: removed {res.volume_removed_frac * 100:.1f}%  "
                 f"mass {res.mass_kg * 1e3:.1f} g  u_tip {res.u_tip_max_m * 1e3:.3f} mm  "
-                f"VM {res.max_von_mises_pa / 1e6:.2f} MPa{tag}"
+                f"VM {res.max_von_mises_pa / 1e6:.2f} MPa "
+                f"(solid-only {res.max_von_mises_solid_pa / 1e6:.2f} MPa){tag}"
             )
             if res.u_tip_by_load_m:
                 by_load = "  ".join(f"{k} {v * 1e3:.3f}" for k, v in res.u_tip_by_load_m.items())

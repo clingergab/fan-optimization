@@ -111,6 +111,9 @@ DEFAULT_VOLFRAC_LADDER: tuple[float, ...] = (0.25, 0.35, 0.45, 0.60)
 DEFAULT_U_TIP_LIMIT_M: float = 1.0e-3
 # Safety factor applied to the PETG weak-axis yield for the stress half of the screen.
 DEFAULT_STRESS_FOS: float = 2.0
+# Density above which an element counts as "solid" (survives to the printed part) for the honest
+# solid-only stress readout — σ_VM on lower-density gray elements overstates true stress.
+SOLID_STRESS_THRESHOLD: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -154,10 +157,15 @@ class BladeTOResult:
     max_von_mises_pa: float  # worst element σ_VM over the four load cases (all elements)
     converged: bool
     iterations: int
+    # Worst σ_VM over the four loads, counting ONLY solid (ρ ≥ SOLID_STRESS_THRESHOLD) elements —
+    # the ones that survive to the printed part. σ_VM on intermediate-density (gray) elements uses
+    # the base stiffness and overstates true stress, so this is the honest as-printed peak stress.
+    max_von_mises_solid_pa: float = 0.0
     # Per-load-case breakdown (keyed by LoadCase.name), so the screen result records WHICH of the
     # four loads drives the worst deflection/stress — persisted, not just the max-across-loads.
     u_tip_by_load_m: dict[str, float] = field(default_factory=dict)
     vm_by_load_pa: dict[str, float] = field(default_factory=dict)
+    vm_solid_by_load_pa: dict[str, float] = field(default_factory=dict)
     meta: dict[str, float] = field(default_factory=dict)
     element_centroids: np.ndarray | None = None  # (m, 3) — saved so the render aligns to ρ̃
 
@@ -353,14 +361,19 @@ def run_blade_topology_optimization(
     rho = _physical_density(problem, x)
     k = assemble_global_stiffness(model, density=rho, penal=penal)
     screen_load_cases = _load_cases(problem, element_density=rho)
+    solid = rho >= SOLID_STRESS_THRESHOLD  # elements that survive to the printed part
     u_tip_by_load: dict[str, float] = {}
     vm_by_load: dict[str, float] = {}
+    vm_solid_by_load: dict[str, float] = {}
     solved = solve_displacements_multi(model, [lc.node_forces for lc in screen_load_cases], k)
     for lc, (u, _) in zip(screen_load_cases, solved):
         u_tip_by_load[lc.name] = float(np.linalg.norm(u.reshape(-1, 3), axis=1).max())
-        vm_by_load[lc.name] = float(von_mises(element_stresses(model, u)).max())
+        vm = von_mises(element_stresses(model, u))
+        vm_by_load[lc.name] = float(vm.max())
+        vm_solid_by_load[lc.name] = float(vm[solid].max()) if solid.any() else 0.0
     u_tip = max(u_tip_by_load.values())
     max_vm = max(vm_by_load.values())
+    max_vm_solid = max(vm_solid_by_load.values())
 
     retained_vol = float((volumes * rho).sum())
     full_vol = float(volumes.sum())
@@ -374,8 +387,10 @@ def run_blade_topology_optimization(
         mass_kg=RHO_PETG_KG_PER_M3 * retained_vol,
         u_tip_max_m=u_tip,
         max_von_mises_pa=max_vm,
+        max_von_mises_solid_pa=max_vm_solid,
         u_tip_by_load_m=u_tip_by_load,
         vm_by_load_pa=vm_by_load,
+        vm_solid_by_load_pa=vm_solid_by_load,
         converged=converged,
         iterations=iterations,
         meta={**problem.meta, "n_design": float(design.sum()), "n_frozen": float(frozen.sum())},
@@ -542,8 +557,10 @@ def _result_summary(name: str, params: BladeParams, res: BladeTOResult) -> dict:
         "mass_kg": res.mass_kg,
         "u_tip_max_mm": res.u_tip_max_m * 1e3,
         "max_von_mises_mpa": res.max_von_mises_pa / 1e6,
+        "max_von_mises_solid_mpa": res.max_von_mises_solid_pa / 1e6,
         "u_tip_by_load_mm": {k: v * 1e3 for k, v in res.u_tip_by_load_m.items()},
         "vm_by_load_mpa": {k: v / 1e6 for k, v in res.vm_by_load_pa.items()},
+        "vm_solid_by_load_mpa": {k: v / 1e6 for k, v in res.vm_solid_by_load_pa.items()},
         "converged": res.converged,
         "iterations": res.iterations,
         "compliance_initial": res.compliance_history[0] if res.compliance_history else None,

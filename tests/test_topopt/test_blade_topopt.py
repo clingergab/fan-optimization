@@ -347,12 +347,29 @@ def test_to_max_equals_worst_of_the_per_load_breakdown():
     assert res.max_von_mises_pa == pytest.approx(max(res.vm_by_load_pa.values()))
 
 
+# --- solid-only stress (gray-element artifact check) ------------------------------------
+
+def test_solid_only_stress_is_a_subset_of_all_element_stress():
+    # σ_VM over solid (ρ≥0.5) elements only must be positive and never exceed the all-element peak,
+    # since the solid set is a subset. This is the honest as-printed stress used to check whether a
+    # design's peak σ_VM is a gray-element artifact.
+    _prob, res = _run_slab(max_iters=3)
+    assert 0.0 < res.max_von_mises_solid_pa <= res.max_von_mises_pa
+
+
+def test_solid_only_stress_recorded_per_load():
+    _prob, res = _run_slab(max_iters=3)
+    assert set(res.vm_solid_by_load_pa) == set(_LOAD_CASE_NAMES)
+
+
 def _fake_result_with_loads():
     return BladeTOResult(
         density=np.array([1.0, 0.2]), compliance_history=(2.0, 1.0), design_volume_fraction=0.4,
         volume_removed_frac=0.3, mass_kg=0.02, u_tip_max_m=5e-4, max_von_mises_pa=1e6,
+        max_von_mises_solid_pa=4e5,
         u_tip_by_load_m={"productive_stroke": 3e-4, "inertial": 5e-4},
         vm_by_load_pa={"productive_stroke": 1e6, "inertial": 4e5},
+        vm_solid_by_load_pa={"productive_stroke": 4e5, "inertial": 2e5},
         converged=True, iterations=3, meta={"n_design": 1.0, "n_frozen": 1.0},
     )
 
@@ -373,6 +390,8 @@ def test_batch_sidecar_persists_per_load_breakdown(tmp_path):
     rec = json.loads((tmp_path / "00_a.json").read_text())
     assert rec["u_tip_by_load_mm"]["inertial"] == pytest.approx(0.5)  # 5e-4 m -> 0.5 mm
     assert rec["vm_by_load_mpa"]["productive_stroke"] == pytest.approx(1.0)  # 1e6 Pa -> 1 MPa
+    assert rec["max_von_mises_solid_mpa"] == pytest.approx(0.4)  # 4e5 Pa -> 0.4 MPa
+    assert rec["vm_solid_by_load_mpa"]["inertial"] == pytest.approx(0.2)  # 2e5 Pa -> 0.2 MPa
 
 
 # --- durable-write helpers (Colab Drive crash safety) -----------------------------------
