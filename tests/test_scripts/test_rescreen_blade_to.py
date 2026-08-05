@@ -21,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import rescreen_blade_to  # noqa: E402
 import run_phase2_blade_to  # noqa: E402
-
 from fanopt.bo.blade_codec import bounds, clip_to_bounds, decode  # noqa: E402
 from fanopt.utils.ledger import design_hash  # noqa: E402
 
@@ -78,6 +77,19 @@ def test_rescreen_reads_mesh_params_from_summary(tmp_path):
 def test_rescreen_missing_params_without_summary_errors(tmp_path):
     with pytest.raises(SystemExit):
         rescreen_blade_to._run_params(tmp_path / "no_such_dir", None, None)
+
+
+def test_rescreen_warns_when_no_density_files(tmp_path, capsys):
+    # summary.json present (so params resolve) but the _density.npy fields deleted -> 0 re-screened.
+    ver, out = _make_to_run(tmp_path)
+    for npy in out.glob("*_density.npy"):
+        npy.unlink()
+    summary = rescreen_blade_to.run(
+        shared_dir=tmp_path, verification=ver, out_dir=out, top_k=1, n_workers=1,
+        mesh_size_m=None, skin_thickness_m=None, stress_fos=2.0, progress=True,
+    )
+    assert summary["n_succeeded"] == 0
+    assert "0/1 re-screened" in capsys.readouterr().out  # the loud wrong-folder guard fired
 
 
 def test_rescreen_main_smoke(tmp_path):
