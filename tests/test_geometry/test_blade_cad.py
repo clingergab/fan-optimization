@@ -324,37 +324,6 @@ def test_analytic_gate_handles_zero_swing_steps():
     assert fold_penetration_m(_sample(), n_swing_steps=0) == pytest.approx(-FOLD_CLEARANCE_M, abs=5e-5)
 
 
-def test_detent_solid_is_valid_single_body():
-    # The click bump + recesses union/cut into the boss without breaking the watertight single body.
-    solid = make_blade_solid(_sample(), detent=True).val()
-    assert solid.isValid() is True
-    assert len(solid.Solids()) == 1
-
-
-def test_detent_bump_raises_the_boss_top_by_its_height():
-    # On the boss itself (the blade dish otherwise dominates the z-extent), the click bump proud of the
-    # top face raises the boss zmax by exactly one detent depth — the ride the pin preload springs over.
-    plain = blade_cad_mod._boss_solid(_sample()).val().BoundingBox()
-    det = blade_cad_mod._boss_solid(_sample(), detent=True).val().BoundingBox()
-    assert det.zmax - plain.zmax == pytest.approx(blade_cad_mod._DETENT_DEPTH_M, abs=2e-5)
-
-
-def test_detent_recesses_dimple_the_boss_bottom():
-    # The two bottom recesses remove material — the detented boss carries less volume than the plain one
-    # (bump adds one small cylinder; two oversized dimples remove more), confirming the recesses cut.
-    plain = blade_cad_mod._boss_solid(_sample()).val().Volume()
-    det = blade_cad_mod._boss_solid(_sample(), detent=True).val().Volume()
-    assert det < plain
-
-
-def test_detent_composes_with_tighter_clearance():
-    # The click detent and the reduced fold clearance are independent knobs and combine into one valid
-    # solid (the printed part: tighter deck + click).
-    solid = make_blade_solid(_sample(), clearance_m=0.3e-3, detent=True).val()
-    assert solid.isValid() is True
-    assert len(solid.Solids()) == 1
-
-
 def _synthetic_puck() -> tuple[np.ndarray, np.ndarray]:
     """A solid disk of unit-density centroids (radius 15 mm, 3 z-layers) — a stand-in TO cloud whose
     hub column the boss-fusion voids and rebuilds. Not a real blade; just exercises the fuse plumbing."""
@@ -382,9 +351,7 @@ def test_boss_trimesh_clearance_shortens_the_boss():
 
 def test_carved_blade_with_boss_is_a_valid_fused_mesh():
     dens, pts = _synthetic_puck()
-    v, f = carved_blade_with_boss(
-        dens, pts, _sample(), voxel_pitch_m=0.002, clearance_m=0.3e-3, detent=True
-    )
+    v, f = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002, clearance_m=0.3e-3)
     assert v.ndim == 2 and v.shape[1] == 3 and len(v) > 0
     assert int(f.max()) < len(v) and int(f.min()) >= 0  # face indices valid after the concat offset
 
@@ -397,6 +364,19 @@ def test_carved_blade_with_boss_adds_the_cad_boss_body():
     dish_v, _ = carved_blade_mesh(voided, pts, voxel_pitch_m=0.002)
     fused_v, _ = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002)
     assert len(fused_v) > len(dish_v)
+
+
+def test_carved_blade_with_boss_voids_inside_the_boss_od_for_overlap():
+    # M3 fix: the hub is voided a hair INSIDE the boss OD (PIVOT_BOSS_RADIUS_M − overlap), so the CAD boss
+    # (radius = full OD) overlaps the retained dish by a solid ring instead of abutting it on a coincident
+    # cylinder. Verify the void radius is strictly inside the OD and the [OD−overlap, OD) ring is RETAINED.
+    assert 0.0 < blade_cad_mod._BOSS_FUSE_OVERLAP_M < PIVOT_BOSS_RADIUS_M
+    dens, pts = _synthetic_puck()
+    r = np.hypot(pts[:, 0], pts[:, 1])
+    void_mask = r < PIVOT_BOSS_RADIUS_M - blade_cad_mod._BOSS_FUSE_OVERLAP_M
+    ring = (r >= PIVOT_BOSS_RADIUS_M - blade_cad_mod._BOSS_FUSE_OVERLAP_M) & (r < PIVOT_BOSS_RADIUS_M)
+    assert ring.any()  # the fixture actually has centroids in the overlap ring this guards
+    assert not void_mask[ring].any()  # ring centroids are NOT voided → dish keeps material to bond to
 
 
 def _way2_checkerboard() -> BladeParams:
