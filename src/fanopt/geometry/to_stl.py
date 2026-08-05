@@ -16,10 +16,32 @@ import struct
 from pathlib import Path
 
 import numpy as np
+from scipy.sparse import coo_matrix
 from scipy.spatial import cKDTree
 from skimage.measure import marching_cubes
 
-__all__ = ["carved_blade_mesh", "write_binary_stl"]
+__all__ = ["carved_blade_mesh", "write_binary_stl", "laplacian_smooth"]
+
+
+def laplacian_smooth(verts: np.ndarray, faces: np.ndarray, iterations: int = 8, lam: float = 0.5):
+    """Laplacian-smooth a triangle mesh — relaxes the marching-cubes staircase for a cleaner render.
+
+    Each vertex is nudged ``lam`` of the way toward the mean of its edge neighbours, ``iterations`` times.
+    Topology (``faces``) is unchanged. Pure numpy/scipy; a mild smooth (default) is cosmetic, not a
+    geometry change — do NOT smooth the mesh you dimension-check or slice for tight tolerances.
+    """
+    verts = np.asarray(verts, dtype=float)
+    n = len(verts)
+    e = np.vstack([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]])
+    e = np.vstack([e, e[:, ::-1]])  # undirected
+    adj = coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n)).tocsr()
+    adj.data[:] = 1.0
+    deg = np.asarray(adj.sum(axis=1)).ravel()
+    deg[deg == 0] = 1.0
+    v = verts.copy()
+    for _ in range(iterations):
+        v = v + lam * ((adj @ v) / deg[:, None] - v)
+    return v
 
 
 def carved_blade_mesh(
