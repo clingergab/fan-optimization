@@ -308,6 +308,14 @@ def test_analytic_penetration_negative_when_clear():
     assert fold_penetration_m(_sample()) < 0.0  # a gap, not an overlap
 
 
+def test_tighter_clearance_still_nests():
+    # A reduced fold clearance (tighter deck to shrink the deployed gap) must still fold: the nesting
+    # gap tracks the clearance, so penetration = -clearance, still <= 0.
+    p = _sample()
+    assert fold_penetration_m(p, clearance_m=0.2e-3) == pytest.approx(-0.2e-3, abs=5e-5)
+    assert fold_penetration_m(p, clearance_m=0.2e-3) < 0.0
+
+
 def test_analytic_gate_handles_zero_swing_steps():
     # Guard: n_swing_steps=0 (folded pose only) must not divide by zero.
     assert fold_penetration_m(_sample(), n_swing_steps=0) == pytest.approx(-FOLD_CLEARANCE_M, abs=5e-5)

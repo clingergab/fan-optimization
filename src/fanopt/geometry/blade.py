@@ -519,7 +519,7 @@ def blade_z_envelope_m(params: BladeParams) -> float:
     return max(tops) - min(bots)
 
 
-def layer_spacing_m(params: BladeParams) -> float:
+def layer_spacing_m(params: BladeParams, *, clearance_m: float | None = None) -> float:
     """Z-stack layer spacing = the blade's local material envelope + clearance.
 
     The fan folds by z-stacking (a deck), so adjacent blades sit one layer apart on the pin.
@@ -527,8 +527,13 @@ def layer_spacing_m(params: BladeParams) -> float:
     :func:`blade_z_envelope_m` — panel-aware, so it equals the thickest rib for a ribbed blade
     and the panel's own thickness spread for a uniform no-rib blade. The boss is one layer tall,
     so boss height = ``max(rib, panel) + clearance`` too.
+
+    ``clearance_m`` overrides the default :data:`FOLD_CLEARANCE_M` (0.4 mm) — pass a tighter value
+    (e.g. 0.3 mm) to pack the deployed deck closer and shrink the inter-blade gap. A tighter clearance
+    is a build-tolerance gamble on a 12-interface PETG stack; validate with a print-and-fold test.
     """
-    return blade_z_envelope_m(params) + FOLD_CLEARANCE_M
+    cl = FOLD_CLEARANCE_M if clearance_m is None else clearance_m
+    return blade_z_envelope_m(params) + cl
 
 
 def folded_rib_bow_extent_m(params: BladeParams) -> float:
@@ -542,28 +547,29 @@ def folded_rib_bow_extent_m(params: BladeParams) -> float:
     return rib_meridian_extent_m(params.rib_bow_knots_m, params.rib_bow_interp)
 
 
-def folded_stack_height_m(params: BladeParams) -> float:
+def folded_stack_height_m(params: BladeParams, *, clearance_m: float | None = None) -> float:
     """Folded-bundle z-extent, **bow-aware**.
 
     Nested dishes: ``(N−1)·layer_spacing`` between blade bases + the top blade's full
     footprint ``bow_extent + envelope``. The top-blade footprint is the panel-aware
     :func:`blade_z_envelope_m` (was rib-only ``t_rib_max``), so a uniform no-rib blade's own
     thickness spread counts. The CAD swept-volume boolean remains the authoritative check.
+    ``clearance_m`` overrides the fold clearance (a tighter deck folds thinner).
     """
     return (
-        (params.blade_count - 1) * layer_spacing_m(params)
+        (params.blade_count - 1) * layer_spacing_m(params, clearance_m=clearance_m)
         + folded_rib_bow_extent_m(params)
         + blade_z_envelope_m(params)
     )
 
 
-def fold_margin_m(params: BladeParams) -> float:
+def fold_margin_m(params: BladeParams, *, clearance_m: float | None = None) -> float:
     """``MAX_FOLDED_STACK_HEIGHT_M − folded_stack_height``. ≥ 0 ⇒ folds acceptably thin.
 
     The real fold cost is stack height, not hub packing — thick ribs make a fat bundle.
     The CAD swept-volume boolean is the authoritative no-collision check through the swing.
     """
-    return MAX_FOLDED_STACK_HEIGHT_M - folded_stack_height_m(params)
+    return MAX_FOLDED_STACK_HEIGHT_M - folded_stack_height_m(params, clearance_m=clearance_m)
 
 
 def containment_margin_m(params: BladeParams) -> float:

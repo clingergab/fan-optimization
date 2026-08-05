@@ -55,6 +55,7 @@ def pose_fan(
     deployed: bool,
     blade_count: int | None = None,
     direction: int = 1,
+    clearance_m: float | None = None,
 ) -> list[tuple[np.ndarray, np.ndarray]]:
     """Pose one blade's ``(verts, faces)`` into the whole fan → N ``(posed_verts, faces)``.
 
@@ -63,8 +64,9 @@ def pose_fan(
     design poses as itself, not a hard-coded 12), and the spacing is the design's own
     :func:`fanopt.geometry.blade.layer_spacing_m` (blade z-envelope + fold clearance). ``direction`` (+1/−1)
     reverses the deploy fan-out sense (top-vs-bottom layers swap sweep sides) — fold-symmetric, aero-neutral.
+    ``clearance_m`` overrides the fold clearance so a tighter-packed deck (smaller gap) can be posed.
     """
     n = getattr(params, "blade_count", BLADE_COUNT) if blade_count is None else blade_count
-    spacing = layer_spacing_m(params)
+    spacing = layer_spacing_m(params, clearance_m=clearance_m)
     poses = fan_blade_poses(n, spacing, deployed=deployed, direction=direction)
     return [(apply_pose(verts, rot, z), faces) for rot, z in poses]
