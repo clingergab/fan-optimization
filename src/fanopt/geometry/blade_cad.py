@@ -259,9 +259,12 @@ def _sew_solid(faces: list[cq.Face]) -> cq.Solid:
     return cq.Solid(ShapeFix_Solid().SolidFromShell(shell))
 
 
-def _boss_solid(params: BladeParams) -> cq.Workplane:
-    """Pivot boss: a ``PIVOT_BOSS_OD_M`` cylinder one layer tall, pin hole subtracted."""
-    s = layer_spacing_m(params)
+def _boss_solid(params: BladeParams, *, clearance_m: float | None = None) -> cq.Workplane:
+    """Pivot boss: a ``PIVOT_BOSS_OD_M`` cylinder one layer tall, pin hole subtracted.
+
+    ``clearance_m`` overrides the fold clearance → a shorter boss packs the deployed deck tighter.
+    """
+    s = layer_spacing_m(params, clearance_m=clearance_m)
     boss = cq.Workplane("XY").circle(PIVOT_BOSS_RADIUS_M).extrude(s).translate((0.0, 0.0, -s / 2.0))
     hole = (
         cq.Workplane("XY")
@@ -272,18 +275,18 @@ def _boss_solid(params: BladeParams) -> cq.Workplane:
     return boss.cut(hole)
 
 
-def make_blade_solid(params: BladeParams) -> cq.Workplane:
+def make_blade_solid(params: BladeParams, *, clearance_m: float | None = None) -> cq.Workplane:
     """Build one both-face blade solid (dished sector + rib edges + boss).
 
     Triangulates both surfaces + walls over ``N_RADIAL_SECTIONS × N_TANGENTIAL_SAMPLES``,
     sews them into a watertight solid, then unions the pivot boss. The result is a single
     valid solid in the blade's own frame (pin = +z axis); ``deploy``/fold place copies by
-    rotation about +z.
+    rotation about +z. ``clearance_m`` overrides the fold clearance (sizes the boss height).
     """
     top, bot = _surface_grids(params)
     solid = _sew_solid(_blade_faces(top, bot))
     blade = cq.Workplane("XY").newObject([solid])
-    return blade.union(_boss_solid(params))
+    return blade.union(_boss_solid(params, clearance_m=clearance_m))
 
 
 def export_blade_step(params: BladeParams, path: str) -> str:
@@ -314,16 +317,19 @@ def blade_mass_kg(params: BladeParams, density_kg_per_m3: float = RHO_PETG_KG_PE
     return blade_volume_m3(params) * density_kg_per_m3 * params.blade_count
 
 
-def fold_collision_volume_m3(params: BladeParams, *, n_swing_steps: int = 6) -> float:
+def fold_collision_volume_m3(
+    params: BladeParams, *, n_swing_steps: int = 6, clearance_m: float | None = None
+) -> float:
     """Max intersection volume between two adjacent blades across the fold swing (m³).
 
     Stacks blade *i+1* one layer above blade *i* on the pin and rotates it from the
     folded pose (0°) out to the deployed pitch (one inter-blade angle), sampling
     ``n_swing_steps`` intermediate angles. Any non-trivial intersection = a real
-    collision the analytic proxies missed. ~0 confirms the design folds.
+    collision the analytic proxies missed. ~0 confirms the design folds. ``clearance_m``
+    checks a tighter fold clearance (a tighter deck must still show ~0 intersection).
     """
-    blade = make_blade_solid(params).val()
-    s = layer_spacing_m(params)
+    blade = make_blade_solid(params, clearance_m=clearance_m).val()
+    s = layer_spacing_m(params, clearance_m=clearance_m)
     worst = 0.0
     for k in range(n_swing_steps + 1):
         delta_deg = math.degrees(INTER_BLADE_ANGLE_RAD) * k / n_swing_steps
@@ -361,6 +367,7 @@ def fold_penetration_m(
     n_swing_steps: int = 6,
     n_radial: int = _FOLD_SAMPLE_RADIAL,
     n_tangential: int = _FOLD_SAMPLE_TANGENTIAL,
+    clearance_m: float | None = None,
 ) -> float:
     """Max z-penetration (m) between two adjacent blades across the fold swing — analytic gate.
 
@@ -387,7 +394,7 @@ def fold_penetration_m(
     negative gaps of a high-frequency design can be under-resolved. Pass a finer ``n_radial`` /
     ``n_tangential`` if an exact depth is needed.
     """
-    s = layer_spacing_m(params)
+    s = layer_spacing_m(params, clearance_m=clearance_m)
     alpha = INTER_BLADE_ANGLE_RAD
     swings = max(n_swing_steps, 1)  # guard n_swing_steps=0 (folded pose only) against /0
     worst = -math.inf

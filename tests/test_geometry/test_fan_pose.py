@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from fanopt.bo.blade_codec import N_DIMS, decode
-from fanopt.geometry.blade import BLADE_COUNT, layer_spacing_m
+from fanopt.geometry.blade import BLADE_COUNT, FOLD_CLEARANCE_M, layer_spacing_m
 from fanopt.geometry.fan_pose import apply_pose, fan_blade_poses, pose_fan
 from fanopt.geometry.schema import INTER_BLADE_ANGLE_DEG
 
@@ -92,6 +92,18 @@ def test_pose_fan_explicit_blade_count_overrides_params():
     v = np.array([[0.1, 0.0, 0.0]])
     f = np.array([[0, 0, 0]])
     assert len(pose_fan(v, f, params, deployed=False, blade_count=3)) == 3
+
+
+def test_pose_fan_clearance_tightens_the_z_stack():
+    params = decode(np.full(N_DIMS, 0.5))
+    v = np.array([[0.1, 0.0, 0.0]])
+    f = np.array([[0, 0, 0]])
+    base = pose_fan(v, f, params, deployed=False)
+    tight = pose_fan(v, f, params, deployed=False, clearance_m=0.2e-3)
+    # the z between adjacent layers drops by exactly the clearance reduction
+    dz_base = base[1][0][0, 2] - base[0][0][0, 2]
+    dz_tight = tight[1][0][0, 2] - tight[0][0][0, 2]
+    assert dz_base - dz_tight == pytest.approx(FOLD_CLEARANCE_M - 0.2e-3)
 
 
 def test_pose_fan_folded_stacks_in_z_only():

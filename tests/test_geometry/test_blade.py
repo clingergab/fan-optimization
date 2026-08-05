@@ -377,6 +377,13 @@ def test_layer_spacing_is_thickest_rib_plus_clearance():
     assert layer_spacing_m(p) == pytest.approx(p.t_rib_tip_m + FOLD_CLEARANCE_M)
 
 
+def test_layer_spacing_clearance_override():
+    p = _sample()
+    # a tighter clearance lowers the pitch by exactly the reduction; the envelope is unchanged.
+    assert layer_spacing_m(p, clearance_m=0.2e-3) == pytest.approx(blade_z_envelope_m(p) + 0.2e-3)
+    assert layer_spacing_m(p) - layer_spacing_m(p, clearance_m=0.2e-3) == pytest.approx(FOLD_CLEARANCE_M - 0.2e-3)
+
+
 def test_layer_spacing_panel_aware_uniform():
     # Uniform (no-rib): the fold pitch is set by the panel sheet itself, not any rib.
     p = _uniform_sample()
