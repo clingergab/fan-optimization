@@ -7,11 +7,12 @@ import struct
 
 import numpy as np
 import pytest
+from scipy.sparse import coo_matrix
 
 if importlib.util.find_spec("skimage") is None:  # pragma: no cover - env-dependent
     pytest.skip("scikit-image not installed", allow_module_level=True)
 
-from fanopt.geometry.to_stl import carved_blade_mesh, write_binary_stl
+from fanopt.geometry.to_stl import carved_blade_mesh, laplacian_smooth, write_binary_stl
 
 
 def _cloud(spacing=0.001, box=0.020):
@@ -76,6 +77,24 @@ def test_carved_mesh_accepts_explicit_tolerance():
     cen = _cloud()
     v, f = carved_blade_mesh(_block_field(cen), cen, voxel_pitch_m=0.0005, outside_tol_m=0.001)
     assert len(f) > 0 and f.max() < len(v)
+
+
+def test_laplacian_smooth_preserves_topology_and_reduces_roughness():
+    cen = _cloud()
+    v, f = carved_blade_mesh(_block_field(cen), cen, voxel_pitch_m=0.0004)
+    vs = laplacian_smooth(v, f, iterations=8)
+    assert vs.shape == v.shape and f.max() < len(vs) and np.isfinite(vs).all()
+
+    def rough(V):
+        e = np.vstack([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+        e = np.vstack([e, e[:, ::-1]])
+        adj = coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(len(V), len(V))).tocsr()
+        adj.data[:] = 1.0
+        d = np.asarray(adj.sum(1)).ravel()
+        d[d == 0] = 1.0
+        return np.linalg.norm((adj @ V) / d[:, None] - V, axis=1).mean()
+
+    assert rough(vs) < rough(v)  # smoother than the raw marching-cubes staircase
 
 
 def test_write_binary_stl_scales_metres_to_mm(tmp_path):
