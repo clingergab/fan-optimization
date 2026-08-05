@@ -14,8 +14,11 @@ by fine 3D ``J_fan`` (same ranking as the TO), defaulting to the top 4 print can
 
     python3 scripts/rescreen_blade_to.py \
         --shared-dir data/campaign_trapezoid \
-        --verification data/phase5_verify_blade/verification.json \
+        --verification data/stage3_verify_blade/verification.json \
         --out-dir data/stage4_blade_to --top-k 4 --n-workers 4
+
+    ``--out-dir`` MUST be the same folder the TO run wrote its ``<name>_density.npy`` fields to
+    (``stage4_blade_to`` in the notebooks) — pointing elsewhere re-screens 0 designs.
 """
 
 from __future__ import annotations
@@ -80,14 +83,22 @@ def run(
             by_load = "  ".join(f"{k} {v * 1e3:.3f}" for k, v in res.u_tip_by_load_m.items())
             print(f"             u_tip(mm) by load: {by_load}")
 
-    return rescreen_blade_to_batch(
+    summary = rescreen_blade_to_batch(
         [(name, params) for name, params, _ in designs],
         out_dir,
         mesh_params=FeaMeshParams(mesh_size_m=mesh_size_m),
         skin_thickness_m=skin_thickness_m,
         n_workers=n_workers,
         on_result=_log,
+        j_fan_by_name={name: j3d for name, _params, j3d in designs},
     )
+    if progress and designs and summary["n_succeeded"] == 0:
+        # Every design failed — almost always a wrong --out-dir (no <name>_density.npy there).
+        print(
+            f"\n!! 0/{len(designs)} re-screened. Check that {out_dir} holds the TO run's <name>_density.npy "
+            f"files (this must be the SAME --out-dir the TO wrote to)."
+        )
+    return summary
 
 
 def main(argv: list[str] | None = None) -> int:

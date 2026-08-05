@@ -20,8 +20,10 @@ for _dep in ("skfem", "gmsh", "cadquery"):
         pytest.skip(f"{_dep} not installed", allow_module_level=True)
 
 from fanopt.bo.blade_codec import N_DIMS, decode
-from fanopt.topopt.blade_fea_mesh import BladeFeaMeshResult, FeaMeshParams
+from fanopt.topopt.blade_fea_mesh import BladeFeaMeshResult, FeaMeshParams, build_blade_fea_mesh
 from fanopt.topopt.blade_topopt import (
+    DEFAULT_RMIN_M,
+    DEFAULT_SKIN_THICKNESS_M,
     BladeTOResult,
     _align_density,
     _fsync_path,
@@ -31,6 +33,7 @@ from fanopt.topopt.blade_topopt import (
     _screen_result,
     _write_json_durable,
     build_blade_to_problem,
+    rescreen_blade_from_density,
     rescreen_blade_to_batch,
     run_blade_to_batch,
     run_blade_topology_optimization,
@@ -379,6 +382,26 @@ def test_align_density_none_passes_through_on_match():
     assert np.array_equal(rho, d) and dist == 0.0
 
 
+def test_align_density_raises_on_divergent_mesh():
+    # A rebuilt element far from every saved centroid = mesh divergence -> must RAISE, not silently smear.
+    saved = np.zeros((5, 3))
+    rebuilt = np.vstack([np.zeros((4, 3)), [[10.0, 0.0, 0.0]]])  # last point 10 m from any saved
+    with pytest.raises(ValueError, match="diverged"):
+        _align_density(rebuilt, saved, np.arange(5.0), max_dist_m=0.5)
+
+
+def test_align_density_within_tolerance_passes():
+    saved = np.array([[0.0, 0, 0], [1.0, 0, 0]])
+    rebuilt = np.array([[0.1, 0, 0], [1.1, 0, 0]])  # each 0.1 from a saved point; tol 0.5
+    rho, dist = _align_density(rebuilt, saved, np.array([2.0, 3.0]), max_dist_m=0.5)
+    assert np.allclose(rho, [2.0, 3.0]) and dist == pytest.approx(0.1)
+
+
+def test_align_density_length_mismatch_raises():
+    with pytest.raises(ValueError, match="length mismatch"):
+        _align_density(np.zeros((3, 3)), np.zeros((5, 3)), np.zeros(4))  # density 4 != saved centroids 5
+
+
 def test_screen_result_reports_all_screen_fields():
     prob = build_blade_to_problem(_slab_mesh(), skin_thickness_m=0.0025, volfrac=0.4)
     rho = np.where(prob.domain.frozen_mask, 1.0, 0.5)
@@ -390,17 +413,41 @@ def test_screen_result_reports_all_screen_fields():
 
 
 def test_rescreen_batch_reproduces_original_screen(tmp_path):
-    # Re-screening the saved density must reproduce the original run's screen (same density, same
-    # deterministic mesh) — this is the cheap "get the honest numbers without re-optimizing" path.
+    # Re-screening the saved density must reproduce the original run's screen EXACTLY (same density,
+    # same deterministic mesh) — DEFLECTION *and both stress numbers*, since solid-only stress is the
+    # binding verdict. max_iters=6 polarizes the field so solid (rho>=0.5) is more than just the skin.
     designs = [("00_a", decode(np.full(N_DIMS, 0.5)))]
     mp = FeaMeshParams(mesh_size_m=0.006)
-    orig = run_blade_to_batch(designs, tmp_path, mesh_params=mp, max_iters=1, tol=1e-6)
-    summary = rescreen_blade_to_batch(designs, tmp_path, mesh_params=mp, n_workers=1)
+    orig = run_blade_to_batch(designs, tmp_path, mesh_params=mp, max_iters=6, tol=1e-6)
+    summary = rescreen_blade_to_batch(
+        designs, tmp_path, mesh_params=mp, n_workers=1, j_fan_by_name={"00_a": 9.6e12}
+    )
     assert summary["n_succeeded"] == 1 and summary["rescreened"] is True
     assert (tmp_path / "rescreen_summary.json").exists()
-    re_rec = json.loads((tmp_path / "00_a_rescreen.json").read_text())
-    assert re_rec["u_tip_max_mm"] == pytest.approx(orig["designs"][0]["u_tip_max_mm"], rel=1e-3)
-    assert re_rec["remap_max_dist_m"] == pytest.approx(0.0, abs=1e-9)  # deterministic mesh -> identity
+    o = orig["designs"][0]
+    r = json.loads((tmp_path / "00_a_rescreen.json").read_text())
+    assert r["u_tip_max_mm"] == pytest.approx(o["u_tip_max_mm"], rel=1e-6)
+    assert r["max_von_mises_mpa"] == pytest.approx(o["max_von_mises_mpa"], rel=1e-6)
+    assert r["max_von_mises_solid_mpa"] == pytest.approx(o["max_von_mises_solid_mpa"], rel=1e-6)
+    assert r["remap_max_dist_m"] == pytest.approx(0.0, abs=1e-9)  # deterministic mesh -> identity
+    assert r["j_fan_3d"] == pytest.approx(9.6e12)  # fine-J_fan carried into the record for ranking
+
+
+def test_rescreen_repins_skin_solid():
+    # The aero skin is always-solid (holes forbidden). If the loaded density has de-pinned skin (rho<1)
+    # after any remap noise, the re-screen must re-pin it to 1.0 on the rebuilt mesh before screening.
+    params = decode(np.full(N_DIMS, 0.5))
+    mp = FeaMeshParams(mesh_size_m=0.006)
+    problem = build_blade_to_problem(
+        build_blade_fea_mesh(params, mesh_params=mp),
+        hub_radius_m=mp.hub_radius_m, tip_radius_m=mp.tip_radius_m, click_band_m=mp.click_band_m,
+        skin_thickness_m=DEFAULT_SKIN_THICKNESS_M, rmin_m=DEFAULT_RMIN_M, build_filter=False,
+    )
+    frozen = problem.domain.frozen_mask
+    density = np.full(len(frozen), 0.5)
+    density[frozen] = 0.3  # DE-PIN the skin (invalid); the re-screen must repair it
+    res = rescreen_blade_from_density(params, density, problem.domain.element_centroids, mesh_params=mp)
+    assert np.all(res.density[frozen] == 1.0)  # skin restored to solid
 
 
 def test_rescreen_batch_leaves_original_sidecar_untouched(tmp_path):

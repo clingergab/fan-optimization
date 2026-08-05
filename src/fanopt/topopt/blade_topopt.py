@@ -713,12 +713,21 @@ def run_blade_to_batch(
     return summary
 
 
-def _align_density(rebuilt_centroids: np.ndarray, saved_centroids: np.ndarray | None, density: np.ndarray):
+def _align_density(
+    rebuilt_centroids: np.ndarray,
+    saved_centroids: np.ndarray | None,
+    density: np.ndarray,
+    *,
+    max_dist_m: float | None = None,
+):
     """Map a saved density field onto a freshly-rebuilt mesh, returning ``(rho, max_remap_dist_m)``.
 
-    Meshing *should* be deterministic, so element ordering matches and this is the identity. But to be
-    robust to any reordering (or a mesher/version drift), each rebuilt element takes the density of the
-    nearest saved centroid; ``max_remap_dist_m`` (0 when the meshes coincide) surfaces any real drift.
+    Meshing *should* be deterministic, so element ordering matches and this is the identity (max remap
+    distance 0). To be robust to any reordering, each rebuilt element takes the density of the nearest
+    saved centroid. If the rebuilt mesh has genuinely **diverged** from the one that produced ``density``
+    (a gmsh/OCC version or thread-algorithm change between the TO run and this re-screen), the remap would
+    silently smear the carved field onto the wrong elements — so ``max_dist_m`` (if given) is a HARD gate:
+    a max remap distance beyond it raises rather than returning plausible-but-wrong densities.
     ``saved_centroids=None`` trusts exact ordering and only checks the element count.
     """
     density = np.asarray(density, dtype=float)
@@ -726,8 +735,18 @@ def _align_density(rebuilt_centroids: np.ndarray, saved_centroids: np.ndarray | 
         if len(density) != len(rebuilt_centroids):
             raise ValueError(f"density has {len(density)} elems but rebuilt mesh has {len(rebuilt_centroids)}")
         return density, 0.0
-    dist, idx = cKDTree(np.asarray(saved_centroids, dtype=float)).query(rebuilt_centroids)
-    return density[idx], float(dist.max())
+    saved_centroids = np.asarray(saved_centroids, dtype=float)
+    if len(density) != len(saved_centroids):
+        raise ValueError(f"density ({len(density)}) and saved centroids ({len(saved_centroids)}) length mismatch")
+    dist, idx = cKDTree(saved_centroids).query(rebuilt_centroids)
+    remap = float(dist.max())
+    if max_dist_m is not None and remap > max_dist_m:
+        raise ValueError(
+            f"rebuilt mesh diverged from the saved-density mesh: max remap distance {remap * 1e3:.3f} mm "
+            f"> tolerance {max_dist_m * 1e3:.3f} mm ({len(rebuilt_centroids)} rebuilt vs {len(saved_centroids)} "
+            f"saved elems). Re-screen in the same environment that produced the density, or re-run the TO."
+        )
+    return density[idx], remap
 
 
 def rescreen_blade_from_density(
@@ -738,6 +757,7 @@ def rescreen_blade_from_density(
     mesh_params: FeaMeshParams | None = None,
     skin_thickness_m: float = DEFAULT_SKIN_THICKNESS_M,
     rmin_m: float = DEFAULT_RMIN_M,
+    max_remap_dist_m: float | None = None,
 ) -> BladeTOResult:
     """Re-evaluate the structural screen on an ALREADY-carved density field, WITHOUT re-optimizing.
 
@@ -746,10 +766,15 @@ def rescreen_blade_from_density(
     (unused by a pure screen). ``saved_centroids`` (the ``<name>_centroids.npy`` from the original run)
     aligns the field to the rebuilt mesh; the max remap distance is stored in ``result.meta``.
 
-    Mesh/skin params MUST match the run that produced ``density`` or the carved field won't correspond
-    to the geometry — pass the ``mesh_size_m``/``skin_thickness_m`` recorded in that run's summary.
+    Two safeguards against a rebuilt mesh that diverged from the one that carved ``density``:
+    (1) the alignment **hard-gates** on the remap distance (``max_remap_dist_m``, default half a mesh
+    edge) — a diverged mesh raises instead of returning wrong numbers; (2) the aero skin is **re-pinned**
+    solid (ρ≡1) on the rebuilt frozen mask, so the air-pushing faces carry full stiffness regardless of
+    any remap noise (a no-op when the mesh matches). Mesh/skin params MUST match the run that produced
+    ``density`` — pass the ``mesh_size_m``/``skin_thickness_m`` recorded in that run's summary.
     """
     mp = mesh_params or FeaMeshParams()
+    tol = 0.5 * mp.mesh_size_m if max_remap_dist_m is None else max_remap_dist_m
     mesh = build_blade_fea_mesh(params, mesh_params=mp)
     problem = build_blade_to_problem(
         mesh,
@@ -760,12 +785,18 @@ def rescreen_blade_from_density(
         rmin_m=rmin_m,
         build_filter=False,  # filter is OC-only; a screen never uses it
     )
-    rho, remap_dist = _align_density(problem.domain.element_centroids, saved_centroids, density)
+    rho, remap_dist = _align_density(
+        problem.domain.element_centroids, saved_centroids, density, max_dist_m=tol
+    )
+    # Re-pin the always-solid aero skin + floor the interior on the REBUILT mesh (holes-forbidden
+    # invariant). No-op when the mesh matches; repairs skin de-pinning under any sub-tolerance drift.
+    rho = np.clip(rho, problem.rho_min, 1.0)
+    rho[problem.domain.frozen_mask] = 1.0
     res = _screen_result(problem, rho)
     return replace(res, meta={**res.meta, "rescreened": 1.0, "remap_max_dist_m": remap_dist})
 
 
-def _rescreen_one_design(name, params, out, mp, skin_thickness_m, rmin_m):
+def _rescreen_one_design(name, params, out, mp, skin_thickness_m, rmin_m, j_fan_3d=None):
     """Load a design's saved density + centroids from ``out`` and re-screen it (process-pool safe)."""
     try:
         density = np.load(out / f"{name}_density.npy")
@@ -777,10 +808,11 @@ def _rescreen_one_design(name, params, out, mp, skin_thickness_m, rmin_m):
         )
         rec = _result_summary(name, params, res)
         rec["remap_max_dist_m"] = res.meta.get("remap_max_dist_m")
+        rec["j_fan_3d"] = j_fan_3d  # carry the fine-J_fan rank so the results sort/display by wind
         _write_json_durable(out / f"{name}_rescreen.json", rec)
         return name, rec, res
     except Exception as exc:  # isolate a single bad design (incl. its I/O) so one never aborts the batch
-        return name, {"name": name, "error": f"{type(exc).__name__}: {exc}"}, None
+        return name, {"name": name, "error": f"{type(exc).__name__}: {exc}", "j_fan_3d": j_fan_3d}, None
 
 
 def rescreen_blade_to_batch(
@@ -792,6 +824,7 @@ def rescreen_blade_to_batch(
     rmin_m: float = DEFAULT_RMIN_M,
     n_workers: int = 1,
     on_result: Callable[[str, BladeTOResult], None] | None = None,
+    j_fan_by_name: dict[str, float] | None = None,
 ) -> dict:
     """Re-screen already-optimized designs from their saved density fields — no re-optimization.
 
@@ -800,11 +833,14 @@ def rescreen_blade_to_batch(
     (leaving the original ``<name>.json`` untouched) plus an aggregate ``rescreen_summary.json``. Costs
     one factorization per design instead of ~160, so it is ~2 orders of magnitude cheaper than the TO.
     ``n_workers > 1`` runs designs concurrently (RAM-bound, same ~10-20 GB/worker at 0.6 mm as the TO).
-    ``mesh_params``/``skin_thickness_m`` MUST match the original run.
+    ``mesh_params``/``skin_thickness_m`` MUST match the original run. ``j_fan_by_name`` (optional) records
+    each design's fine 3D ``J_fan`` into its record so results can sort/display by wind, not by the
+    coarse-rank name prefix.
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     mp = mesh_params or FeaMeshParams()
+    j_fan = j_fan_by_name or {}
 
     records: list[dict] = []
 
@@ -821,7 +857,7 @@ def rescreen_blade_to_batch(
         _write_json_durable(out / "rescreen_summary.json", summary)
         return summary
 
-    args = [(name, params, out, mp, skin_thickness_m, rmin_m) for name, params in designs]
+    args = [(name, params, out, mp, skin_thickness_m, rmin_m, j_fan.get(name)) for name, params in designs]
     summary = _write_summary()
     if n_workers > 1 and len(args) > 1:
         with ProcessPoolExecutor(max_workers=n_workers) as pool:
