@@ -11,6 +11,7 @@ from fanopt.geometry.fan_seal import (
     deployed_gap_range_m,
     deployed_panel_gap_m,
     panel_thickness_range_m,
+    rib_containment_floor_m,
     thin_ribs,
 )
 
@@ -34,10 +35,19 @@ def test_thin_ribs_never_increases():
     assert thinned.t_rib_hub_m == pytest.approx(_P.t_rib_hub_m)
 
 
-def test_thin_ribs_floors_at_panel_thickness():
-    # Rib must still contain the panel: a target below the thickest panel clamps up to it.
-    thinned = thin_ribs(_P, 0.0005)  # 0.5 mm, below any panel
-    assert thinned.t_rib_hub_m == pytest.approx(panel_thickness_range_m(_P)[1])
+def test_thin_ribs_floors_at_containment_not_just_thickness():
+    # Rib must contain the OFFSET panel: floor is max(t_panel + 2|offset|), not just t_panel. A target
+    # below that clamps up to the containment floor (>= the thickest panel, since offsets are >= 0).
+    floor = rib_containment_floor_m(_P)
+    thinned = thin_ribs(_P, 0.0005)  # 0.5 mm, below any physical floor
+    assert thinned.t_rib_hub_m == pytest.approx(floor)
+    assert floor >= panel_thickness_range_m(_P)[1]  # containment floor never below the panel thickness
+
+
+def test_thin_ribs_keeps_panel_contained():
+    # After thinning, the rib still encloses the offset panel everywhere (t_rib >= t_panel + 2|offset|).
+    thinned = thin_ribs(_P, 0.0)
+    assert thinned.t_rib_hub_m + 1e-12 >= rib_containment_floor_m(_P)
 
 
 def test_thinning_ribs_shrinks_layer_spacing_and_gap():

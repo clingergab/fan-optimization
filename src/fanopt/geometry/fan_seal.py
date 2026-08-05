@@ -25,6 +25,7 @@ __all__ = [
     "panel_thickness_range_m",
     "deployed_panel_gap_m",
     "deployed_gap_range_m",
+    "rib_containment_floor_m",
     "thin_ribs",
 ]
 
@@ -59,14 +60,29 @@ def deployed_panel_gap_m(params: BladeParams) -> float:
     return layer_spacing_m(params) - panel_thickness_range_m(params)[0]
 
 
+def rib_containment_floor_m(params: BladeParams) -> float:
+    """Minimum rib thickness that still **contains** the offset panel: ``max(t_panel + 2·|offset|)``.
+
+    The rib rails sit at ``±t_rib/2``; the panel membrane sits at ``offset ± t_panel/2``. Containment
+    needs ``t_rib/2 ≥ |offset| + t_panel/2`` at every grid node, i.e. ``t_rib ≥ t_panel + 2·|offset|``.
+    Clamping the rib to the panel *thickness* alone (ignoring the mean-surface offset) drives containment
+    negative — the panel pokes past the rib and the folded stack collides.
+    """
+    return max(
+        t + 2.0 * abs(off)
+        for orow, trow in zip(params.panel_offsets_m, params.panel_thickness_m, strict=True)
+        for off, t in zip(orow, trow, strict=True)
+    )
+
+
 def thin_ribs(params: BladeParams, target_rib_m: float) -> BladeParams:
     """Return ``params`` with both rib-thickness knots reduced to ``target_rib_m`` (never increased).
 
-    Clamped to ``[max panel thickness, current rib]`` so the rib still **contains** the panel (the panel
-    must not poke past the rib) and never grows. Reducing the rib lowers ``layer_spacing`` → closes the
-    deployed gaps and thins the fold; the boss follows automatically (it is rebuilt one layer tall).
+    Clamped to ``[rib_containment_floor_m, current rib]`` so the rib still **contains** the offset panel
+    (``t_panel + 2·|offset|``, NOT just ``t_panel``) and never grows. Reducing the rib lowers
+    ``layer_spacing`` → closes the deployed gaps and thins the fold; the boss follows automatically.
     Re-verify structure/fold after — this trades rib stiffness (there is margin) for sealing.
     """
-    floor = max(panel_thickness_range_m(params)[1], RIB_THICKNESS_RANGE_M[0])  # rib ≥ thickest panel
+    floor = max(rib_containment_floor_m(params), RIB_THICKNESS_RANGE_M[0])
     target = max(floor, min(target_rib_m, params.t_rib_hub_m, params.t_rib_tip_m))
     return dataclasses.replace(params, t_rib_hub_m=target, t_rib_tip_m=target)
