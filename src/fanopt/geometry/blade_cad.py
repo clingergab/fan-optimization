@@ -43,6 +43,7 @@ from fanopt.geometry.schema import (
     PIVOT_PIN_DIAMETER_M,
     RHO_PETG_KG_PER_M3,
 )
+from fanopt.geometry.to_stl import carved_blade_mesh
 
 __all__ = [
     "N_RADIAL_SECTIONS",
@@ -50,6 +51,8 @@ __all__ = [
     "make_blade_solid",
     "export_blade_step",
     "blade_trimesh",
+    "boss_trimesh",
+    "carved_blade_with_boss",
     "blade_volume_m3",
     "blade_mass_kg",
     "fold_collision_volume_m3",
@@ -259,10 +262,29 @@ def _sew_solid(faces: list[cq.Face]) -> cq.Solid:
     return cq.Solid(ShapeFix_Solid().SolidFromShell(shell))
 
 
-def _boss_solid(params: BladeParams, *, clearance_m: float | None = None) -> cq.Workplane:
+# Boss detent — a RIGID bump/recess pair on the stacked hub faces that clicks the fan into the folded
+# AND deployed positions. The pin's axial preload is the spring (the bump rides ~0.3 mm out of one
+# recess and drops into the next), so there is no flexing plastic part → no PETG living-hinge fatigue,
+# and it lives on the hub, off the aero surface. The bump on a blade's TOP seats in the neighbour's
+# BOTTOM recess; the bottom carries two recesses (folded 0°, deployed −pitch) offset by one deploy pitch.
+_DETENT_R_POS_M: float = 0.0035  # radial position of the feature on the boss face
+_DETENT_RADIUS_M: float = 0.0012  # feature radius
+_DETENT_DEPTH_M: float = 0.0003  # bump height / recess depth (rides within the fold clearance)
+
+
+def _detent_cyl(angle_deg: float, z0: float, height: float, radius: float) -> cq.Workplane:
+    x = _DETENT_R_POS_M * math.cos(math.radians(angle_deg))
+    y = _DETENT_R_POS_M * math.sin(math.radians(angle_deg))
+    return cq.Workplane("XY").circle(radius).extrude(height).translate((x, y, z0))
+
+
+def _boss_solid(
+    params: BladeParams, *, clearance_m: float | None = None, detent: bool = False
+) -> cq.Workplane:
     """Pivot boss: a ``PIVOT_BOSS_OD_M`` cylinder one layer tall, pin hole subtracted.
 
     ``clearance_m`` overrides the fold clearance → a shorter boss packs the deployed deck tighter.
+    ``detent=True`` adds the click bump (top) + folded/deployed recesses (bottom) — see the module note.
     """
     s = layer_spacing_m(params, clearance_m=clearance_m)
     boss = cq.Workplane("XY").circle(PIVOT_BOSS_RADIUS_M).extrude(s).translate((0.0, 0.0, -s / 2.0))
@@ -272,21 +294,30 @@ def _boss_solid(params: BladeParams, *, clearance_m: float | None = None) -> cq.
         .extrude(2.0 * s)
         .translate((0.0, 0.0, -s))
     )
-    return boss.cut(hole)
+    boss = boss.cut(hole)
+    if detent:
+        pitch = math.degrees(INTER_BLADE_ANGLE_RAD)
+        boss = boss.union(_detent_cyl(0.0, s / 2.0, _DETENT_DEPTH_M, _DETENT_RADIUS_M))  # bump on top
+        for a in (0.0, -pitch):  # recesses on the bottom: folded (0°) and deployed (−pitch)
+            boss = boss.cut(_detent_cyl(a, -s / 2.0, _DETENT_DEPTH_M, _DETENT_RADIUS_M * 1.15))
+    return boss
 
 
-def make_blade_solid(params: BladeParams, *, clearance_m: float | None = None) -> cq.Workplane:
+def make_blade_solid(
+    params: BladeParams, *, clearance_m: float | None = None, detent: bool = False
+) -> cq.Workplane:
     """Build one both-face blade solid (dished sector + rib edges + boss).
 
     Triangulates both surfaces + walls over ``N_RADIAL_SECTIONS × N_TANGENTIAL_SAMPLES``,
     sews them into a watertight solid, then unions the pivot boss. The result is a single
     valid solid in the blade's own frame (pin = +z axis); ``deploy``/fold place copies by
-    rotation about +z. ``clearance_m`` overrides the fold clearance (sizes the boss height).
+    rotation about +z. ``clearance_m`` sizes the boss height (fold pitch); ``detent`` adds the
+    hub click bump/recess.
     """
     top, bot = _surface_grids(params)
     solid = _sew_solid(_blade_faces(top, bot))
     blade = cq.Workplane("XY").newObject([solid])
-    return blade.union(_boss_solid(params, clearance_m=clearance_m))
+    return blade.union(_boss_solid(params, clearance_m=clearance_m, detent=detent))
 
 
 def export_blade_step(params: BladeParams, path: str) -> str:
@@ -305,6 +336,57 @@ def blade_trimesh(params: BladeParams, tol: float = 0.0005) -> tuple[np.ndarray,
     vertices = np.array([[v.x, v.y, v.z] for v in verts], dtype=float)
     faces = np.array(tris, dtype=int)
     return vertices, faces
+
+
+def boss_trimesh(
+    params: BladeParams,
+    *,
+    clearance_m: float | None = None,
+    detent: bool = False,
+    tol: float = 0.0003,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Triangulated surface of the pivot boss alone — the reduced-clearance, detented hub for the print.
+
+    Tessellates just :func:`_boss_solid` (not the whole blade) so a fresh boss can be fused onto the
+    carved TO dish; ``clearance_m`` sizes the fold pitch, ``detent`` adds the click bump/recess.
+    """
+    verts, tris = _boss_solid(params, clearance_m=clearance_m, detent=detent).val().tessellate(tol)
+    return np.array([[v.x, v.y, v.z] for v in verts], dtype=float), np.array(tris, dtype=int)
+
+
+def carved_blade_with_boss(
+    density: np.ndarray,
+    centroids: np.ndarray,
+    params: BladeParams,
+    *,
+    voxel_pitch_m: float,
+    clearance_m: float | None = None,
+    detent: bool = False,
+    level: float = 0.5,
+    outside_tol_m: float | None = None,
+    boss_tol_m: float = 0.0003,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fuse the carved TO dish with a freshly-built CAD boss → one printable ``(verts, faces)``.
+
+    The marching-cubes mesh from :func:`carved_blade_mesh` bakes the boss at the *original* fold
+    clearance with no detent, so a tighter deck or a click feature can't be applied to it after the fact.
+    This voids the hub column of the TO density (radius ``PIVOT_BOSS_RADIUS_M``), carves the dish around
+    the resulting hole, then drops in a CAD boss built at ``clearance_m`` (shorter → tighter deployed gap)
+    with the optional ``detent``. The two watertight bodies overlap at the hub and are emitted as one mesh;
+    every mainstream slicer unions overlapping solids, so the print is a single connected part. The dish
+    geometry (the aero/structural surface the TO produced) is untouched — only the hub is rebuilt.
+    """
+    centroids = np.asarray(centroids, dtype=float)
+    density = np.asarray(density, dtype=float).copy()
+    r_xy = np.hypot(centroids[:, 0], centroids[:, 1])
+    density[r_xy < PIVOT_BOSS_RADIUS_M] = 0.0  # drop the baked TO boss; the CAD boss below replaces it
+    dish_v, dish_f = carved_blade_mesh(
+        density, centroids, voxel_pitch_m=voxel_pitch_m, level=level, outside_tol_m=outside_tol_m
+    )
+    boss_v, boss_f = boss_trimesh(params, clearance_m=clearance_m, detent=detent, tol=boss_tol_m)
+    verts = np.vstack([dish_v, boss_v])
+    faces = np.vstack([dish_f, boss_f + len(dish_v)])
+    return verts, faces
 
 
 def blade_volume_m3(params: BladeParams) -> float:
