@@ -32,6 +32,14 @@ If two docs seem to conflict, the table above wins.
 
 ## ADR ledger (supersession chain, newest first)
 
+- **ADR-0008 — Aero BO ranked on rigid geometry (flex-blind ranking)** (2026-08-04). Doc:
+  [`0008-flex-blind-aero-ranking.md`](0008-flex-blind-aero-ranking.md).
+  **Status: ✅ ACCEPTED — known-limitation record.** Annotates ADR-0004 (does NOT supersede it): the V1
+  aero BO ranked designs by `J_fan` on the **rigid** blade (the §2.3 "No FSI" lock), but the panel flexes
+  5–15 mm under aero (§3.1) and flex is likely **differential** across designs — so the V1 selection
+  *order* is unverified against flex. Fidelity gap, not a wrong-objective error. V1 proceeds (the feel
+  test judges the real flexing blade); V1.5/V2 action = one-way FSI across a stiffness spread, re-rank
+  finalists before any BO redo. Tracked in `../V2_backlog.md`.
 - **ADR-0007 — Phase-2 per-design 3D blade TO** (2026-08-02). Doc:
   [`0007-phase2-per-design-3d-blade-to.md`](0007-phase2-per-design-3d-blade-to.md).
   **Status: ✅ ACCEPTED — CURRENT.** Supersedes the Phase-2 TO *approach* of ADR-0001 /
