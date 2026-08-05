@@ -266,6 +266,34 @@ proposal time instead of wasting a ~85-min 3D verification on it). Benefits V1.5
 (a cleaner, all-buildable Pareto) and is a **hard prerequisite for the ML/generative
 route** — a generative model will propose far more invalid geometry than BO does.
 
+### Rigid-aero ranking validity — flex-blind BO (found 2026-08-04, ADR-0008)
+
+Phase-4's aero BO ranked every design by `J_fan` computed on the **rigid** blade (the §2.3 "No FSI"
+lock). But the panel flexes **5–15 mm under aero** (§3.1), and Stage-4 TO measured ~10 mm under the
+inertial snap (elastic, wind-irrelevant — springs back at 3–6 MPa) and ~1.3 mm under the 10 Pa screen
+placeholder. Flex was never in the objective, and it almost certainly is **not uniform across designs**:
+a higher-`J_fan` design sees higher reaction pressure → flexes more → loses more of that wind; a
+thinner-rib design flexes more than a thick-rib one. So the **rigid ranking may not survive on the real
+flexed blade** — the V1 *selection order* is unverified, with a plausible systematic bias toward
+thin/flex-vulnerable winners. This is a **fidelity gap** (right objective, idealized geometry), not a
+wrong-objective error like ADR-0004; magnitude is unmeasured.
+
+**Distinct from the V1.5 staggered-loop entry above:** that treats panel-compliance→aero as a
+*co-optimization* opportunity (make a design better). This entry is a **validation** concern (is the V1
+*ranking* even right?). Same machinery, different question — so the staggered loop's static-deflection
+step gains a second purpose.
+
+**Check (V1.5 / V2 — do NOT redo V1):** one-way FSI — deform candidates under the **real**
+productive-stroke aero pressure (not the 10 Pa placeholder), re-run CFD on the deformed shape, compare
+flexed-`J_fan` to rigid-`J_fan`. Must run across a **spread of designs** on the stiffness / rib-thickness
+axis (differential flex + reshuffle only show by comparing designs) — ~a handful × ≥2 CFD each (~8–16
+runs), **not one run**. **If it reshuffles:** re-rank finalists on flexed-`J_fan` (cheap) before any BO
+redo; only redo the *search* if flex changes which design-space *regions* are good. Bonus: the
+Δ`J_fan`-vs-flex curve gives a **physics-derived** max-flex limit to replace the arbitrary 1 mm TO screen
+threshold (ADR-0007). **V1 is past the point of no return and proceeds as-is** — the blinded feel test
+judges the *real flexing* printed blade, so the final V1 pick is not flex-blind even though the BO
+selection was.
+
 ---
 
 ## ML-driven TO + AO (research track — V2/V3)
