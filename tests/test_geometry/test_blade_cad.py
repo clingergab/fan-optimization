@@ -28,6 +28,8 @@ from fanopt.geometry.blade_cad import (
     blade_mass_kg,
     blade_trimesh,
     blade_volume_m3,
+    boss_trimesh,
+    carved_blade_with_boss,
     export_blade_step,
     fold_collision_clear,
     fold_collision_volume_m3,
@@ -36,6 +38,7 @@ from fanopt.geometry.blade_cad import (
 )
 import fanopt.geometry.blade_cad as blade_cad_mod
 from fanopt.geometry.schema import PIVOT_BOSS_RADIUS_M
+from fanopt.geometry.to_stl import carved_blade_mesh
 
 
 def test_n_radial_sections_default_is_the_campaign_lock():
@@ -319,6 +322,61 @@ def test_tighter_clearance_still_nests():
 def test_analytic_gate_handles_zero_swing_steps():
     # Guard: n_swing_steps=0 (folded pose only) must not divide by zero.
     assert fold_penetration_m(_sample(), n_swing_steps=0) == pytest.approx(-FOLD_CLEARANCE_M, abs=5e-5)
+
+
+def _synthetic_puck() -> tuple[np.ndarray, np.ndarray]:
+    """A solid disk of unit-density centroids (radius 15 mm, 3 z-layers) — a stand-in TO cloud whose
+    hub column the boss-fusion voids and rebuilds. Not a real blade; just exercises the fuse plumbing."""
+    xs = np.arange(-0.015, 0.0151, 0.002)
+    grid = np.stack(np.meshgrid(xs, xs, np.array([-0.002, 0.0, 0.002]), indexing="ij"), axis=-1)
+    pts = grid.reshape(-1, 3)
+    pts = pts[np.hypot(pts[:, 0], pts[:, 1]) <= 0.015]
+    return np.ones(len(pts)), pts
+
+
+def test_boss_trimesh_is_a_valid_indexed_mesh():
+    v, f = boss_trimesh(_sample())
+    assert v.ndim == 2 and v.shape[1] == 3 and len(v) > 0
+    assert int(f.max()) < len(v) and int(f.min()) >= 0
+
+
+def test_boss_trimesh_clearance_shortens_the_boss():
+    # A tighter fold clearance builds a shorter boss (the fold pitch), so the tessellated z-extent drops
+    # by exactly the clearance reduction — this is what pulls the deployed deck (and its gap) together.
+    tall = boss_trimesh(_sample())[0][:, 2]
+    short = boss_trimesh(_sample(), clearance_m=0.2e-3)[0][:, 2]
+    dz = (tall.max() - tall.min()) - (short.max() - short.min())
+    assert dz == pytest.approx(FOLD_CLEARANCE_M - 0.2e-3, abs=3e-5)
+
+
+def test_carved_blade_with_boss_is_a_valid_fused_mesh():
+    dens, pts = _synthetic_puck()
+    v, f = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002, clearance_m=0.3e-3)
+    assert v.ndim == 2 and v.shape[1] == 3 and len(v) > 0
+    assert int(f.max()) < len(v) and int(f.min()) >= 0  # face indices valid after the concat offset
+
+
+def test_carved_blade_with_boss_adds_the_cad_boss_body():
+    # Fusing must add vertices beyond the holed dish alone: the CAD boss is a second body in the mesh.
+    dens, pts = _synthetic_puck()
+    voided = dens.copy()
+    voided[np.hypot(pts[:, 0], pts[:, 1]) < PIVOT_BOSS_RADIUS_M] = 0.0
+    dish_v, _ = carved_blade_mesh(voided, pts, voxel_pitch_m=0.002)
+    fused_v, _ = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002)
+    assert len(fused_v) > len(dish_v)
+
+
+def test_carved_blade_with_boss_voids_inside_the_boss_od_for_overlap():
+    # M3 fix: the hub is voided a hair INSIDE the boss OD (PIVOT_BOSS_RADIUS_M − overlap), so the CAD boss
+    # (radius = full OD) overlaps the retained dish by a solid ring instead of abutting it on a coincident
+    # cylinder. Verify the void radius is strictly inside the OD and the [OD−overlap, OD) ring is RETAINED.
+    assert 0.0 < blade_cad_mod._BOSS_FUSE_OVERLAP_M < PIVOT_BOSS_RADIUS_M
+    dens, pts = _synthetic_puck()
+    r = np.hypot(pts[:, 0], pts[:, 1])
+    void_mask = r < PIVOT_BOSS_RADIUS_M - blade_cad_mod._BOSS_FUSE_OVERLAP_M
+    ring = (r >= PIVOT_BOSS_RADIUS_M - blade_cad_mod._BOSS_FUSE_OVERLAP_M) & (r < PIVOT_BOSS_RADIUS_M)
+    assert ring.any()  # the fixture actually has centroids in the overlap ring this guards
+    assert not void_mask[ring].any()  # ring centroids are NOT voided → dish keeps material to bond to
 
 
 def _way2_checkerboard() -> BladeParams:

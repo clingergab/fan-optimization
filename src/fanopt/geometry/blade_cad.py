@@ -43,6 +43,7 @@ from fanopt.geometry.schema import (
     PIVOT_PIN_DIAMETER_M,
     RHO_PETG_KG_PER_M3,
 )
+from fanopt.geometry.to_stl import carved_blade_mesh
 
 __all__ = [
     "N_RADIAL_SECTIONS",
@@ -50,6 +51,8 @@ __all__ = [
     "make_blade_solid",
     "export_blade_step",
     "blade_trimesh",
+    "boss_trimesh",
+    "carved_blade_with_boss",
     "blade_volume_m3",
     "blade_mass_kg",
     "fold_collision_volume_m3",
@@ -281,7 +284,7 @@ def make_blade_solid(params: BladeParams, *, clearance_m: float | None = None) -
     Triangulates both surfaces + walls over ``N_RADIAL_SECTIONS × N_TANGENTIAL_SAMPLES``,
     sews them into a watertight solid, then unions the pivot boss. The result is a single
     valid solid in the blade's own frame (pin = +z axis); ``deploy``/fold place copies by
-    rotation about +z. ``clearance_m`` overrides the fold clearance (sizes the boss height).
+    rotation about +z. ``clearance_m`` sizes the boss height (fold pitch).
     """
     top, bot = _surface_grids(params)
     solid = _sew_solid(_blade_faces(top, bot))
@@ -305,6 +308,59 @@ def blade_trimesh(params: BladeParams, tol: float = 0.0005) -> tuple[np.ndarray,
     vertices = np.array([[v.x, v.y, v.z] for v in verts], dtype=float)
     faces = np.array(tris, dtype=int)
     return vertices, faces
+
+
+# The carved dish's hub column is voided at a radius INSIDE the boss OD so the fused CAD boss overlaps
+# the retained dish by a solid ring (not a zero-volume coincident-cylinder abutment, which mesh-repair
+# tools and some slicers leave as a seam/void instead of a union).
+_BOSS_FUSE_OVERLAP_M: float = 0.0005
+
+
+def boss_trimesh(
+    params: BladeParams, *, clearance_m: float | None = None, tol: float = 0.0003
+) -> tuple[np.ndarray, np.ndarray]:
+    """Triangulated surface of the pivot boss alone — the reduced-clearance hub for the print.
+
+    Tessellates just :func:`_boss_solid` (not the whole blade) so a fresh boss can be fused onto the
+    carved TO dish; ``clearance_m`` sizes the fold pitch (a shorter boss packs the deployed deck tighter).
+    """
+    verts, tris = _boss_solid(params, clearance_m=clearance_m).val().tessellate(tol)
+    return np.array([[v.x, v.y, v.z] for v in verts], dtype=float), np.array(tris, dtype=int)
+
+
+def carved_blade_with_boss(
+    density: np.ndarray,
+    centroids: np.ndarray,
+    params: BladeParams,
+    *,
+    voxel_pitch_m: float,
+    clearance_m: float | None = None,
+    level: float = 0.5,
+    outside_tol_m: float | None = None,
+    boss_tol_m: float = 0.0003,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fuse the carved TO dish with a freshly-built CAD boss → one printable ``(verts, faces)``.
+
+    The marching-cubes mesh from :func:`carved_blade_mesh` bakes the boss at the *original* fold
+    clearance, so a tighter deck can't be applied to it after the fact. This voids the hub column of the
+    TO density (radius ``PIVOT_BOSS_RADIUS_M − _BOSS_FUSE_OVERLAP_M``, i.e. a hair INSIDE the boss OD so
+    the two bodies genuinely overlap rather than merely abut), carves the dish around the resulting hole,
+    then drops in a CAD boss built at ``clearance_m`` (shorter → tighter deployed gap). The overlapping
+    watertight bodies are emitted as one mesh; mainstream slicers union overlapping (not just coincident)
+    solids into one connected part. The dish geometry (the aero/structural surface TO produced) is
+    untouched — only the hub is rebuilt.
+    """
+    centroids = np.asarray(centroids, dtype=float)
+    density = np.asarray(density, dtype=float).copy()
+    r_xy = np.hypot(centroids[:, 0], centroids[:, 1])
+    density[r_xy < PIVOT_BOSS_RADIUS_M - _BOSS_FUSE_OVERLAP_M] = 0.0  # void inside the OD → real overlap
+    dish_v, dish_f = carved_blade_mesh(
+        density, centroids, voxel_pitch_m=voxel_pitch_m, level=level, outside_tol_m=outside_tol_m
+    )
+    boss_v, boss_f = boss_trimesh(params, clearance_m=clearance_m, tol=boss_tol_m)
+    verts = np.vstack([dish_v, boss_v])
+    faces = np.vstack([dish_f, boss_f + len(dish_v)])
+    return verts, faces
 
 
 def blade_volume_m3(params: BladeParams) -> float:
