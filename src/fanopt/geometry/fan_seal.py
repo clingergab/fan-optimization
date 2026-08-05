@@ -14,12 +14,33 @@ from __future__ import annotations
 import dataclasses
 
 from fanopt.geometry.blade import (
+    FOLD_CLEARANCE_M,
     RIB_THICKNESS_RANGE_M,
     BladeParams,
+    blade_z_envelope_m,
     layer_spacing_m,
 )
 
-__all__ = ["panel_thickness_range_m", "deployed_panel_gap_m", "thin_ribs"]
+__all__ = [
+    "panel_thickness_range_m",
+    "deployed_panel_gap_m",
+    "deployed_gap_range_m",
+    "thin_ribs",
+]
+
+
+def deployed_gap_range_m(params: BladeParams, clearance_m: float | None = None) -> tuple[float, float]:
+    """``(min_gap, max_gap)`` vertical slot between adjacent deployed blades (m), with a clearance override.
+
+    Surface-of-revolution ⇒ the bow cancels and the slot is ``envelope + clearance − h_top − h_bot``.
+    The MIN is where both facing surfaces are the thickest section (the rib) → the slot collapses to the
+    ``clearance``. The MAX is where both are the thinnest panel → ``envelope + clearance − panel_min``.
+    ``clearance_m`` defaults to the locked ``FOLD_CLEARANCE_M``; pass a smaller value to model a tighter
+    fold (thinner boss). The envelope tracks ``params`` (so pass thinned-rib params to model the rib fix).
+    """
+    cl = FOLD_CLEARANCE_M if clearance_m is None else clearance_m
+    env = blade_z_envelope_m(params)
+    return cl, env + cl - panel_thickness_range_m(params)[0]
 
 
 def panel_thickness_range_m(params: BladeParams) -> tuple[float, float]:
