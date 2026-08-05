@@ -21,14 +21,18 @@ from fanopt.geometry.schema import INTER_BLADE_ANGLE_DEG
 __all__ = ["fan_blade_poses", "apply_pose", "pose_fan"]
 
 
-def fan_blade_poses(blade_count: int, spacing_m: float, *, deployed: bool) -> list[tuple[float, float]]:
+def fan_blade_poses(
+    blade_count: int, spacing_m: float, *, deployed: bool, direction: int = 1
+) -> list[tuple[float, float]]:
     """``(rotation_deg about +z, z_offset_m)`` for each blade in the folded or deployed fan.
 
     Deployed rotations are centred on 0 (symmetric fan); folded rotations are all 0 (aligned stack).
-    Both states place blade *i* at ``z = i · spacing_m`` — the fixed pin layers.
+    Both states place blade *i* at ``z = i · spacing_m`` — the fixed pin layers. ``direction`` (+1/−1)
+    flips which way the leaves fan out (which layer sweeps which way) — a fold-symmetric choice that
+    only changes the shingle/overlap sense (and comfort), never the per-blade aero.
     """
     return [
-        (INTER_BLADE_ANGLE_DEG * (i - (blade_count - 1) / 2.0) if deployed else 0.0, i * spacing_m)
+        (direction * INTER_BLADE_ANGLE_DEG * (i - (blade_count - 1) / 2.0) if deployed else 0.0, i * spacing_m)
         for i in range(blade_count)
     ]
 
@@ -50,15 +54,17 @@ def pose_fan(
     *,
     deployed: bool,
     blade_count: int | None = None,
+    direction: int = 1,
 ) -> list[tuple[np.ndarray, np.ndarray]]:
     """Pose one blade's ``(verts, faces)`` into the whole fan → N ``(posed_verts, faces)``.
 
     ``faces`` is shared unchanged across blades (only the vertices move). Both the count and the z-layer
     spacing come from the design: ``blade_count`` defaults to ``params.blade_count`` (so a legacy 8/10-blade
     design poses as itself, not a hard-coded 12), and the spacing is the design's own
-    :func:`fanopt.geometry.blade.layer_spacing_m` (blade z-envelope + fold clearance).
+    :func:`fanopt.geometry.blade.layer_spacing_m` (blade z-envelope + fold clearance). ``direction`` (+1/−1)
+    reverses the deploy fan-out sense (top-vs-bottom layers swap sweep sides) — fold-symmetric, aero-neutral.
     """
     n = getattr(params, "blade_count", BLADE_COUNT) if blade_count is None else blade_count
     spacing = layer_spacing_m(params)
-    poses = fan_blade_poses(n, spacing, deployed=deployed)
+    poses = fan_blade_poses(n, spacing, deployed=deployed, direction=direction)
     return [(apply_pose(verts, rot, z), faces) for rot, z in poses]

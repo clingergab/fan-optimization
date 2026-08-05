@@ -27,6 +27,24 @@ def test_deployed_poses_are_symmetric_about_zero():
     assert rots[-1] - rots[0] == pytest.approx(11 * INTER_BLADE_ANGLE_DEG)  # full 11-gap spread
 
 
+def test_direction_reverses_deploy_fan_out():
+    fwd = fan_blade_poses(12, 0.004, deployed=True, direction=1)
+    rev = fan_blade_poses(12, 0.004, deployed=True, direction=-1)
+    assert [r for r, _z in rev] == [-r for r, _z in fwd]  # every rotation negated
+    assert [z for _r, z in rev] == [z for _r, z in fwd]  # z-layers unchanged (fold-symmetric)
+
+
+def test_pose_fan_direction_passes_through():
+    params = decode(np.full(N_DIMS, 0.5))
+    v = np.array([[0.1, 0.0, 0.0]])
+    f = np.array([[0, 0, 0]])
+    fwd = pose_fan(v, f, params, deployed=True, direction=1)
+    rev = pose_fan(v, f, params, deployed=True, direction=-1)
+    # blade 0's posed x,y is mirrored across the x-axis (opposite rotation sign) but same radius
+    assert np.hypot(*fwd[0][0][0, :2]) == pytest.approx(np.hypot(*rev[0][0][0, :2]))
+    assert fwd[0][0][0, 1] == pytest.approx(-rev[0][0][0, 1])
+
+
 def test_deployed_z_layers_match_folded():
     folded = fan_blade_poses(12, 0.004, deployed=False)
     deployed = fan_blade_poses(12, 0.004, deployed=True)
