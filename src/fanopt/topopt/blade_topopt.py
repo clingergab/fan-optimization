@@ -36,6 +36,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from fanopt.geometry.blade import BladeParams
 from fanopt.geometry.schema import (
@@ -84,6 +85,8 @@ __all__ = [
     "topology_optimize_blade",
     "topology_optimize_blade_screened",
     "run_blade_to_batch",
+    "rescreen_blade_from_density",
+    "rescreen_blade_to_batch",
     "DEFAULT_SKIN_THICKNESS_M",
     "DEFAULT_VOLFRAC_LADDER",
     "DEFAULT_U_TIP_LIMIT_M",
@@ -195,6 +198,7 @@ def build_blade_to_problem(
     penal: float = SIMP_PENALTY,
     shear_modulus_z_pa: float | None = None,
     use_revolution_frames: bool = True,
+    build_filter: bool = True,
 ) -> BladeTOProblem:
     """Assemble the per-design SIMP problem from a tagged blade tet mesh.
 
@@ -232,7 +236,9 @@ def build_blade_to_problem(
     g_z = in_plane_shear_modulus(E_PETG_Z_PA, NU_PETG) if shear_modulus_z_pa is None else shear_modulus_z_pa
     base_c = transversely_isotropic_stiffness(E_PETG_XY_PA, E_PETG_Z_PA, NU_PETG, NU_PETG, g_z)
     model = build_fea_model(nodes, tets, base_c, mesh.support_node_ids, material_frames=frames)
-    filter_matrix = build_density_filter_unstructured(centroids, rmin_m, volumes)
+    # The density filter is only used by the OC loop; the re-screen path skips it (build_filter=False)
+    # to avoid building the ~10^8-nonzero filter for a pure evaluation.
+    filter_matrix = build_density_filter_unstructured(centroids, rmin_m, volumes) if build_filter else None
 
     domain = DesignDomain(
         element_centroids=centroids,
@@ -353,13 +359,33 @@ def run_blade_topology_optimization(
             converged = True
             break
 
-    # Structural screen: worst deflection + peak von Mises over ALL FOUR load cases and ALL
-    # elements (the frozen aero skin carries the extreme-fibre bending stress — excluding it
-    # would hide the true peak; a single-load screen would miss the click/inertial worst case).
-    # The inertial load here tracks the CARVED mass (element_density=rho) — the honest as-printed
-    # deflection; the OC loop above kept full-solid inertial for the exact self-adjoint sensitivity.
     rho = _physical_density(problem, x)
-    k = assemble_global_stiffness(model, density=rho, penal=penal)
+    return _screen_result(problem, rho, compliance_history=history, converged=converged, iterations=iterations)
+
+
+def _screen_result(
+    problem: BladeTOProblem,
+    rho: np.ndarray,
+    *,
+    compliance_history: Sequence[float] = (),
+    converged: bool = False,
+    iterations: int = 0,
+) -> BladeTOResult:
+    """Structural screen on a physical density ``rho`` → a :class:`BladeTOResult` (one factorization).
+
+    Worst deflection + peak von Mises over ALL FOUR load cases and ALL elements (the frozen aero skin
+    carries the extreme-fibre bending stress — excluding it would hide the true peak; a single-load
+    screen would miss the click/inertial worst case), plus the solid-only (ρ ≥ threshold) stress. The
+    inertial load tracks the CARVED mass (``element_density=rho``) — the honest as-printed deflection.
+    Shared by the optimizer's final screen and the standalone re-screen path; it never touches the OC
+    loop or the density filter, so ``rho`` is taken as-is (already filtered/pinned upstream).
+    """
+    dom = problem.domain
+    model = problem.fea_model
+    volumes = dom.element_volumes
+    frozen, design = dom.frozen_mask, dom.design_mask
+
+    k = assemble_global_stiffness(model, density=rho, penal=problem.penal)
     screen_load_cases = _load_cases(problem, element_density=rho)
     solid = rho >= SOLID_STRESS_THRESHOLD  # elements that survive to the printed part
     u_tip_by_load: dict[str, float] = {}
@@ -371,9 +397,6 @@ def run_blade_topology_optimization(
         vm = von_mises(element_stresses(model, u))
         vm_by_load[lc.name] = float(vm.max())
         vm_solid_by_load[lc.name] = float(vm[solid].max()) if solid.any() else 0.0
-    u_tip = max(u_tip_by_load.values())
-    max_vm = max(vm_by_load.values())
-    max_vm_solid = max(vm_solid_by_load.values())
 
     retained_vol = float((volumes * rho).sum())
     full_vol = float(volumes.sum())
@@ -381,13 +404,13 @@ def run_blade_topology_optimization(
     design_retained = float((volumes * rho)[design].sum())
     return BladeTOResult(
         density=rho,
-        compliance_history=tuple(history),
+        compliance_history=tuple(compliance_history),
         design_volume_fraction=design_retained / design_full if design_full else 0.0,
         volume_removed_frac=1.0 - retained_vol / full_vol if full_vol else 0.0,
         mass_kg=RHO_PETG_KG_PER_M3 * retained_vol,
-        u_tip_max_m=u_tip,
-        max_von_mises_pa=max_vm,
-        max_von_mises_solid_pa=max_vm_solid,
+        u_tip_max_m=max(u_tip_by_load.values()),
+        max_von_mises_pa=max(vm_by_load.values()),
+        max_von_mises_solid_pa=max(vm_solid_by_load.values()),
         u_tip_by_load_m=u_tip_by_load,
         vm_by_load_pa=vm_by_load,
         vm_solid_by_load_pa=vm_solid_by_load,
@@ -685,6 +708,135 @@ def run_blade_to_batch(
             name, rec, res = _optimize_one_design(*a)
             records.append(rec)
             summary = _write_summary(records)
+            if res is not None and on_result is not None:
+                on_result(name, res)
+    return summary
+
+
+def _align_density(rebuilt_centroids: np.ndarray, saved_centroids: np.ndarray | None, density: np.ndarray):
+    """Map a saved density field onto a freshly-rebuilt mesh, returning ``(rho, max_remap_dist_m)``.
+
+    Meshing *should* be deterministic, so element ordering matches and this is the identity. But to be
+    robust to any reordering (or a mesher/version drift), each rebuilt element takes the density of the
+    nearest saved centroid; ``max_remap_dist_m`` (0 when the meshes coincide) surfaces any real drift.
+    ``saved_centroids=None`` trusts exact ordering and only checks the element count.
+    """
+    density = np.asarray(density, dtype=float)
+    if saved_centroids is None:
+        if len(density) != len(rebuilt_centroids):
+            raise ValueError(f"density has {len(density)} elems but rebuilt mesh has {len(rebuilt_centroids)}")
+        return density, 0.0
+    dist, idx = cKDTree(np.asarray(saved_centroids, dtype=float)).query(rebuilt_centroids)
+    return density[idx], float(dist.max())
+
+
+def rescreen_blade_from_density(
+    params: BladeParams,
+    density: np.ndarray,
+    saved_centroids: np.ndarray | None = None,
+    *,
+    mesh_params: FeaMeshParams | None = None,
+    skin_thickness_m: float = DEFAULT_SKIN_THICKNESS_M,
+    rmin_m: float = DEFAULT_RMIN_M,
+) -> BladeTOResult:
+    """Re-evaluate the structural screen on an ALREADY-carved density field, WITHOUT re-optimizing.
+
+    Rebuilds the FEA model for ``params`` and screens the saved density once — one factorization
+    versus the full TO's ~160 (4 ladder rungs × ~40 OC iterations). The density filter is skipped
+    (unused by a pure screen). ``saved_centroids`` (the ``<name>_centroids.npy`` from the original run)
+    aligns the field to the rebuilt mesh; the max remap distance is stored in ``result.meta``.
+
+    Mesh/skin params MUST match the run that produced ``density`` or the carved field won't correspond
+    to the geometry — pass the ``mesh_size_m``/``skin_thickness_m`` recorded in that run's summary.
+    """
+    mp = mesh_params or FeaMeshParams()
+    mesh = build_blade_fea_mesh(params, mesh_params=mp)
+    problem = build_blade_to_problem(
+        mesh,
+        hub_radius_m=mp.hub_radius_m,
+        tip_radius_m=mp.tip_radius_m,
+        click_band_m=mp.click_band_m,
+        skin_thickness_m=skin_thickness_m,
+        rmin_m=rmin_m,
+        build_filter=False,  # filter is OC-only; a screen never uses it
+    )
+    rho, remap_dist = _align_density(problem.domain.element_centroids, saved_centroids, density)
+    res = _screen_result(problem, rho)
+    return replace(res, meta={**res.meta, "rescreened": 1.0, "remap_max_dist_m": remap_dist})
+
+
+def _rescreen_one_design(name, params, out, mp, skin_thickness_m, rmin_m):
+    """Load a design's saved density + centroids from ``out`` and re-screen it (process-pool safe)."""
+    try:
+        density = np.load(out / f"{name}_density.npy")
+        centroids_path = out / f"{name}_centroids.npy"
+        saved_centroids = np.load(centroids_path) if centroids_path.exists() else None
+        res = rescreen_blade_from_density(
+            params, density, saved_centroids, mesh_params=mp,
+            skin_thickness_m=skin_thickness_m, rmin_m=rmin_m,
+        )
+        rec = _result_summary(name, params, res)
+        rec["remap_max_dist_m"] = res.meta.get("remap_max_dist_m")
+        _write_json_durable(out / f"{name}_rescreen.json", rec)
+        return name, rec, res
+    except Exception as exc:  # isolate a single bad design (incl. its I/O) so one never aborts the batch
+        return name, {"name": name, "error": f"{type(exc).__name__}: {exc}"}, None
+
+
+def rescreen_blade_to_batch(
+    designs: Sequence[tuple[str, BladeParams]],
+    out_dir: str | Path,
+    *,
+    mesh_params: FeaMeshParams | None = None,
+    skin_thickness_m: float = DEFAULT_SKIN_THICKNESS_M,
+    rmin_m: float = DEFAULT_RMIN_M,
+    n_workers: int = 1,
+    on_result: Callable[[str, BladeTOResult], None] | None = None,
+) -> dict:
+    """Re-screen already-optimized designs from their saved density fields — no re-optimization.
+
+    For each ``(name, params)`` loads ``out_dir/<name>_density.npy`` (+ ``_centroids.npy``) written by a
+    prior :func:`run_blade_to_batch`, re-runs the final screen once, and writes ``<name>_rescreen.json``
+    (leaving the original ``<name>.json`` untouched) plus an aggregate ``rescreen_summary.json``. Costs
+    one factorization per design instead of ~160, so it is ~2 orders of magnitude cheaper than the TO.
+    ``n_workers > 1`` runs designs concurrently (RAM-bound, same ~10-20 GB/worker at 0.6 mm as the TO).
+    ``mesh_params``/``skin_thickness_m`` MUST match the original run.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    mp = mesh_params or FeaMeshParams()
+
+    records: list[dict] = []
+
+    def _write_summary() -> dict:
+        summary = {
+            "n_designs": len(designs),
+            "n_succeeded": sum("error" not in r for r in records),
+            "skin_thickness_m": skin_thickness_m,
+            "mesh_size_m": mp.mesh_size_m,
+            "n_workers": n_workers,
+            "rescreened": True,
+            "designs": records,
+        }
+        _write_json_durable(out / "rescreen_summary.json", summary)
+        return summary
+
+    args = [(name, params, out, mp, skin_thickness_m, rmin_m) for name, params in designs]
+    summary = _write_summary()
+    if n_workers > 1 and len(args) > 1:
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            futures = [pool.submit(_rescreen_one_design, *a) for a in args]
+            for future in as_completed(futures):
+                name, rec, res = future.result()
+                records.append(rec)
+                summary = _write_summary()
+                if res is not None and on_result is not None:
+                    on_result(name, res)
+    else:
+        for a in args:
+            name, rec, res = _rescreen_one_design(*a)
+            records.append(rec)
+            summary = _write_summary()
             if res is not None and on_result is not None:
                 on_result(name, res)
     return summary

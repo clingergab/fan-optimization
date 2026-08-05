@@ -23,12 +23,15 @@ from fanopt.bo.blade_codec import N_DIMS, decode
 from fanopt.topopt.blade_fea_mesh import BladeFeaMeshResult, FeaMeshParams
 from fanopt.topopt.blade_topopt import (
     BladeTOResult,
+    _align_density,
     _fsync_path,
     _load_cases,
     _passes_screen,
     _screen_ladder,
+    _screen_result,
     _write_json_durable,
     build_blade_to_problem,
+    rescreen_blade_to_batch,
     run_blade_to_batch,
     run_blade_topology_optimization,
     topology_optimize_blade_screened,
@@ -345,6 +348,95 @@ def test_to_max_equals_worst_of_the_per_load_breakdown():
     _prob, res = _run_slab(max_iters=3)
     assert res.u_tip_max_m == pytest.approx(max(res.u_tip_by_load_m.values()))
     assert res.max_von_mises_pa == pytest.approx(max(res.vm_by_load_pa.values()))
+
+
+# --- re-screen from saved density (no re-optimization) ----------------------------------
+
+def test_align_density_identity_on_same_centroids():
+    c = np.random.default_rng(0).random((10, 3))
+    d = np.random.default_rng(1).random(10)
+    rho, dist = _align_density(c, c, d)
+    assert np.array_equal(rho, d) and dist == 0.0
+
+
+def test_align_density_remaps_reordered_centroids():
+    rng = np.random.default_rng(0)
+    c = rng.random((10, 3))
+    d = rng.random(10)
+    perm = rng.permutation(10)
+    rho, dist = _align_density(c, c[perm], d[perm])  # saved arrays permuted; rebuilt is original order
+    assert np.allclose(rho, d) and dist == pytest.approx(0.0)
+
+
+def test_align_density_none_requires_matching_count():
+    with pytest.raises(ValueError, match="rebuilt mesh"):
+        _align_density(np.zeros((5, 3)), None, np.zeros(4))
+
+
+def test_align_density_none_passes_through_on_match():
+    d = np.arange(5.0)
+    rho, dist = _align_density(np.zeros((5, 3)), None, d)
+    assert np.array_equal(rho, d) and dist == 0.0
+
+
+def test_screen_result_reports_all_screen_fields():
+    prob = build_blade_to_problem(_slab_mesh(), skin_thickness_m=0.0025, volfrac=0.4)
+    rho = np.where(prob.domain.frozen_mask, 1.0, 0.5)
+    res = _screen_result(prob, rho, converged=True, iterations=7)
+    assert set(res.u_tip_by_load_m) == set(_LOAD_CASE_NAMES)
+    assert res.u_tip_max_m == pytest.approx(max(res.u_tip_by_load_m.values()))
+    assert 0.0 < res.max_von_mises_solid_pa <= res.max_von_mises_pa
+    assert res.converged and res.iterations == 7 and res.compliance_history == ()
+
+
+def test_rescreen_batch_reproduces_original_screen(tmp_path):
+    # Re-screening the saved density must reproduce the original run's screen (same density, same
+    # deterministic mesh) — this is the cheap "get the honest numbers without re-optimizing" path.
+    designs = [("00_a", decode(np.full(N_DIMS, 0.5)))]
+    mp = FeaMeshParams(mesh_size_m=0.006)
+    orig = run_blade_to_batch(designs, tmp_path, mesh_params=mp, max_iters=1, tol=1e-6)
+    summary = rescreen_blade_to_batch(designs, tmp_path, mesh_params=mp, n_workers=1)
+    assert summary["n_succeeded"] == 1 and summary["rescreened"] is True
+    assert (tmp_path / "rescreen_summary.json").exists()
+    re_rec = json.loads((tmp_path / "00_a_rescreen.json").read_text())
+    assert re_rec["u_tip_max_mm"] == pytest.approx(orig["designs"][0]["u_tip_max_mm"], rel=1e-3)
+    assert re_rec["remap_max_dist_m"] == pytest.approx(0.0, abs=1e-9)  # deterministic mesh -> identity
+
+
+def test_rescreen_batch_leaves_original_sidecar_untouched(tmp_path):
+    designs = [("00_a", decode(np.full(N_DIMS, 0.5)))]
+    mp = FeaMeshParams(mesh_size_m=0.006)
+    run_blade_to_batch(designs, tmp_path, mesh_params=mp, max_iters=1, tol=1e-6)
+    before = (tmp_path / "00_a.json").read_text()
+    rescreen_blade_to_batch(designs, tmp_path, mesh_params=mp, n_workers=1)
+    assert (tmp_path / "00_a.json").read_text() == before  # rescreen writes a separate sidecar
+
+
+def test_rescreen_serial_isolates_missing_density_and_fires_callback(tmp_path):
+    good = decode(np.full(N_DIMS, 0.5))
+    mp = FeaMeshParams(mesh_size_m=0.006)
+    run_blade_to_batch([("00_a", good)], tmp_path, mesh_params=mp, max_iters=1, tol=1e-6)
+    seen = []
+    summary = rescreen_blade_to_batch(
+        [("00_a", good), ("99_missing", good)], tmp_path, mesh_params=mp, n_workers=1,
+        on_result=lambda name, res: seen.append(name),
+    )
+    assert summary["n_succeeded"] == 1  # 00_a screens; 99_missing has no saved density -> isolated error
+    assert seen == ["00_a"]  # serial callback fired only for the successful design
+    assert "error" in next(r for r in summary["designs"] if r["name"] == "99_missing")
+
+
+def test_rescreen_batch_parallel(tmp_path):
+    designs = [("00_a", decode(np.full(N_DIMS, 0.5))), ("01_b", decode(np.full(N_DIMS, 0.45)))]
+    mp = FeaMeshParams(mesh_size_m=0.006)
+    run_blade_to_batch(designs, tmp_path, mesh_params=mp, max_iters=1, tol=1e-6)
+    seen = []
+    summary = rescreen_blade_to_batch(
+        designs, tmp_path, mesh_params=mp, n_workers=2, on_result=lambda name, res: seen.append(name)
+    )
+    assert summary["n_succeeded"] == 2 and summary["n_workers"] == 2
+    assert sorted(seen) == ["00_a", "01_b"]  # parallel callback fired for each design
+    assert (tmp_path / "00_a_rescreen.json").exists() and (tmp_path / "01_b_rescreen.json").exists()
 
 
 # --- solid-only stress (gray-element artifact check) ------------------------------------
