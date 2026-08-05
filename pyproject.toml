@@ -46,6 +46,10 @@ topopt = [
     # FEniCSx is conda-only on macOS; install via environment.yml.
     "scikit-fem>=9",
 ]
+stl = [
+    # marching cubes for the TO density field -> printable watertight STL (geometry/to_stl.py).
+    "scikit-image>=0.22",
+]
 dev = [
     "pytest>=8",
     "pytest-cov>=4",
