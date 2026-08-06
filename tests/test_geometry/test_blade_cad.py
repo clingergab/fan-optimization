@@ -362,15 +362,22 @@ def test_inner_cap_trimesh_reaches_pin_and_hub_radius():
     assert r.max() == pytest.approx(
         blade_cad_mod._INNER_CAP_RADIUS_M + blade_cad_mod._BOSS_FUSE_OVERLAP_M, abs=6e-4
     )
+    # The cap must fill the r≈6-20 mm DISHED ROOT band — a bare boss (r ≤ 6 mm) has nothing here. This is
+    # the assertion that distinguishes the integral cap from the old bare-boss bug.
+    assert ((r > 0.007) & (r < 0.015)).any()
 
 
 def test_carved_blade_with_boss_fuses_ring_into_an_integral_blade():
     # The REAL case: a hub-VOID ring dish. The fusion must reconnect it to the pin via the inner cap, so
-    # the result reaches r≈0. A bare 6 mm boss on a hollow ring would leave the r≈6-20 mm root gap.
+    # the result reaches r≈0 AND fills the root band. A bare 6 mm boss on a hollow ring would leave the
+    # r≈6-20 mm root gap — and would still pass a "reaches r<2mm" check (pin bore is at 1.5 mm), so the
+    # decisive guard is mid-band material at r≈7-15 mm, which ONLY the inner cap supplies.
     dens, pts = _synthetic_ring()
     v, f = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002)
     assert v.ndim == 2 and v.shape[1] == 3 and int(f.max()) < len(v) and int(f.min()) >= 0
-    assert np.hypot(v[:, 0], v[:, 1]).min() < 0.002  # integral to the pin, not a ring with a hole
+    r = np.hypot(v[:, 0], v[:, 1])
+    assert r.min() < 0.002  # integral to the pin, not a ring with a hole
+    assert ((r > 0.007) & (r < 0.015)).any()  # the r≈6-20 mm dished root is FILLED (guards vs bare boss)
 
 
 def test_carved_blade_with_boss_inner_cap_fills_the_void_hub():

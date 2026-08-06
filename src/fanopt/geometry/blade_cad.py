@@ -38,6 +38,7 @@ from fanopt.geometry.blade import (
     rib_z_at,
 )
 from fanopt.geometry.schema import (
+    HUB_RADIUS_M,
     INTER_BLADE_ANGLE_RAD,
     PIVOT_BOSS_RADIUS_M,
     PIVOT_PIN_DIAMETER_M,
@@ -334,7 +335,10 @@ def boss_trimesh(
 # blade+boss = one integral piece from r=0) hands off to the carved rib at this radius — filling
 # r=0 → _INNER_CAP_RADIUS_M + _BOSS_FUSE_OVERLAP_M so it overlaps the rib by a solid ring. A bare boss
 # (PIVOT_BOSS_RADIUS_M) cannot reconnect the r≈6-20 mm dished root, so the fusion needs the whole cap.
-_INNER_CAP_RADIUS_M: float = 0.020
+# Derived from HUB_RADIUS_M (the TO skin-freeze / carved-rib boundary) — must equal it so the cap hands
+# off exactly where the carved rib begins: raise it and cap+rib stop overlapping (disconnected), lower it
+# and real carved geometry is discarded. If the V1.5 hub-clamp re-clamp changes HUB_RADIUS_M, this tracks.
+_INNER_CAP_RADIUS_M: float = HUB_RADIUS_M
 
 
 def inner_cap_trimesh(
