@@ -294,6 +294,32 @@ threshold (ADR-0007). **V1 is past the point of no return and proceeds as-is** �
 judges the *real flexing* printed blade, so the final V1 pick is not flex-blind even though the BO
 selection was.
 
+### TO hub clamp/skin uses the retired 20 mm band — over-clamps the root (found 2026-08-05)
+
+The Stage-4 TO FEA (`topopt/blade_fea_mesh.py`) uses the **retired** `HUB_RADIUS_M = 20 mm` for both the
+clamp (`hub_support_nodes`, r ≤ 20 mm) and the aero-skin freeze boundary (`classify_aero_skin`
+`beyond_hub`, r ≥ 20 mm). ADR-0005 explicitly retired that band: the live blade is **integral from
+`BLADE_ROOT_RADIUS_M = 0`** with the near-hub governed by the **9 mm boss-flat**
+(`MERIDIAN_ROOT_FLAT_RADIUS_M`), not the 20 mm rib-absent band. Two consequences: (1) the whole r≈6-20 mm
+dished **integral root is neither frozen nor kept**, so SIMP voids it — the density comes out a hollow
+ring, missing the ADR-0005 boss+root piece; (2) the rib is optimized against a clamp 20 mm out (a
+too-stiff, too-short cantilever) rather than the real boss (~6-9 mm). **V1 works around this** by
+re-fusing the CAD inner cap (`blade_cad.inner_cap_trimesh`) in the print path — the root is unoptimized
+CAD, and the rib carries the slightly-wrong BC (fine for a feel test). **V1.5/V2 fix:** set the FEA
+clamp + skin-freeze to the **boss scale (~9 mm)** so the integral root survives the optimization and the
+cantilever BC is correct, then **re-run Stage-4** (densities then come out already-integral — no
+print-path reattachment needed). Cost: a Stage-4 re-run on the top designs.
+
+### Blade length = developed (arc) boss-to-tip, not radial (found 2026-08-05)
+
+Geometry parametrizes `x = radius` from 0→`RIB_TIP_RADIUS_M` (220 mm) and *adds* the meridian bow on top,
+so the **220 mm is the radial/projected span** and the developed (arc) boss-to-tip length is longer and
+varies with the bow (measured ~+15 mm of arc over just the r=18-220 rib on design 02). Operator intent
+(2026-08-05): the fan's effective length is the **developed** length — a 220 mm blade should stay 220 mm
+of *material* boss-to-tip when curved, with the curve **lengthening the radial reach**, not being absorbed
+into it. **V1.5/V2:** reparametrize length so the developed meridian length is the held quantity (220 mm),
+and the radial tip grows with curvature — decoupled from `RIB_TIP_RADIUS_M` as the raw radial cap.
+
 ---
 
 ## ML-driven TO + AO (research track — V2/V3)

@@ -52,6 +52,7 @@ __all__ = [
     "export_blade_step",
     "blade_trimesh",
     "boss_trimesh",
+    "inner_cap_trimesh",
     "carved_blade_with_boss",
     "blade_volume_m3",
     "blade_mass_kg",
@@ -328,6 +329,31 @@ def boss_trimesh(
     return np.array([[v.x, v.y, v.z] for v in verts], dtype=float), np.array(tris, dtype=int)
 
 
+# The TO freezes the aero skin only BEYOND the hub radius (ADR-0007 impl), so the carved density is void
+# inside it and the carved rib begins there. The CAD "inner cap" (boss + the FULL dished root, ADR-0005:
+# blade+boss = one integral piece from r=0) hands off to the carved rib at this radius — filling
+# r=0 → _INNER_CAP_RADIUS_M + _BOSS_FUSE_OVERLAP_M so it overlaps the rib by a solid ring. A bare boss
+# (PIVOT_BOSS_RADIUS_M) cannot reconnect the r≈6-20 mm dished root, so the fusion needs the whole cap.
+_INNER_CAP_RADIUS_M: float = 0.020
+
+
+def inner_cap_trimesh(
+    params: BladeParams, *, clearance_m: float | None = None, tol: float = 0.0003
+) -> tuple[np.ndarray, np.ndarray]:
+    """Boss + the FULL dished root as one CAD body — :func:`make_blade_solid` clipped to the hub radius.
+
+    The reference solid runs from ``r=0`` (pin bore open) outward following the dished meridian; clipping
+    it to a cylinder of ``_INNER_CAP_RADIUS_M + _BOSS_FUSE_OVERLAP_M`` yields the integral boss+root cap the
+    carved TO rib is missing (the TO voided everything inside the hub). Fusing this — not a bare boss —
+    reconnects the root as one continuous surface from pin to rib. ``clearance_m`` sizes the fold pitch.
+    """
+    rcap = _INNER_CAP_RADIUS_M + _BOSS_FUSE_OVERLAP_M
+    cyl = cq.Workplane("XY").circle(rcap).extrude(0.4).translate((0.0, 0.0, -0.2))
+    cap = make_blade_solid(params, clearance_m=clearance_m).intersect(cyl)
+    verts, tris = cap.val().tessellate(tol)
+    return np.array([[v.x, v.y, v.z] for v in verts], dtype=float), np.array(tris, dtype=int)
+
+
 def carved_blade_with_boss(
     density: np.ndarray,
     centroids: np.ndarray,
@@ -337,29 +363,31 @@ def carved_blade_with_boss(
     clearance_m: float | None = None,
     level: float = 0.5,
     outside_tol_m: float | None = None,
-    boss_tol_m: float = 0.0003,
+    cap_tol_m: float = 0.0003,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Fuse the carved TO dish with a freshly-built CAD boss → one printable ``(verts, faces)``.
+    """Fuse the carved TO rib with the CAD inner cap (boss + full dished root) → one INTEGRAL printable.
 
-    The marching-cubes mesh from :func:`carved_blade_mesh` bakes the boss at the *original* fold
-    clearance, so a tighter deck can't be applied to it after the fact. This voids the hub column of the
-    TO density (radius ``PIVOT_BOSS_RADIUS_M − _BOSS_FUSE_OVERLAP_M``, i.e. a hair INSIDE the boss OD so
-    the two bodies genuinely overlap rather than merely abut), carves the dish around the resulting hole,
-    then drops in a CAD boss built at ``clearance_m`` (shorter → tighter deployed gap). The overlapping
-    watertight bodies are emitted as one mesh; mainstream slicers union overlapping (not just coincident)
-    solids into one connected part. The dish geometry (the aero/structural surface TO produced) is
-    untouched — only the hub is rebuilt.
+    The TO freezes the aero skin only beyond the hub, so the carved density is void inside ~20 mm — the
+    boss AND the entire r≈6-20 mm dished root are missing (a hollow ring). A bare 6 mm boss cannot bridge
+    that; per ADR-0005 the blade+boss+root are one continuous piece from r=0. So this voids the density
+    inside ``_INNER_CAP_RADIUS_M`` (clean inner edge), carves the rib, and fuses :func:`inner_cap_trimesh`
+    — the reference solid's boss+dished-root cap, same params, same surface-of-revolution field — so the
+    result is one continuous surface from pin bore → boss → root → carved rib → tip. Emitted as two
+    overlapping watertight bodies (they share the ~0.5 mm ring at the hub radius; mainstream slicers union
+    overlapping solids). The carved rib (the TO aero/structural surface) is untouched — only the missing
+    inner cap is restored. No z-mirror (C10 camber lock): both bodies are in the native make_blade_solid
+    frame.
     """
     centroids = np.asarray(centroids, dtype=float)
     density = np.asarray(density, dtype=float).copy()
     r_xy = np.hypot(centroids[:, 0], centroids[:, 1])
-    density[r_xy < PIVOT_BOSS_RADIUS_M - _BOSS_FUSE_OVERLAP_M] = 0.0  # void inside the OD → real overlap
+    density[r_xy < _INNER_CAP_RADIUS_M] = 0.0  # clean the carved rib's inner edge at the fuse radius
     dish_v, dish_f = carved_blade_mesh(
         density, centroids, voxel_pitch_m=voxel_pitch_m, level=level, outside_tol_m=outside_tol_m
     )
-    boss_v, boss_f = boss_trimesh(params, clearance_m=clearance_m, tol=boss_tol_m)
-    verts = np.vstack([dish_v, boss_v])
-    faces = np.vstack([dish_f, boss_f + len(dish_v)])
+    cap_v, cap_f = inner_cap_trimesh(params, clearance_m=clearance_m, tol=cap_tol_m)
+    verts = np.vstack([dish_v, cap_v])
+    faces = np.vstack([dish_f, cap_f + len(dish_v)])
     return verts, faces
 
 

@@ -29,6 +29,7 @@ from fanopt.geometry.blade_cad import (
     blade_trimesh,
     blade_volume_m3,
     boss_trimesh,
+    inner_cap_trimesh,
     carved_blade_with_boss,
     export_blade_step,
     fold_collision_clear,
@@ -324,13 +325,15 @@ def test_analytic_gate_handles_zero_swing_steps():
     assert fold_penetration_m(_sample(), n_swing_steps=0) == pytest.approx(-FOLD_CLEARANCE_M, abs=5e-5)
 
 
-def _synthetic_puck() -> tuple[np.ndarray, np.ndarray]:
-    """A solid disk of unit-density centroids (radius 15 mm, 3 z-layers) — a stand-in TO cloud whose
-    hub column the boss-fusion voids and rebuilds. Not a real blade; just exercises the fuse plumbing."""
-    xs = np.arange(-0.015, 0.0151, 0.002)
+def _synthetic_ring() -> tuple[np.ndarray, np.ndarray]:
+    """A hub-VOID ring of unit-density centroids (r ∈ [20, 40] mm, 3 z-layers) — mimics the REAL TO output,
+    which is void inside the hub (frozen skin only beyond it). The inner cap must fill the empty centre;
+    a bare boss on this ring would leave the r≈6-20 mm root gap. Not a real blade; exercises the fuse."""
+    xs = np.arange(-0.042, 0.0421, 0.002)
     grid = np.stack(np.meshgrid(xs, xs, np.array([-0.002, 0.0, 0.002]), indexing="ij"), axis=-1)
     pts = grid.reshape(-1, 3)
-    pts = pts[np.hypot(pts[:, 0], pts[:, 1]) <= 0.015]
+    r = np.hypot(pts[:, 0], pts[:, 1])
+    pts = pts[(r >= 0.020) & (r <= 0.040)]
     return np.ones(len(pts)), pts
 
 
@@ -349,34 +352,40 @@ def test_boss_trimesh_clearance_shortens_the_boss():
     assert dz == pytest.approx(FOLD_CLEARANCE_M - 0.2e-3, abs=3e-5)
 
 
-def test_carved_blade_with_boss_is_a_valid_fused_mesh():
-    dens, pts = _synthetic_puck()
-    v, f = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002, clearance_m=0.3e-3)
-    assert v.ndim == 2 and v.shape[1] == 3 and len(v) > 0
-    assert int(f.max()) < len(v) and int(f.min()) >= 0  # face indices valid after the concat offset
+def test_inner_cap_trimesh_reaches_pin_and_hub_radius():
+    # The inner cap (boss + full dished root, clipped from make_blade_solid) must reach the pin bore at
+    # r=0 — an integral root, not a floating annulus — and extend out to the hub-fuse radius + overlap.
+    v, f = inner_cap_trimesh(_sample())
+    assert v.ndim == 2 and v.shape[1] == 3 and int(f.max()) < len(v) and int(f.min()) >= 0
+    r = np.hypot(v[:, 0], v[:, 1])
+    assert r.min() < 0.002  # reaches the pin bore wall (integral from r=0)
+    assert r.max() == pytest.approx(
+        blade_cad_mod._INNER_CAP_RADIUS_M + blade_cad_mod._BOSS_FUSE_OVERLAP_M, abs=6e-4
+    )
 
 
-def test_carved_blade_with_boss_adds_the_cad_boss_body():
-    # Fusing must add vertices beyond the holed dish alone: the CAD boss is a second body in the mesh.
-    dens, pts = _synthetic_puck()
-    voided = dens.copy()
-    voided[np.hypot(pts[:, 0], pts[:, 1]) < PIVOT_BOSS_RADIUS_M] = 0.0
-    dish_v, _ = carved_blade_mesh(voided, pts, voxel_pitch_m=0.002)
+def test_carved_blade_with_boss_fuses_ring_into_an_integral_blade():
+    # The REAL case: a hub-VOID ring dish. The fusion must reconnect it to the pin via the inner cap, so
+    # the result reaches r≈0. A bare 6 mm boss on a hollow ring would leave the r≈6-20 mm root gap.
+    dens, pts = _synthetic_ring()
+    v, f = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002)
+    assert v.ndim == 2 and v.shape[1] == 3 and int(f.max()) < len(v) and int(f.min()) >= 0
+    assert np.hypot(v[:, 0], v[:, 1]).min() < 0.002  # integral to the pin, not a ring with a hole
+
+
+def test_carved_blade_with_boss_inner_cap_fills_the_void_hub():
+    # The carved ring alone is hollow at the hub; the fusion adds the inner cap there (the whole point).
+    dens, pts = _synthetic_ring()
+    dish_v, _ = carved_blade_mesh(dens, pts, voxel_pitch_m=0.002)
     fused_v, _ = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002)
-    assert len(fused_v) > len(dish_v)
+    assert np.hypot(dish_v[:, 0], dish_v[:, 1]).min() > 0.015  # ring dish is hollow at the hub
+    assert np.hypot(fused_v[:, 0], fused_v[:, 1]).min() < 0.002  # fused blade is integral to the pin
 
 
-def test_carved_blade_with_boss_voids_inside_the_boss_od_for_overlap():
-    # M3 fix: the hub is voided a hair INSIDE the boss OD (PIVOT_BOSS_RADIUS_M − overlap), so the CAD boss
-    # (radius = full OD) overlaps the retained dish by a solid ring instead of abutting it on a coincident
-    # cylinder. Verify the void radius is strictly inside the OD and the [OD−overlap, OD) ring is RETAINED.
-    assert 0.0 < blade_cad_mod._BOSS_FUSE_OVERLAP_M < PIVOT_BOSS_RADIUS_M
-    dens, pts = _synthetic_puck()
-    r = np.hypot(pts[:, 0], pts[:, 1])
-    void_mask = r < PIVOT_BOSS_RADIUS_M - blade_cad_mod._BOSS_FUSE_OVERLAP_M
-    ring = (r >= PIVOT_BOSS_RADIUS_M - blade_cad_mod._BOSS_FUSE_OVERLAP_M) & (r < PIVOT_BOSS_RADIUS_M)
-    assert ring.any()  # the fixture actually has centroids in the overlap ring this guards
-    assert not void_mask[ring].any()  # ring centroids are NOT voided → dish keeps material to bond to
+def test_carved_blade_with_boss_voids_the_carved_rib_inner_edge():
+    # The density is voided inside _INNER_CAP_RADIUS_M so the carved rib's inner edge is clean where the
+    # CAD inner cap hands off; the cap overlaps outward by _BOSS_FUSE_OVERLAP_M (a solid ring, not abut).
+    assert 0.0 < blade_cad_mod._BOSS_FUSE_OVERLAP_M < blade_cad_mod._INNER_CAP_RADIUS_M
 
 
 def _way2_checkerboard() -> BladeParams:
