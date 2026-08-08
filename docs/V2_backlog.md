@@ -294,6 +294,74 @@ threshold (ADR-0007). **V1 is past the point of no return and proceeds as-is** �
 judges the *real flexing* printed blade, so the final V1 pick is not flex-blind even though the BO
 selection was.
 
+<<<<<<< Updated upstream
+=======
+### TO hub clamp/skin uses the retired 20 mm band — over-clamps the root (found 2026-08-05)
+
+The Stage-4 TO FEA (`topopt/blade_fea_mesh.py`) uses the **retired** `HUB_RADIUS_M = 20 mm` for both the
+clamp (`hub_support_nodes`, r ≤ 20 mm) and the aero-skin freeze boundary (`classify_aero_skin`
+`beyond_hub`, r ≥ 20 mm). ADR-0005 explicitly retired that band: the live blade is **integral from
+`BLADE_ROOT_RADIUS_M = 0`** with the near-hub governed by the **9 mm boss-flat**
+(`MERIDIAN_ROOT_FLAT_RADIUS_M`), not the 20 mm rib-absent band. Two consequences: (1) the whole r≈6-20 mm
+dished **integral root is neither frozen nor kept**, so SIMP voids it — the density comes out a hollow
+ring, missing the ADR-0005 boss+root piece; (2) the rib is optimized against a clamp 20 mm out (a
+too-stiff, too-short cantilever) rather than the real boss (~6-9 mm). **V1 works around this** by
+re-fusing the CAD inner cap (`blade_cad.inner_cap_trimesh`) in the print path — the root is unoptimized
+CAD, and the rib carries the slightly-wrong BC (fine for a feel test). **V1.5/V2 fix:** set the FEA
+clamp + skin-freeze to the **boss scale (~9 mm)** so the integral root survives the optimization and the
+cantilever BC is correct, then **re-run Stage-4** (densities then come out already-integral — no
+print-path reattachment needed). Cost: a Stage-4 re-run on the top designs.
+
+### Blade length = developed (arc) boss-to-tip, not radial (found 2026-08-05)
+
+Geometry parametrizes `x = radius` from 0→`RIB_TIP_RADIUS_M` (220 mm) and *adds* the meridian bow on top,
+so the **220 mm is the radial/projected span** and the developed (arc) boss-to-tip length is longer and
+varies with the bow (measured ~+15 mm of arc over just the r=18-220 rib on design 02). Operator intent
+(2026-08-05): the fan's effective length is the **developed** length — a 220 mm blade should stay 220 mm
+of *material* boss-to-tip when curved, with the curve **lengthening the radial reach**, not being absorbed
+into it. **V1.5/V2:** reparametrize length so the developed meridian length is the held quantity (220 mm),
+and the radial tip grows with curvature — decoupled from `RIB_TIP_RADIUS_M` as the raw radial cap.
+
+### TO objective is stiffness-/buckling-blind — hollows the core instead of trussing it (found 2026-08-06)
+
+Stage-4 TO **minimizes compliance** (single objective) under the four bending-dominated load cases with a
+mass constraint. Measured on the winners (design 02, marching-cubes → voxel): the core is **74–86 % hollow
+mid-span**, thin skin only, **no internal shear webs** — filling back to 20–41 % (with tip bracing ribs)
+only where load paths converge near the tip. This is the direct, measurable cause of the observed high flex.
+
+**Root cause (not a bug — the objective forbids the webs):** linear-elastic compliance under bending is
+maximized by an **I-beam / sandwich** — material at the extreme fibers (skins), core emptied because it
+sits at the neutral axis and is near-useless for *bending* stiffness-per-gram. Internal trusses/webs exist
+to carry **transverse shear** and prevent **skin buckling** — failure modes **absent from a linear
+compliance objective**. No buckling constraint + bending-dominated loads → webs are never rewarded → omitted.
+Operator asked earlier whether the TO would leave internal beams; it *can*, but only if the formulation
+rewards them, and V1's did not.
+
+**Operator directive (2026-08-06):** make **stiffness an explicit objective** and multi-objectivize —
+**minimize material while preserving structural integrity + wind (`J_fan`) + stiffness**. **Critical
+correction that governs whether webs actually emerge:** a stiffness/compliance objective *alone still yields
+skins, not webs*. To make internal trusses **emerge from the optimization**, the formulation must add:
+1. a **linear-buckling constraint** (buckling load factor λ ≥ λ_min via a generalized eigenvalue solve per
+   iteration) — this is the term that punishes bare thin skins and grows shear webs;
+2. genuinely **shear-/torsion-carrying load cases** weighted enough to matter (the click engagement +
+   inertial snap + off-axis/torsional waving, not just pure span bending);
+3. a **fine-enough mesh** to resolve thin webs (V1's voxel scale can't form them);
+4. optionally a **stress constraint** (von-Mises ≤ σ_allow) so integrity is explicit, not implied.
+
+**Formulation sketch:** `min mass  s.t.  compliance ≤ C_max (all load cases), λ_buckling ≥ λ_min,
+σ_vm ≤ σ_allow`, with aero `J_fan` as a **coupled objective** (Pareto front over mass ⊕ stiffness ⊕ wind,
+or J_fan as a constraint). This is **multi-load, multi-constraint, buckling-constrained TO** — substantially
+heavier than V1's single-compliance SIMP (eigenvalue solves per iteration + finer mesh). Plugs into the
+**V1.5 staggered AO↔TO loop** (supplies the wind objective + as-loaded shape) and the **flex-blind** entry
+(supplies real flex in the loop). The **ML-TO surrogate** route (below) is what makes the added cost
+tractable.
+
+**V1 (do NOT re-optimize):** the cheap mitigation is at slice time — export each blade as a *solid*
+envelope and print with ~20 % gyroid/triangular **infill**, which fills the hollow core with a printed
+truss and cuts the flex without touching the optimization. Re-running the TO is a V1.5 effort, not worth it
+for the feel test.
+
+>>>>>>> Stashed changes
 ---
 
 ## ML-driven TO + AO (research track — V2/V3)
