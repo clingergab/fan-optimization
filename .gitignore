@@ -81,3 +81,17 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Logic-gate hook: ledger, verdict spool, and debug output. Never committed.
+.claude/gate-log*.jsonl
+.claude/gate-verdicts/
+.claude/gate-debug.log
+.claude/latest
+logs/gate-log.jsonl
+.claude/gate-off
+.claude/facts.jsonl
+.claude/facts.watermark
+.claude/block-test-armed
+.claude/gate-shadow
+.claude/gate-errors.log
+.claude/
