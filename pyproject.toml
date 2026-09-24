@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fanopt"
-version = "0.1.0a0"
-description = "3D-printed folding fan: topology + aerodynamic shape optimization (R11 plan)"
+version = "1.0.0"
+description = "3D-printed folding hand fan designed by Bayesian optimization over 3D CFD plus per-blade topology optimization"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "fan-optimization" }]
+authors = [{ name = "Gabriel Clinger" }]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.10",

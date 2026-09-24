@@ -294,8 +294,6 @@ threshold (ADR-0007). **V1 is past the point of no return and proceeds as-is** �
 judges the *real flexing* printed blade, so the final V1 pick is not flex-blind even though the BO
 selection was.
 
-<<<<<<< Updated upstream
-=======
 ### TO hub clamp/skin uses the retired 20 mm band — over-clamps the root (found 2026-08-05)
 
 The Stage-4 TO FEA (`topopt/blade_fea_mesh.py`) uses the **retired** `HUB_RADIUS_M = 20 mm` for both the
@@ -356,12 +354,13 @@ heavier than V1's single-compliance SIMP (eigenvalue solves per iteration + fine
 (supplies real flex in the loop). The **ML-TO surrogate** route (below) is what makes the added cost
 tractable.
 
-**V1 (do NOT re-optimize):** the cheap mitigation is at slice time — export each blade as a *solid*
-envelope and print with ~20 % gyroid/triangular **infill**, which fills the hollow core with a printed
-truss and cuts the flex without touching the optimization. Re-running the TO is a V1.5 effort, not worth it
-for the feel test.
+**V1 (do NOT re-optimize) — what shipped (2026-08-07):** the blade stays the hollow TO shell. The one
+printability defect — the TO carved the LE/TE edge ribs away toward the tip, so the two aero faces came
+apart — was fixed by a targeted **rib restore** (fill only the fragmented edge-wall columns, face to face,
+within a 1.5–2 mm rib strip) plus a 0.6 mm cosmetic tip-end cap; +15–20 % material. The core is NOT
+filled. Print files: `P2C_blade_{00,02,03}_ribadd.stl` (see `docs/print_guide.md`). Re-running the TO
+with a stiffness/buckling objective is the V1.5 effort.
 
->>>>>>> Stashed changes
 ---
 
 ## ML-driven TO + AO (research track — V2/V3)
