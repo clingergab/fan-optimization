@@ -13,6 +13,7 @@ import pytest
 if importlib.util.find_spec("cadquery") is None:
     pytest.skip("cadquery not installed", allow_module_level=True)
 
+import fanopt.geometry.blade_cad as blade_cad_mod
 from fanopt.bo.blade_codec import SEARCH_SPACE, decode
 from fanopt.geometry.blade import (
     FOLD_CLEARANCE_M,
@@ -28,14 +29,16 @@ from fanopt.geometry.blade_cad import (
     blade_mass_kg,
     blade_trimesh,
     blade_volume_m3,
+    carved_blade_with_boss,
     export_blade_step,
     fold_collision_clear,
     fold_collision_volume_m3,
     fold_penetration_m,
+    inner_cap_trimesh,
     make_blade_solid,
 )
-import fanopt.geometry.blade_cad as blade_cad_mod
 from fanopt.geometry.schema import PIVOT_BOSS_RADIUS_M
+from fanopt.geometry.to_stl import carved_blade_mesh
 
 
 def test_n_radial_sections_default_is_the_campaign_lock():
@@ -319,6 +322,70 @@ def test_tighter_clearance_still_nests():
 def test_analytic_gate_handles_zero_swing_steps():
     # Guard: n_swing_steps=0 (folded pose only) must not divide by zero.
     assert fold_penetration_m(_sample(), n_swing_steps=0) == pytest.approx(-FOLD_CLEARANCE_M, abs=5e-5)
+
+
+def _synthetic_ring() -> tuple[np.ndarray, np.ndarray]:
+    """A hub-VOID ring of unit-density centroids (r ∈ [20, 40] mm, 3 z-layers) — mimics the REAL TO output,
+    which is void inside the hub (frozen skin only beyond it). The inner cap must fill the empty centre;
+    a bare boss on this ring would leave the r≈6-20 mm root gap. Not a real blade; exercises the fuse."""
+    xs = np.arange(-0.042, 0.0421, 0.002)
+    grid = np.stack(np.meshgrid(xs, xs, np.array([-0.002, 0.0, 0.002]), indexing="ij"), axis=-1)
+    pts = grid.reshape(-1, 3)
+    r = np.hypot(pts[:, 0], pts[:, 1])
+    pts = pts[(r >= 0.020) & (r <= 0.040)]
+    return np.ones(len(pts)), pts
+
+
+def test_inner_cap_trimesh_clearance_shortens_the_cap():
+    # A tighter fold clearance builds a shorter boss (the fold pitch), so the cap's z-extent drops by
+    # exactly the clearance reduction — this is what pulls the deployed deck (and its gap) together.
+    tall = inner_cap_trimesh(_sample())[0][:, 2]
+    short = inner_cap_trimesh(_sample(), clearance_m=0.2e-3)[0][:, 2]
+    dz = (tall.max() - tall.min()) - (short.max() - short.min())
+    assert dz == pytest.approx(FOLD_CLEARANCE_M - 0.2e-3, abs=3e-5)
+
+
+def test_inner_cap_trimesh_reaches_pin_and_hub_radius():
+    # The inner cap (boss + full dished root, clipped from make_blade_solid) must reach the pin bore at
+    # r=0 — an integral root, not a floating annulus — and extend out to the hub-fuse radius + overlap.
+    v, f = inner_cap_trimesh(_sample())
+    assert v.ndim == 2 and v.shape[1] == 3 and int(f.max()) < len(v) and int(f.min()) >= 0
+    r = np.hypot(v[:, 0], v[:, 1])
+    assert r.min() < 0.002  # reaches the pin bore wall (integral from r=0)
+    assert r.max() == pytest.approx(
+        blade_cad_mod._INNER_CAP_RADIUS_M + blade_cad_mod._BOSS_FUSE_OVERLAP_M, abs=6e-4
+    )
+    # The cap must fill the r≈6-20 mm DISHED ROOT band — a bare boss (r ≤ 6 mm) has nothing here. This is
+    # the assertion that distinguishes the integral cap from the old bare-boss bug.
+    assert ((r > 0.007) & (r < 0.015)).any()
+
+
+def test_carved_blade_with_boss_fuses_ring_into_an_integral_blade():
+    # The REAL case: a hub-VOID ring dish. The fusion must reconnect it to the pin via the inner cap, so
+    # the result reaches r≈0 AND fills the root band. A bare 6 mm boss on a hollow ring would leave the
+    # r≈6-20 mm root gap — and would still pass a "reaches r<2mm" check (pin bore is at 1.5 mm), so the
+    # decisive guard is mid-band material at r≈7-15 mm, which ONLY the inner cap supplies.
+    dens, pts = _synthetic_ring()
+    v, f = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002)
+    assert v.ndim == 2 and v.shape[1] == 3 and int(f.max()) < len(v) and int(f.min()) >= 0
+    r = np.hypot(v[:, 0], v[:, 1])
+    assert r.min() < 0.002  # integral to the pin, not a ring with a hole
+    assert ((r > 0.007) & (r < 0.015)).any()  # the r≈6-20 mm dished root is FILLED (guards vs bare boss)
+
+
+def test_carved_blade_with_boss_inner_cap_fills_the_void_hub():
+    # The carved ring alone is hollow at the hub; the fusion adds the inner cap there (the whole point).
+    dens, pts = _synthetic_ring()
+    dish_v, _ = carved_blade_mesh(dens, pts, voxel_pitch_m=0.002)
+    fused_v, _ = carved_blade_with_boss(dens, pts, _sample(), voxel_pitch_m=0.002)
+    assert np.hypot(dish_v[:, 0], dish_v[:, 1]).min() > 0.015  # ring dish is hollow at the hub
+    assert np.hypot(fused_v[:, 0], fused_v[:, 1]).min() < 0.002  # fused blade is integral to the pin
+
+
+def test_carved_blade_with_boss_voids_the_carved_rib_inner_edge():
+    # The density is voided inside _INNER_CAP_RADIUS_M so the carved rib's inner edge is clean where the
+    # CAD inner cap hands off; the cap overlaps outward by _BOSS_FUSE_OVERLAP_M (a solid ring, not abut).
+    assert 0.0 < blade_cad_mod._BOSS_FUSE_OVERLAP_M < blade_cad_mod._INNER_CAP_RADIUS_M
 
 
 def _way2_checkerboard() -> BladeParams:
