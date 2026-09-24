@@ -15,5 +15,5 @@ Subpackages mirror docs/plan_R11.md §12.1:
 
 from __future__ import annotations
 
-__version__ = "0.1.0a0"
+__version__ = "1.0.0"
 __all__ = ["__version__"]

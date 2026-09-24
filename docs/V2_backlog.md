@@ -320,6 +320,47 @@ of *material* boss-to-tip when curved, with the curve **lengthening the radial r
 into it. **V1.5/V2:** reparametrize length so the developed meridian length is the held quantity (220 mm),
 and the radial tip grows with curvature — decoupled from `RIB_TIP_RADIUS_M` as the raw radial cap.
 
+### TO objective is stiffness-/buckling-blind — hollows the core instead of trussing it (found 2026-08-06)
+
+Stage-4 TO **minimizes compliance** (single objective) under the four bending-dominated load cases with a
+mass constraint. Measured on the winners (design 02, marching-cubes → voxel): the core is **74–86 % hollow
+mid-span**, thin skin only, **no internal shear webs** — filling back to 20–41 % (with tip bracing ribs)
+only where load paths converge near the tip. This is the direct, measurable cause of the observed high flex.
+
+**Root cause (not a bug — the objective forbids the webs):** linear-elastic compliance under bending is
+maximized by an **I-beam / sandwich** — material at the extreme fibers (skins), core emptied because it
+sits at the neutral axis and is near-useless for *bending* stiffness-per-gram. Internal trusses/webs exist
+to carry **transverse shear** and prevent **skin buckling** — failure modes **absent from a linear
+compliance objective**. No buckling constraint + bending-dominated loads → webs are never rewarded → omitted.
+Operator asked earlier whether the TO would leave internal beams; it *can*, but only if the formulation
+rewards them, and V1's did not.
+
+**Operator directive (2026-08-06):** make **stiffness an explicit objective** and multi-objectivize —
+**minimize material while preserving structural integrity + wind (`J_fan`) + stiffness**. **Critical
+correction that governs whether webs actually emerge:** a stiffness/compliance objective *alone still yields
+skins, not webs*. To make internal trusses **emerge from the optimization**, the formulation must add:
+1. a **linear-buckling constraint** (buckling load factor λ ≥ λ_min via a generalized eigenvalue solve per
+   iteration) — this is the term that punishes bare thin skins and grows shear webs;
+2. genuinely **shear-/torsion-carrying load cases** weighted enough to matter (the click engagement +
+   inertial snap + off-axis/torsional waving, not just pure span bending);
+3. a **fine-enough mesh** to resolve thin webs (V1's voxel scale can't form them);
+4. optionally a **stress constraint** (von-Mises ≤ σ_allow) so integrity is explicit, not implied.
+
+**Formulation sketch:** `min mass  s.t.  compliance ≤ C_max (all load cases), λ_buckling ≥ λ_min,
+σ_vm ≤ σ_allow`, with aero `J_fan` as a **coupled objective** (Pareto front over mass ⊕ stiffness ⊕ wind,
+or J_fan as a constraint). This is **multi-load, multi-constraint, buckling-constrained TO** — substantially
+heavier than V1's single-compliance SIMP (eigenvalue solves per iteration + finer mesh). Plugs into the
+**V1.5 staggered AO↔TO loop** (supplies the wind objective + as-loaded shape) and the **flex-blind** entry
+(supplies real flex in the loop). The **ML-TO surrogate** route (below) is what makes the added cost
+tractable.
+
+**V1 (do NOT re-optimize) — what shipped (2026-08-07):** the blade stays the hollow TO shell. The one
+printability defect — the TO carved the LE/TE edge ribs away toward the tip, so the two aero faces came
+apart — was fixed by a targeted **rib restore** (fill only the fragmented edge-wall columns, face to face,
+within a 1.5–2 mm rib strip) plus a 0.6 mm cosmetic tip-end cap; +15–20 % material. The core is NOT
+filled. Print files: `P2C_blade_{00,02,03}_ribadd.stl` (see `docs/print_guide.md`). Re-running the TO
+with a stiffness/buckling objective is the V1.5 effort.
+
 ---
 
 ## ML-driven TO + AO (research track — V2/V3)
