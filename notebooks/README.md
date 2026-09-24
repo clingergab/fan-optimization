@@ -1,17 +1,48 @@
 # Notebooks
 
-Colab + local Jupyter notebooks. Per `docs/report-final.md §12.2`, notebooks
-should stay thin — ~50 lines of orchestration over the `fanopt` package.
-The exception is `colab_spike_0_6c.ipynb`, which has more setup boilerplate
-because it bootstraps SU2 on a fresh Colab VM.
+Colab + local Jupyter notebooks. They are **thin orchestration** over the `fanopt` package (all logic
+lives in `src/fanopt/` with tests — see `CLAUDE.md` §6). Most are Colab-only: SU2 is a single-threaded
+CPU solver, so the CFD and TO runs fan out across Colab CPU sessions that share a Google Drive folder.
 
-| Notebook | Purpose | Status |
+## V1 pipeline (current, in run order)
+
+| Notebook | Stage | What it does |
 |---|---|---|
-| `colab_spike_0_6c.ipynb` | **Run Spike 0.6c on Colab Pro CPU** — H10 gate that unblocks `scripts/launch_phase4.py`. | implemented |
-| `colab_phase4_runner.ipynb` | Phase 4 BO inner loop, multi-session orchestration | stub — Phase 4 work |
-| `pareto_analysis.ipynb` | 4D Pareto front inspection (post Phase 4) | stub — Phase 5 work |
-| `geometry_inspection.ipynb` | CadQuery-generated blade STL preview | stub — Phase 1 work |
-| `physical_results.ipynb` | IMU + acoustic + anemometer summary (V2) | stub — Phase 6 work |
+| `aero_objective_walkthrough.ipynb` | explainer | Walks through the 3D aero objective (`J_fan`) on one blade — what the CFD measures and why |
+| `colab_stage2_probe.ipynb` | Stage 2 | De-risk probe: coarse↔fine CFD fidelity check + shape-headroom check before the campaign (ADR-0004) |
+| `colab_stage3_campaign.ipynb` | Stage 3 | Distributed, cold-start BO campaign on the 220 mm trapezoid blade (run in several sessions at once) |
+| `colab_stage3c_verify.ipynb` | Stage 3.C | Fine-tier 3D CFD re-verification of the campaign's top designs; picks the top-10 for TO |
+| `colab_stage4_blade_to.ipynb` | Stage 4 | Per-design 3D SIMP topology optimization of the top-10 blades (ADR-0007) |
+| `colab_stage4_rescreen.ipynb` | Stage 4 | Re-screens saved TO density fields (deflection, solid-only stress) without re-optimizing |
+| `colab_fan_review.ipynb` | review | Final visual review: carved blade → watertight STL → 12-blade fan, folded + deployed |
+| `physical_results.ipynb` | Phase 6 / V2 | Reduces bench measurements (IMU, anemometer, microphone) against predictions — awaits printed fans |
+
+## Phase 0 validation spikes
+
+| Notebook | What it does |
+|---|---|
+| `colab_spike_0_6c.ipynb` | Spike 0.6c — unsteady SU2 config + NACA 0012 benchmark (gate PASSED; run instructions below) |
+| `colab_spike_0_6d.ipynb` | Spike 0.6d — unsteady CFD quantitative sanity checks (gate PASSED) |
+| `colab_naca_benchmark.ipynb` | Spike 0.6c.2 — oscillating NACA 0012 SU2 validation (cross-solver gate, deferred to Phase 5) |
+
+## Superseded (kept for the record)
+
+These belong to the earlier 2D-slice optimization, which ADR-0004 found blind to the rib wave. Their
+results are **not** a basis for the V1 designs.
+
+| Notebook | What it did |
+|---|---|
+| `colab_phase2a_baseline_cfd.ipynb` | Baseline 2D-slice CFD for the retired 2D rib TO |
+| `colab_phase3_correlation.ipynb` | Steady↔unsteady 2D-slice correlation gate |
+| `colab_phase4_runner.ipynb` | V1-slim 2D-slice multi-objective BO |
+| `colab_phase4_aero_campaign.ipynb` | First aero-first BO campaign (2D-slice objective) |
+| `colab_phase5_verify.ipynb`, `colab_phase5_bakeoff.ipynb` | 3D verification / tiebreak of the 2D-campaign winners |
+| `render_top_blades.ipynb`, `render_failed_blades.ipynb` | Renders of the Phase-5 verified / failed blades |
+| `learn_self_intersection.ipynb` | Explainer for the self-intersecting-geometry failures seen in Phase 5 |
+
+## Scaffolds (never filled in)
+
+`geometry_inspection.ipynb`, `pareto_analysis.ipynb` — one-cell stubs from the original plan layout.
 
 ## Running `colab_spike_0_6c.ipynb`
 
@@ -137,17 +168,7 @@ next notebook run skips the install.
   reference at a different (k, Re), update both cell 6's pitching
   parameters AND the reference JSON.
 
-## Other notebooks
+## Notebook discipline
 
-The four other `.ipynb` files in this directory are Phase 1+ work — they
-ship as 1-cell scaffolds and get filled out as those phases land. The
-canonical orchestration pattern (per §12.2) is:
-
-```python
-from fanopt.bo import architecture_bandit, turbo, pareto
-pareto = run_phase4_bo(seed_data, config)
-plot_pareto_front(pareto)
-```
-
-If a notebook grows past ~50 lines of logic, refactor that logic into
-`src/fanopt/` and re-thin the notebook.
+If a notebook grows past ~50 lines of logic, refactor that logic into `src/fanopt/` (with tests) and
+re-thin the notebook.

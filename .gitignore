@@ -95,3 +95,7 @@ logs/gate-log.jsonl
 .claude/gate-shadow
 .claude/gate-errors.log
 .claude/
+
+# Print package (STL/3MF/gcode + slicer projects): local-only, published as GitHub Release assets.
+print_ready/
+scratchpad_p5/

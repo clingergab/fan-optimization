@@ -1,73 +1,43 @@
 # fan-optimization
 
-3D-printed folding hand fan — topology optimization of the rib structure plus
-aerodynamic shape optimization of the panel envelope. Multi-fidelity Bayesian
-optimization over the joint design space; SU2 CFD on three tiers (2D steady,
-3D steady, 3D unsteady); CadQuery generative geometry with an
-§N7 manufacturability filter; physical validation on a 1000-cycle click-feature
-fatigue rig and an end-of-Phase-5 anemometer/IMU/acoustic battery.
+A 3D-printed folding hand fan designed by optimization: Bayesian optimization over 3D unsteady CFD picks
+the blade shape, then 3D topology optimization hollows each winning blade into a printable part.
 
-The canonical project plan is **`docs/plan_R11.md`** (mirror of the upstream
-`report-final.md`). Every numbered lock in this codebase — material constants,
-geometry locks, CFD config keys, BO hyperparameters — traces to a single
-section in that plan. The locks-to-location index is `docs/locks_index.md`.
+<p align="center">
+  <img src="docs/images/fan_deployed.png" alt="Deployed 12-blade fan" height="400">
+  &nbsp;&nbsp;
+  <img src="docs/images/fan_folded.png" alt="Folded 12-blade stack" height="200">
+</p>
+
+## Pipeline
+
+1. **Geometry** — CadQuery blade from a 33-parameter codec (rib wave, panel shape, thickness); 12 blades must fold into a ≤ 90 mm stack.
+2. **CFD** — SU2 unsteady 3D simulation of the ±40°, 2 Hz stroke; objective `J_fan` = cycle-mean thrust.
+3. **Optimization** — BoTorch (qLogNEHVI + TuRBO) over wind ↑, mass ↓, deflection ↓, run across parallel Colab sessions.
+4. **Verification** — top designs re-run at fine CFD resolution.
+5. **Topology optimization** — per-blade 3D SIMP carves the interior while keeping the aero surface.
+6. **Print** — marching cubes → watertight STL → Bambu Studio.
 
 ## Status
 
-Phase 0 (scaffolding). Empty module stubs in `src/fanopt/` mirror the §12.1
-repository layout. Real implementations land per the Phase 0 / 1 / 2 sequencing
-in `docs/plan_R11.md §0` and the phase tables in §Phase N.
+V1 is done computationally: three blades are ready to print ([print guide](docs/print_guide.md),
+[STL files](https://github.com/clingergab/fan-optimization/releases/tag/v1.0-print),
+[3D previews](docs/models/)). Next is printing and a blinded feel test against a flat-blade baseline.
+V2 plans are in the [backlog](docs/V2_backlog.md).
 
-## Setup
+<p align="center"><img src="docs/images/v1_blades.png" alt="The three V1 blades" width="600"></p>
+
+## Quick start
 
 ```bash
-# 1. Conda env (CadQuery + FEniCSx + SU2 + PyTorch — the heavy deps)
-conda env create -f environment.yml
-conda activate fanopt
-
-# 2. Editable install of the project package
+conda env create -f environment.yml && conda activate fanopt
 pip install -e ".[dev]"
-
-# 3. Pre-commit hooks
-pre-commit install
+pytest
 ```
 
-## Quick reference
+CFD and topology-optimization runs live in [`notebooks/`](notebooks/README.md) (Colab). Design decisions
+are in [`docs/adr/`](docs/adr/README.md).
 
-| Want to … | Look at |
-|---|---|
-| Read the canonical plan | `docs/plan_R11.md` |
-| See which sections consume a given lock | `docs/locks_index.md` |
-| Understand the review process | `docs/review_process.md` |
-| Find retired architectural phrases (for grep-based audits) | `docs/retired_phrases.yaml` |
-| Trace prior adversarial-review rounds | `docs/reviews/` |
-| See what was deferred to V2 | `docs/V2_backlog.md` |
+## License
 
-## Repository layout
-
-See `docs/plan_R11.md §12.1` for the authoritative tree. Top-level:
-
-```
-src/fanopt/          # main package (geometry, topopt, cfd, bo, physical, utils)
-tests/               # mirrors src/fanopt/ structure, plus test_audit/
-scripts/             # one entry-point per spike / phase
-notebooks/           # thin Colab + local Jupyter orchestrators (~50 lines each)
-configs/             # SU2 + Fusion templates (Jinja2 .cfg.j2 files)
-data/                # .gitignore'd; designs/, results/, meshes/, physical/
-docs/                # plan_R11.md, locks_index.md, reviews/, followups/, history/
-```
-
-## Tests
-
-```bash
-pytest                    # full suite
-pytest -m "not slow"      # skip slow tests
-pytest tests/test_audit   # prose-vs-locks gates only
-```
-
-The Round-9 audit gates live in `tests/test_audit/` (retired-phrase scanner)
-and `tests/test_cfd/test_unsteady_freestream_consistency.py` /
-`tests/test_geometry/test_click_z_lap.py` /
-`tests/test_geometry/test_no_rib_pivot_hole.py`. These run against the spec
-text in `docs/report-final.md` (a copy of `docs/plan_R11.md` kept under that
-filename so the gates resolve the spec path without modification).
+MIT
