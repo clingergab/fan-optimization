@@ -52,7 +52,6 @@ __all__ = [
     "make_blade_solid",
     "export_blade_step",
     "blade_trimesh",
-    "boss_trimesh",
     "inner_cap_trimesh",
     "carved_blade_with_boss",
     "blade_volume_m3",
@@ -312,22 +311,10 @@ def blade_trimesh(params: BladeParams, tol: float = 0.0005) -> tuple[np.ndarray,
     return vertices, faces
 
 
-# The carved dish's hub column is voided at a radius INSIDE the boss OD so the fused CAD boss overlaps
-# the retained dish by a solid ring (not a zero-volume coincident-cylinder abutment, which mesh-repair
-# tools and some slicers leave as a seam/void instead of a union).
+# The CAD inner cap extends this far PAST the carved rib's voided inner edge so the two bodies overlap by a
+# solid ring (not a zero-volume coincident-cylinder abutment, which mesh-repair tools and some slicers
+# leave as a seam/void instead of a union).
 _BOSS_FUSE_OVERLAP_M: float = 0.0005
-
-
-def boss_trimesh(
-    params: BladeParams, *, clearance_m: float | None = None, tol: float = 0.0003
-) -> tuple[np.ndarray, np.ndarray]:
-    """Triangulated surface of the pivot boss alone — the reduced-clearance hub for the print.
-
-    Tessellates just :func:`_boss_solid` (not the whole blade) so a fresh boss can be fused onto the
-    carved TO dish; ``clearance_m`` sizes the fold pitch (a shorter boss packs the deployed deck tighter).
-    """
-    verts, tris = _boss_solid(params, clearance_m=clearance_m).val().tessellate(tol)
-    return np.array([[v.x, v.y, v.z] for v in verts], dtype=float), np.array(tris, dtype=int)
 
 
 # The TO freezes the aero skin only BEYOND the hub radius (ADR-0007 impl), so the carved density is void

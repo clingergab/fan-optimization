@@ -13,6 +13,7 @@ import pytest
 if importlib.util.find_spec("cadquery") is None:
     pytest.skip("cadquery not installed", allow_module_level=True)
 
+import fanopt.geometry.blade_cad as blade_cad_mod
 from fanopt.bo.blade_codec import SEARCH_SPACE, decode
 from fanopt.geometry.blade import (
     FOLD_CLEARANCE_M,
@@ -28,16 +29,14 @@ from fanopt.geometry.blade_cad import (
     blade_mass_kg,
     blade_trimesh,
     blade_volume_m3,
-    boss_trimesh,
-    inner_cap_trimesh,
     carved_blade_with_boss,
     export_blade_step,
     fold_collision_clear,
     fold_collision_volume_m3,
     fold_penetration_m,
+    inner_cap_trimesh,
     make_blade_solid,
 )
-import fanopt.geometry.blade_cad as blade_cad_mod
 from fanopt.geometry.schema import PIVOT_BOSS_RADIUS_M
 from fanopt.geometry.to_stl import carved_blade_mesh
 
@@ -337,17 +336,11 @@ def _synthetic_ring() -> tuple[np.ndarray, np.ndarray]:
     return np.ones(len(pts)), pts
 
 
-def test_boss_trimesh_is_a_valid_indexed_mesh():
-    v, f = boss_trimesh(_sample())
-    assert v.ndim == 2 and v.shape[1] == 3 and len(v) > 0
-    assert int(f.max()) < len(v) and int(f.min()) >= 0
-
-
-def test_boss_trimesh_clearance_shortens_the_boss():
-    # A tighter fold clearance builds a shorter boss (the fold pitch), so the tessellated z-extent drops
-    # by exactly the clearance reduction — this is what pulls the deployed deck (and its gap) together.
-    tall = boss_trimesh(_sample())[0][:, 2]
-    short = boss_trimesh(_sample(), clearance_m=0.2e-3)[0][:, 2]
+def test_inner_cap_trimesh_clearance_shortens_the_cap():
+    # A tighter fold clearance builds a shorter boss (the fold pitch), so the cap's z-extent drops by
+    # exactly the clearance reduction — this is what pulls the deployed deck (and its gap) together.
+    tall = inner_cap_trimesh(_sample())[0][:, 2]
+    short = inner_cap_trimesh(_sample(), clearance_m=0.2e-3)[0][:, 2]
     dz = (tall.max() - tall.min()) - (short.max() - short.min())
     assert dz == pytest.approx(FOLD_CLEARANCE_M - 0.2e-3, abs=3e-5)
 
