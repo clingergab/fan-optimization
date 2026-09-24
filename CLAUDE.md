@@ -99,6 +99,69 @@ live in their authoritative homes:
   `src/fanopt/` or `scripts/` first, with tests, and the notebook calls into
   it.
 
+### 4.3 Naming
+
+- Constants in `SCREAMING_SNAKE_CASE`. Floats with SI units carry the unit in
+  the name (`PIVOT_BOSS_RADIUS_M`, not `PIVOT_BOSS_RADIUS`). Locked constants
+  live in `src/fanopt/geometry/schema.py` (geometry, kinematics) and
+  `src/fanopt/cfd/configs.py` (CFD tier dicts). Don't re-declare locked
+  constants in other modules — import them.
+- Round-internal labels (CRIT-N, HIGH-N, MED-N, LOW-N) MUST NOT appear bare
+  in code. Use either an explicit round prefix (`Round-9 HIGH-12`) or the
+  absorbed global label (`C12`, `H16`). The retired-phrase audit gate
+  enforces this on `src/fanopt/**/*.py`.
+
+### 4.4 Comments + docstrings
+
+- Default to writing no comments. Add one when the WHY is non-obvious: a
+  hidden constraint, a subtle invariant, a workaround for a specific bug.
+- Docstrings: one short line for simple functions; expanded docstrings only
+  for non-obvious public APIs.
+- Never write multi-paragraph comment blocks. If something needs that much
+  explanation, it belongs in a doc, not a `#` block.
+
+### 4.5 Dependency direction + loose coupling
+
+Keep the dependency graph **acyclic and one-directional** so modules stay
+testable in isolation and refactors stay local. These are hygiene rules,
+not architecture ceremony — **you do NOT need interfaces / ABCs / Protocols
+/ ports / adapters for a project this size**. Concrete callables passed by
+reference are the right level.
+
+- **Dependencies flow in one direction within `src/fanopt/`.** Lower-level
+  modules (locked constants, pure-data dataclasses, math helpers) don't
+  import higher-level ones. Concretely: `geometry/schema.py` doesn't import
+  from `bo/` or `cfd/`; `cfd/configs.py` may import from
+  `geometry/schema.py` but not the reverse; `utils/` is the lowest layer
+  and depends on nothing in the package.
+- **Scripts depend on `src/fanopt/`, never the reverse.** A module in
+  `src/fanopt/` must never `import` from `scripts/`. Scripts are consumers,
+  modules are providers. Tests follow the same direction — tests import the
+  code under test; code never imports its tests.
+- **No circular imports — ever.** If two modules need each other, one of
+  them is doing the wrong job. Push the shared piece down into a third
+  lower-level module that both can import. Don't paper over a cycle with
+  string-typed forward references unless there is no other option.
+- **Pass dependencies as function arguments where practical.** A function
+  that takes its inputs as arguments is easy to test with synthetic inputs
+  and easy to reuse. A function that reaches into module-level state, hits
+  the network directly, or hard-codes filesystem paths is none of those.
+  This is dependency injection — the cheap kind, without DI containers.
+- **Prefer pure functions.** Same input → same output, no side effects.
+  When side effects are necessary (file I/O, subprocess, RNG), keep them at
+  the edges: a CLI/script does I/O at its boundary, then calls pure helpers
+  for the actual work, then writes results at the boundary. Helpers should
+  take a `Path` or a value, not reach into the global state.
+- **No hidden globals.** A function that reads or mutates module-level
+  state, env vars, or config files inside its body is hard to test. Either
+  take the state as an argument, or extract it once at the top of the
+  caller and pass it in.
+- **YAGNI on abstractions.** Don't add an abstract base class until you
+  have a second concrete implementation. Don't add a Protocol until two
+  callers need different concrete types. Concrete code with clean
+  dependency direction outperforms premature abstraction every time at
+  this project's size.
+
 ## 5. Testing rules
 
 ### 5.1 Coverage
@@ -128,6 +191,12 @@ live in their authoritative homes:
   systems (subprocess, network, filesystem-with-cost) only at the boundary.
 - Float comparisons via `pytest.approx`.
 
+### 5.3 Pre-existing tests
+
+- Don't bypass `tests/test_audit/test_no_stale_architecture_refs.py` if it
+  fires. Either fix the code-comment phrasing or extend the catalog's
+  allow-list disclaimer with a justified note. Do not delete the catalog
+  entry.
 
 ## 6. Notebook rules
 
