@@ -233,6 +233,10 @@ def test_petg_properties_fdm() -> None:
     assert s.SIGMA_Y_PETG_Z_PA == 30e6  # σ_y_Z = 30 MPa per Round-1 lock
 
 
+def test_pla_density_matches_bambu_generic_pla() -> None:
+    assert s.RHO_PLA_KG_PER_M3 == 1240.0
+
+
 def test_pin_densities() -> None:
     assert s.RHO_PIN_STEEL_KG_PER_M3 == 7850.0
     assert s.RHO_PIN_BRASS_KG_PER_M3 == 8500.0

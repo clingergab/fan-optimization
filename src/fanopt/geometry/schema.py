@@ -90,6 +90,8 @@ __all__ = [
     "NU_PETG",
     "SIGMA_Y_PETG_XY_PA",
     "SIGMA_Y_PETG_Z_PA",
+    # material — PLA (alternate print filament; mass only, the TO/FEA used PETG)
+    "RHO_PLA_KG_PER_M3",
     # material — pivot pin (steel/brass)
     "RHO_PIN_STEEL_KG_PER_M3",
     "RHO_PIN_BRASS_KG_PER_M3",
@@ -313,6 +315,9 @@ SIGMA_Y_PETG_XY_PA: float = 45.0e6
 
 SIGMA_Y_PETG_Z_PA: float = 30.0e6
 """Yield through interlayer (Z-direction). Per FDM anisotropy."""
+
+RHO_PLA_KG_PER_M3: float = 1240.0
+"""Bambu Studio's Generic PLA filament density (its Generic PETG is 1270, matching above)."""
 
 RHO_PIN_STEEL_KG_PER_M3: float = 7850.0
 RHO_PIN_BRASS_KG_PER_M3: float = 8500.0
