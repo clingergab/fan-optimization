@@ -39,7 +39,10 @@ rebuild adds only what the design specified:
 - the 0.5 mm frozen aero skin (re-imposed; the TO's per-element density left pinholes along mesh edges);
 - the solid hub (r ≤ 20 mm) with a Ø3.0 mm through-bore for the pin;
 - the leading/trailing-edge ribs (width in the table), where the TO had carved them away near the tip;
-- a 0.6 mm tip-end cap.
+- a 0.6 mm tip-end cap;
+- the pivot boss trimmed and filled to **exactly** the design layer spacing (4.038 / 3.904 / 3.784 mm for
+  00 / 02 / 03), so surface ripple cannot make the 12-blade folded stack grow;
+- the **open/closed hold detent** (§4a) — added after the TO, not part of it.
 
 The hollow is intentional. Under 0.01 % of the area is thinner than the 0.4 mm nozzle.
 
@@ -74,7 +77,7 @@ re-optimized; these are typical-datasheet trade-offs, not measured on our prints
 | Stiffness | baseline (FDM 1.3 GPa in-plane) | roughly 1.5–2× stiffer → less flex |
 | Failure | bends before breaking | stronger but brittle — snaps on a drop or a hard fold |
 | Heat | softens ≈ 70–80 °C | softens ≈ 55–60 °C (a hot car can warp it) |
-| Flexing parts (detent spring) | suited | likely to crack or fatigue |
+| Flexing parts (the detent flexes the blade 0.3 mm, §4a) | suited | likely to crack or fatigue |
 
 Rebuilt-blade masses (`print_ready/P2C_blade_0N_rebuilt.json`, solid volume × filament density):
 
@@ -94,9 +97,9 @@ Bambu Studio CLI slice of each `.3mf` as shipped (H2C, Generic PETG, one blade p
 
 | Design | Time per blade | Filament per blade | 12 blades (one at a time) |
 |---|---|---|---|
-| 00 | 1 h 35 m | 24.1 g | ~19 h, ~290 g |
-| 02 | 1 h 35 m | 23.5 g | ~19 h, ~282 g |
-| 03 | 1 h 32 m | 23.4 g | ~18 h, ~281 g |
+| 00 | 1 h 35 m | 24.2 g | ~19 h, ~290 g |
+| 02 | 1 h 35 m | 23.6 g | ~19 h, ~283 g |
+| 03 | 1 h 32 m | 23.5 g | ~18 h, ~282 g |
 
 Slicer filament is ~2 g above the blade's own mass: the brim (0.9 g) and the H2C PETG profile's flow
 ratio (0.97 vs the P2S's 0.95) account for most of it. 254 layers at 0.20 mm. Several blades per plate
@@ -104,18 +107,50 @@ fit on the H2C bed and save heat-up/homing time per blade, but have not been sli
 
 ## 4. Assembly (per fan)
 
-1. Peel the brim; deburr the bore ends and the brim edge.
+1. Peel the brim; deburr the bore ends and the brim edge. The detent bumps print just above the brim
+   (§4a): if one fused to the brim, trim it free and keep its dome intact.
 2. The Ø3.0 mm bore is exactly the pin diameter (no clearance), and printed holes usually come out a
    little small: ream to Ø3 mm, or use a Ø2.9 mm rod for a light sliding fit.
-3. Thread 12 blades on a Ø3 mm steel/brass pin (length per §1), **all the same way up** (camber in the
-   same direction) so they nest in a clean z-stack.
-4. Cap both ends (cap / washer / push-nut) with light axial preload — friction holds the fan open at
-   any angle. There is no click detent in V1 (a hub detent was found geometrically infeasible).
+3. Thread 12 blades on a Ø3 mm steel/brass pin (length per §1), **all the same way up** — bumps all
+   facing the same way — so they nest in a clean z-stack and each bump meets the recesses above it.
+4. Cap both ends (cap / washer / push-nut) with light axial preload. Do not over-tighten: the blades
+   must be able to flex 0.3 mm apart for the detent to click.
+
+## 4a. Open/closed hold detent
+
+Each blade carries 5 small domes (bumps) on its top face along the overlapping edge, 80–120 mm from the
+pin, and 10 shallow dimples (recesses) in its underside. Each bump rides in the underside of the blade
+above it:
+
+- **Folded:** each bump sits in the blade above's *closed* recess, right over it.
+- **Open:** turning the blade above one 13.3° pitch slides the bump 19–28 mm into its *open* recess.
+- **The hold:** each bump is 0.3 mm taller than the gap between the blades, so the blade above must flex
+  up 0.3 mm to slide off a recess. The blade's own flex is the spring.
+
+| Design | Bump height (Ø3 mm base) | Gap crossed | Recess depth | Blade left under a recess |
+|---|---|---|---|---|
+| 00 | 0.94–1.13 mm | 0.64–0.83 mm | 0.40–0.49 mm | ≥ 2.81 mm |
+| 02 | 0.93–1.06 mm | 0.63–0.76 mm | 0.40–0.44 mm | ≥ 2.75 mm |
+| 03 | 0.83–0.94 mm | 0.53–0.64 mm | 0.40–0.46 mm | ≥ 2.75 mm |
+
+Recesses are 0.15 mm wider than the bump and leave 0.1 mm under a seated bump. Sizes are measured on
+each blade's own surface at each seat (`detent.seats` in the `.json` report).
+
+**The detent works in one opening direction only.** With the pin at the bottom, the fan opens **to the
+right**: the front blade (the one you push) swings right. This holds whichever face you look at. Check
+it on the first pair (§5) before printing the rest; the other direction needs a rebuild with
+`--deploy-direction 1` (§7).
+
+The 0.3 mm overlap is a first guess at the hold strength, not a tested value. If the pair's hold is too
+weak or too stiff, rebuild with a different `DetentSpec.interference_m` (`src/fanopt/geometry/blade_detent.py`).
+A detent on the pivot boss is not possible (13.3° × 6 mm boss ≈ 0.8 mm of travel, smaller than any bump),
+which is why it sits out on the blade.
 
 ## 5. Before committing 36 blades
 
 1. Print **one** blade: check the first layer runs the full length and the tip skins close.
-2. Print a **pair** + pin: check that the blades nest when folded and deploy freely.
+2. Print a **pair** + pin: check that the blades nest when folded, that the fan opens to the right
+   (§4a), and that it clicks into the open and closed positions and holds there without forcing.
 3. Design 00 in particular is 0.5 mm under the fold cap — confirm 12 of them actually stack before
    printing the full run.
 
@@ -151,3 +186,6 @@ The TO densities and campaign shards are recovered from Drive into `print_ready/
 
    Design names: `00_ffe19f9e3e7fa81ba847bbe8`, `02_248e298991dfd83a3f7bdfe0`,
    `03_1be42b2b86422ad222fb548a`. Each build takes ~5 min (the three run in parallel fine).
+
+   The detent is on by default: `--detent-seats 5` (`0` builds the blade without it) and
+   `--deploy-direction -1` (fan opens to the right, §4a; `1` reverses it).

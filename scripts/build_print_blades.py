@@ -25,15 +25,19 @@ from scipy.spatial import cKDTree
 from fanopt.bo.blade_codec import decode
 from fanopt.cfd.blade_verify import load_campaign_rows
 from fanopt.geometry.bambu_3mf import write_bambu_project
-from fanopt.geometry.blade import folded_stack_height_m
+from fanopt.geometry.blade import folded_stack_height_m, layer_spacing_m
+from fanopt.geometry.blade_detent import DEFAULT_DETENT_SPEC, DetentSpec, detent_geometry
 from fanopt.geometry.print_blade import (
     bed_contact_fraction,
     build_print_blade,
+    flat_boss_radius_m,
     layer_thin_fraction,
     mesh_volume,
 )
+from fanopt.geometry.rib_detent import DEFAULT_DEPLOY_DIRECTION, rib_detent_seats
 from fanopt.geometry.schema import (
     HUB_RADIUS_M,
+    PIVOT_BOSS_RADIUS_M,
     PIVOT_PIN_DIAMETER_M,
     RHO_PETG_KG_PER_M3,
     RHO_PLA_KG_PER_M3,
@@ -77,6 +81,9 @@ def run(
     pitch_m: float = 1.0e-4,
     template: Path | None = None,
     material: str = "petg",
+    detent_seats: int = 5,
+    deploy_direction: int = DEFAULT_DEPLOY_DIRECTION,
+    detent_spec: DetentSpec = DEFAULT_DETENT_SPEC,
 ) -> dict:
     """Build one blade's STL (+ .json report, + .3mf when ``template`` is given); returns the report."""
     rho_material = MATERIAL_DENSITY_KG_PER_M3[material]
@@ -89,12 +96,23 @@ def run(
     rho = saved_rho[idx]
     facets, opposite = boundary_facets(mesh.tets)
     centers, normals, _areas = facet_geometry(mesh.nodes, facets, opposite)
+    spacing = layer_spacing_m(params)
+    detent = None
+    if detent_seats > 0:
+        seats = rib_detent_seats(params, deploy_direction=deploy_direction, n_seats=detent_seats)
+        detent = detent_geometry(seats, mesh.nodes, facets, spacing, detent_spec)
 
     blade = build_print_blade(
         mesh.nodes, mesh.tets, rho, centers, normals,
         hub_radius_m=HUB_RADIUS_M, bore_radius_m=PIVOT_PIN_DIAMETER_M / 2.0,
         rib_width_m=rib_width_m, tip_cap_m=tip_cap_m, skin_m=skin_m, pitch_m=pitch_m,
+        boss_half_height_m=spacing / 2.0, boss_radius_m=PIVOT_BOSS_RADIUS_M,
+        bump_spheres=None if detent is None else detent.bumps,
+        recess_spheres=None if detent is None else detent.recesses,
     )  # fmt: skip
+    boss_r = flat_boss_radius_m(mesh.nodes, spacing / 2.0)
+    cad_verts = (blade.verts - blade.print_offset_m) @ blade.print_from_cad
+    in_boss = np.hypot(cad_verts[:, 0], cad_verts[:, 1]) < boss_r - 0.5e-3
     write_binary_stl(blade.verts, blade.faces, out)
     project = None
     if template is not None:
@@ -135,6 +153,18 @@ def run(
         "mass_g": volume_m3 * rho_material * 1e3,
         "fan_mass_12_blades_g": 12 * volume_m3 * rho_material * 1e3,
         "design_folded_stack_mm": folded_stack_height_m(params) * 1e3,
+        "design_layer_spacing_mm": spacing * 1e3,
+        "boss_flat_radius_mm": boss_r * 1e3,
+        "boss_thickness_mm": float(np.ptp(cad_verts[in_boss, 2]) * 1e3),
+        "detent": (
+            None
+            if detent is None
+            else {
+                "deploy_direction": deploy_direction,
+                "spec_mm": {k: v * 1e3 for k, v in vars(detent_spec).items()},
+                "seats": detent.seats,
+            }
+        ),
         "bed_contact_fraction": bed_contact_fraction(blade.solid),
         "area_frac_thinner_than_0p4mm_conservative": float((thin * areas).sum() / areas.sum()),
         "print_from_cad": blade.print_from_cad.tolist(),
@@ -181,11 +211,22 @@ def main(argv: list[str] | None = None) -> int:
         default="petg",
         help="filament for the reported mass (the .3mf filament profile is the template's)",
     )
+    ap.add_argument(
+        "--detent-seats", type=int, default=5, help="hold-detent seats per blade (0 = no detent)"
+    )
+    ap.add_argument(
+        "--deploy-direction",
+        type=int,
+        choices=(-1, 1),
+        default=DEFAULT_DEPLOY_DIRECTION,
+        help="fan-out sense the fan is assembled to open in (sets which rib carries the bumps)",
+    )
     a = ap.parse_args(argv)
     report = run(
         name=a.name, shards=a.shards, to_dir=a.to_dir, out=a.out, rib_width_m=a.rib_width_mm / 1e3,
         mesh_size_m=a.mesh_size_mm / 1e3, skin_m=a.skin_mm / 1e3, tip_cap_m=a.tip_cap_mm / 1e3,
         pitch_m=a.pitch_mm / 1e3, template=a.template, material=a.material,
+        detent_seats=a.detent_seats, deploy_direction=a.deploy_direction,
     )  # fmt: skip
     print(json.dumps({k: v for k, v in report.items() if k not in ("print_from_cad",)}, indent=2))
     return 0

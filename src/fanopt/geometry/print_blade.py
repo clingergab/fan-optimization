@@ -6,8 +6,10 @@ every outer surface sits on the CAD design boundary. On top of that it adds only
 aero skin re-imposed at voxel resolution (seals element-edge pinholes), and the operator-approved print
 features — the pivot hub (solid within the clamped hub radius, the TO's support region) with the pin
 bore, the LE/TE rib walls restored to a fixed width, and a thin tip-end cap — then drops floating specks.
-All of it lives inside the TO domain, so the part never grows past the design envelope (the fold-stack
-thickness is unchanged).
+All of it lives inside the TO domain, so the part never grows past the design envelope. The surface mesh
+then gets exact CAD solids (:func:`apply_cad_solids`): the flat boss rebuilt as an exact ring (voxel
+ripple on the boss faces would otherwise add to every layer of the folded stack) and, optionally, the
+hold-detent bumps (added) and recesses (cut).
 
 Frames: the TO/CAD frame has the pin on +z, radial along +x, chord along y (LE/TE side walls face ±y).
 The print frame stands the blade on its −y edge (on-edge): the −y side wall is rotated about the pin
@@ -22,6 +24,8 @@ from dataclasses import dataclass
 import manifold3d
 import numpy as np
 from scipy import ndimage
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from skimage.measure import marching_cubes
 
 __all__ = [
@@ -29,6 +33,9 @@ __all__ = [
     "BladePrintFeatures",
     "PrintBlade",
     "build_print_blade",
+    "apply_cad_solids",
+    "flat_boss_radius_m",
+    "drop_sliver_shells",
     "simplify_manifold",
     "SOLID_DENSITY_LEVEL",
     "side_wall_planes",
@@ -364,6 +371,98 @@ def simplify_manifold(
     )
 
 
+def flat_boss_radius_m(nodes: np.ndarray, half_height_m: float, tol_m: float = 1e-7) -> float:
+    """Radius (about the pin) inside which the design stays within the boss faces ``|z| ≤ half_height``."""
+    r = np.hypot(nodes[:, 0], nodes[:, 1])
+    outside = np.abs(nodes[:, 2]) > half_height_m + tol_m
+    return float(r[outside].min()) if outside.any() else float(r.max())
+
+
+def _spheres(rows: np.ndarray, segments: int) -> list[manifold3d.Manifold]:
+    return [
+        manifold3d.Manifold.sphere(float(r), segments).translate((x, y, z)) for x, y, z, r in rows
+    ]
+
+
+def apply_cad_solids(
+    verts: np.ndarray,
+    faces: np.ndarray,
+    print_from_cad: np.ndarray,
+    print_offset_m: np.ndarray,
+    *,
+    boss: tuple[float, float, float, float] | None = None,
+    add_spheres: np.ndarray | None = None,
+    cut_spheres: np.ndarray | None = None,
+    segments: int = 48,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Exact CAD-frame solids applied to the print-frame mesh (manifold booleans).
+
+    ``boss = (half_height, bore_radius, boss_radius, flat_radius)``: everything within ``flat_radius`` of
+    the pin and beyond ``|z| = half_height`` is cut off (the design has nothing there), and the boss
+    cylinder ring ``bore < r ≤ boss_radius, |z| ≤ half_height`` is filled — so the boss faces are exact
+    planes at the design layer spacing. Only the boss is a full cylinder; the root beyond it is the
+    narrower blade planform, so it is trimmed but never filled. Then ``add_spheres`` are
+    unioned and ``cut_spheres`` subtracted (rows ``[x, y, z, radius]``, CAD frame).
+    """
+    v = np.asarray(verts, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+    man = manifold3d.Manifold(
+        manifold3d.Mesh(vert_properties=v.astype(np.float32), tri_verts=f.astype(np.uint32))
+    )
+    if man.status() != manifold3d.Error.NoError:
+        raise ValueError(f"mesh is not a closed 2-manifold: {man.status().name}")
+    to_print = np.hstack([print_from_cad, np.asarray(print_offset_m, dtype=float).reshape(3, 1)])
+    cad: list[manifold3d.Manifold] = []
+    if boss is not None:
+        half, bore_r, boss_r, flat_r = boss
+        tall = 0.05
+        cyl = manifold3d.Manifold.cylinder
+        beyond = cyl(tall, flat_r, circular_segments=4 * segments).translate(
+            (0.0, 0.0, half)
+        ) + cyl(tall, flat_r, circular_segments=4 * segments).translate((0.0, 0.0, -half - tall))
+        ring = cyl(2 * half, boss_r, circular_segments=4 * segments) - cyl(
+            2 * half + 1e-3, bore_r, circular_segments=segments
+        ).translate((0.0, 0.0, -5e-4))
+        man = man - beyond.transform(to_print)
+        man = man + ring.translate((0.0, 0.0, -half)).transform(to_print)
+    if add_spheres is not None and len(add_spheres):
+        cad = _spheres(np.asarray(add_spheres), segments)
+        man = man + manifold3d.Manifold.batch_boolean(cad, manifold3d.OpType.Add).transform(
+            to_print
+        )
+    if cut_spheres is not None and len(cut_spheres):
+        cad = _spheres(np.asarray(cut_spheres), segments)
+        man = man - manifold3d.Manifold.batch_boolean(cad, manifold3d.OpType.Add).transform(
+            to_print
+        )
+    out = man.to_mesh()
+    return np.asarray(out.vert_properties, dtype=np.float64)[:, :3], np.asarray(
+        out.tri_verts, dtype=np.int64
+    )
+
+
+def drop_sliver_shells(
+    verts: np.ndarray, faces: np.ndarray, min_volume_m3: float = 1e-12
+) -> tuple[np.ndarray, np.ndarray]:
+    """Drop closed surface pieces enclosing less than ``min_volume_m3`` (simplification debris).
+
+    Pieces are vertex-connected face sets; the blade and its sealed internal voids enclose real volume
+    (a void counts negative) and are kept.
+    """
+    f = np.asarray(faces, dtype=np.int64)
+    edges = np.vstack([f[:, [0, 1]], f[:, [1, 2]]])
+    graph = coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])), shape=(len(verts),) * 2)
+    _n, label = connected_components(graph, directed=False)
+    t = np.asarray(verts, dtype=np.float64)[f]
+    per_face = np.einsum("ij,ij->i", t[:, 0], np.cross(t[:, 1], t[:, 2])) / 6.0
+    vol = np.bincount(label[f[:, 0]], weights=per_face, minlength=_n)
+    keep = np.abs(vol[label[f[:, 0]]]) >= min_volume_m3
+    used = np.unique(f[keep])
+    remap = np.full(len(verts), -1, dtype=np.int64)
+    remap[used] = np.arange(len(used))
+    return np.asarray(verts)[used], remap[f[keep]]
+
+
 def _signed_volume(verts: np.ndarray, faces: np.ndarray) -> float:
     t = verts[faces]
     return float(np.einsum("ij,ij->i", t[:, 0], np.cross(t[:, 1], t[:, 2])).sum()) / 6.0
@@ -397,11 +496,18 @@ def build_print_blade(
     pitch_m: float,
     smooth_sigma_vox: float = 0.6,
     simplify_tol_m: float = 3.0e-5,
+    boss_half_height_m: float | None = None,
+    boss_radius_m: float | None = None,
+    bump_spheres: np.ndarray | None = None,
+    recess_spheres: np.ndarray | None = None,
 ) -> PrintBlade:
     """TO tet mesh + per-tet density (CAD frame) → on-edge printable blade.
 
     ``face_centers``/``face_normals`` are the mesh's outward boundary facets (CAD frame), used to fit the
     LE/TE side-wall planes. The print frame is centred in x and y with the bed at z = 0.
+    ``boss_half_height_m`` (half the design layer spacing) + ``boss_radius_m`` make the flat boss exact
+    (see :func:`apply_cad_solids`); ``bump_spheres`` /
+    ``recess_spheres`` (CAD rows ``[x, y, z, r]``) add / cut the hold detent.
     """
     nodes = np.asarray(nodes, dtype=float)
     tip_x = float(nodes[:, 0].max())
@@ -431,4 +537,19 @@ def build_print_blade(
     del code
     verts, faces = solid_surface_mesh(solid, grid, smooth_sigma_vox=smooth_sigma_vox)
     verts, faces = simplify_manifold(verts, faces, simplify_tol_m)
+    boss = None
+    if boss_half_height_m is not None and boss_radius_m is not None:
+        flat_r = flat_boss_radius_m(nodes, boss_half_height_m)
+        boss = (boss_half_height_m, bore_radius_m, min(boss_radius_m, flat_r), flat_r)
+    if boss is not None or bump_spheres is not None or recess_spheres is not None:
+        verts, faces = apply_cad_solids(
+            verts,
+            faces,
+            rot,
+            offset,
+            boss=boss,
+            add_spheres=bump_spheres,
+            cut_spheres=recess_spheres,
+        )
+    verts, faces = drop_sliver_shells(verts, faces)
     return PrintBlade(verts, faces, solid, grid, rot, offset, counts)

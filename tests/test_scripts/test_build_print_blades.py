@@ -27,7 +27,7 @@ from fanopt.geometry.schema import RHO_PETG_KG_PER_M3, RHO_PLA_KG_PER_M3  # noqa
 from fanopt.utils.ledger import design_hash  # noqa: E402
 
 
-def _build(tmp: Path, *extra: str) -> tuple[int, Path]:
+def _build(tmp: Path, *extra: str, mesh_mm: str = "6") -> tuple[int, Path]:
     low, high = bounds()
     vec = clip_to_bounds(low + (high - low) * 0.5)
     h = design_hash(decode(vec).to_dict())
@@ -40,7 +40,7 @@ def _build(tmp: Path, *extra: str) -> tuple[int, Path]:
     out = tmp / "blade.stl"
     rc = build_print_blades.main([
         "--name", name, "--shards", str(tmp), "--to-dir", str(tmp), "--out", str(out),
-        "--rib-width-mm", "1.5", "--mesh-size-mm", "6", "--pitch-mm", "1.0", *extra,
+        "--rib-width-mm", "1.5", "--mesh-size-mm", mesh_mm, "--pitch-mm", "1.0", *extra,
     ])  # fmt: skip
     return rc, out
 
@@ -64,12 +64,21 @@ def outputs(tmp_path_factory):
             ),
         )
         z.writestr("Metadata/model_settings.config", "<config/>")
-    return _build(tmp, "--template", str(tmp / "template.3mf"))
+    # A 6 mm mesh is too coarse to measure the detent surfaces; the detent has its own fixture below.
+    return _build(tmp, "--template", str(tmp / "template.3mf"), "--detent-seats", "0")
 
 
 @pytest.fixture(scope="module")
 def pla_outputs(tmp_path_factory):
-    return _build(tmp_path_factory.mktemp("print_blades_pla"), "--material", "pla")
+    return _build(
+        tmp_path_factory.mktemp("print_blades_pla"), "--material", "pla", "--detent-seats", "0"
+    )
+
+
+@pytest.fixture(scope="module")
+def detent_outputs(tmp_path_factory):
+    rc, out = _build(tmp_path_factory.mktemp("print_blades_detent"), mesh_mm="2")
+    return rc, _report(out)
 
 
 def test_main_returns_zero(outputs):
@@ -131,3 +140,30 @@ def test_unknown_material_is_rejected(tmp_path):
     with pytest.raises(SystemExit):
         build_print_blades.main(["--name", "x", "--shards", ".", "--to-dir", ".", "--out", "x.stl",
                                  "--rib-width-mm", "1", "--material", "abs"])  # fmt: skip
+
+
+def test_boss_is_exactly_the_design_layer_spacing(outputs):
+    rep = _report(outputs[1])
+    assert rep["boss_thickness_mm"] == pytest.approx(rep["design_layer_spacing_mm"], abs=1e-3)
+
+
+def test_detent_can_be_turned_off(outputs):
+    assert _report(outputs[1])["detent"] is None
+
+
+def test_detent_build_succeeds(detent_outputs):
+    assert detent_outputs[0] == 0
+
+
+def test_detent_defaults_to_five_seats_in_the_deploy_direction(detent_outputs):
+    d = detent_outputs[1]["detent"]
+    assert (len(d["seats"]), d["deploy_direction"]) == (5, -1)
+
+
+def test_detent_bumps_cross_the_gap_by_the_interference(detent_outputs):
+    d = detent_outputs[1]["detent"]
+    assert all(
+        s["bump_height_mm"]
+        == pytest.approx(max(s["gap_closed_mm"], s["gap_open_mm"]) + d["spec_mm"]["interference_m"])
+        for s in d["seats"]
+    )

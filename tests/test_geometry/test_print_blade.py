@@ -12,13 +12,18 @@ for _dep in ("skimage", "manifold3d"):
     if importlib.util.find_spec(_dep) is None:  # pragma: no cover - env-dependent
         pytest.skip(f"{_dep} not installed", allow_module_level=True)
 
+import manifold3d  # noqa: E402
+
 from fanopt.geometry.print_blade import (  # noqa: E402
     BladePrintFeatures,
     VoxelGrid,
+    apply_cad_solids,
     bed_contact_fraction,
     boundary_shell,
     build_print_blade,
+    drop_sliver_shells,
     edge_leveling_transform,
+    flat_boss_radius_m,
     grid_for_points,
     keep_largest_component,
     layer_thin_fraction,
@@ -369,3 +374,155 @@ def test_build_print_blade_stays_inside_the_domain(built_box):
 
 def test_build_print_blade_counts_the_domain(built_box):
     assert built_box.voxel_counts["domain"] > built_box.voxel_counts["to_solid"]
+
+
+def test_flat_boss_radius_is_the_nearest_node_beyond_the_faces():
+    nodes = np.array([[1, 0, 1], [0, 3, -1], [5, 0, 2], [0, 7, -3]], dtype=float) * MM
+    assert flat_boss_radius_m(nodes, 1 * MM) == pytest.approx(5 * MM)
+
+
+def test_flat_boss_radius_when_everything_is_flat():
+    nodes = np.array([[1, 0, 1], [0, 3, -1]], dtype=float) * MM
+    assert flat_boss_radius_m(nodes, 1 * MM) == pytest.approx(3 * MM)
+
+
+def _slab(half_z_m, size_m=40 * MM):
+    m = manifold3d.Manifold.cube((size_m, size_m, 2 * half_z_m), center=True).to_mesh()
+    return np.asarray(m.vert_properties, dtype=float)[:, :3], np.asarray(
+        m.tri_verts, dtype=np.int64
+    )
+
+
+def _z_extent_within(verts, radius_m):
+    near = np.hypot(verts[:, 0], verts[:, 1]) < radius_m
+    return float(verts[near, 2].min()), float(verts[near, 2].max())
+
+
+BOSS = (1.0 * MM, 0.5 * MM, 5.0 * MM, 8.0 * MM)  # half height, bore, boss radius, flat radius
+
+
+def test_boss_trims_material_beyond_the_faces():
+    v, f = apply_cad_solids(*_slab(1.06 * MM), *_identity_frame(), boss=BOSS)
+    trimmed = 2 * np.pi * (8 * MM) ** 2 * 0.06 * MM
+    assert mesh_volume(v, f) == pytest.approx((40 * MM) ** 2 * 2.12 * MM - trimmed, rel=1e-4)
+
+
+def test_boss_trim_leaves_nothing_above_the_faces_inside_the_flat_radius():
+    v, f = apply_cad_solids(*_slab(1.06 * MM), *_identity_frame(), boss=BOSS)
+    assert np.abs(v[np.hypot(v[:, 0], v[:, 1]) < 7.9 * MM, 2]).max() <= 1.0 * MM + 1e-6
+
+
+def test_boss_leaves_the_root_beyond_the_flat_radius():
+    v, f = apply_cad_solids(*_slab(1.06 * MM), *_identity_frame(), boss=BOSS)
+    far = np.hypot(v[:, 0], v[:, 1]) > 9 * MM
+    assert v[far, 2].max() == pytest.approx(1.06 * MM, abs=1e-6)
+
+
+def test_boss_fills_dips_only_inside_the_boss_radius():
+    v, f = apply_cad_solids(*_slab(0.9 * MM), *_identity_frame(), boss=BOSS)
+    assert _z_extent_within(v, 5.0 * MM + 1e-6)[1] == pytest.approx(
+        1.0 * MM, abs=1e-6
+    ) and mesh_volume(v, f) == pytest.approx(
+        (40 * MM) ** 2 * 1.8 * MM + np.pi * (5 * MM) ** 2 * 0.2 * MM, rel=2e-3
+    )
+
+
+def test_boss_ring_keeps_the_bore_open():
+    v, f = apply_cad_solids(*_slab(0.9 * MM), *_identity_frame(), boss=BOSS)
+    bore_wall = np.abs(np.hypot(v[:, 0], v[:, 1]) - 0.5 * MM) < 0.02 * MM
+    assert v[bore_wall, 2].max() == pytest.approx(1.0 * MM, abs=1e-6)
+
+
+def test_added_sphere_adds_its_volume():
+    sphere = np.array([[30 * MM, 0.0, 0.0, 2 * MM]])  # clear of the 40 mm slab
+    v0, f0 = _slab(1 * MM)
+    v, f = apply_cad_solids(v0, f0, *_identity_frame(), add_spheres=sphere)
+    assert mesh_volume(v, f) - mesh_volume(v0, f0) == pytest.approx(
+        4 / 3 * np.pi * (2 * MM) ** 3, rel=0.02
+    )
+
+
+def test_cut_sphere_removes_its_volume():
+    sphere = np.array([[0.0, 0.0, 0.0, 0.5 * MM]])
+    v0, f0 = _slab(1 * MM)
+    v, f = apply_cad_solids(v0, f0, *_identity_frame(), cut_spheres=sphere)
+    assert mesh_volume(v0, f0) - mesh_volume(v, f) == pytest.approx(
+        4 / 3 * np.pi * (0.5 * MM) ** 3, rel=0.02
+    )
+
+
+def test_cad_solids_are_placed_through_the_print_transform():
+    rot = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])
+    off = np.array([0.0, 0.0, 50 * MM])
+    sphere = np.array([[30 * MM, 0.0, 5 * MM, 1 * MM]])
+    v, f = apply_cad_solids(*_slab(1 * MM), rot, off, add_spheres=sphere)
+    blob = v[v[:, 0] > 25 * MM]
+    assert blob.mean(axis=0) == pytest.approx(rot @ sphere[0, :3] + off, abs=0.05 * MM)
+
+
+def test_cad_solids_keep_the_mesh_closed():
+    sphere = np.array([[20 * MM, 0.0, 1 * MM, 1.5 * MM]])
+    v, f = apply_cad_solids(*_slab(1.06 * MM), *_identity_frame(), boss=BOSS, add_spheres=sphere)
+    assert _edge_use(f) == {2}
+
+
+def test_cad_solids_reject_an_open_mesh():
+    v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float)
+    with pytest.raises(ValueError):
+        apply_cad_solids(v, np.array([[0, 2, 1], [0, 1, 3]]), *_identity_frame())
+
+
+@pytest.fixture(scope="module")
+def built_box_with_boss():
+    nodes, tets = _box_tets(BOX_LO, BOX_HI, (22, 8, 4))
+    c, n = _boundary_faces(nodes, tets)
+    bump = np.array([[30 * MM, 0.0, 2.5 * MM, 1.0 * MM]])
+    blade = build_print_blade(
+        nodes, tets, np.ones(len(tets)), c, n, hub_radius_m=10 * MM, bore_radius_m=1.5 * MM,
+        rib_width_m=1.0 * MM, tip_cap_m=0.6 * MM, skin_m=0.5 * MM, pitch_m=0.25 * MM,
+        boss_half_height_m=2.0 * MM, boss_radius_m=4.0 * MM, bump_spheres=bump,
+    )  # fmt: skip
+    cad = (blade.verts - blade.print_offset_m) @ blade.print_from_cad
+    return blade, cad
+
+
+def test_build_with_boss_makes_the_boss_exactly_the_layer_spacing(built_box_with_boss):
+    _blade, cad = built_box_with_boss
+    near = np.hypot(cad[:, 0], cad[:, 1]) < 3.5 * MM
+    assert np.ptp(cad[near, 2]) == pytest.approx(4.0 * MM, abs=1e-6)
+
+
+def test_build_with_a_bump_raises_it_off_the_face(built_box_with_boss):
+    _blade, cad = built_box_with_boss
+    assert cad[:, 2].max() == pytest.approx(3.5 * MM, abs=0.02 * MM)
+
+
+def test_build_with_cad_solids_stays_closed(built_box_with_boss):
+    assert _edge_use(built_box_with_boss[0].faces) == {2}
+
+
+def _shells():
+    """A 10 mm cube with a sealed 4 mm void inside, plus a separate 0.01 mm sliver tetrahedron."""
+    outer = manifold3d.Manifold.cube((10 * MM,) * 3, center=True)
+    void = manifold3d.Manifold.cube((4 * MM,) * 3, center=True)
+    m = (outer - void).to_mesh()
+    v = np.asarray(m.vert_properties, dtype=float)[:, :3]
+    f = np.asarray(m.tri_verts, dtype=np.int64)
+    tv = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float) * 0.01 * MM + 20 * MM
+    tf = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]) + len(v)
+    return np.vstack([v, tv]), np.vstack([f, tf])
+
+
+def test_drop_sliver_shells_removes_the_speck():
+    v, f = drop_sliver_shells(*_shells())
+    assert v.max() < 6 * MM
+
+
+def test_drop_sliver_shells_keeps_the_sealed_void():
+    v, f = drop_sliver_shells(*_shells())
+    assert mesh_volume(v, f) == pytest.approx((10 * MM) ** 3 - (4 * MM) ** 3, rel=1e-9)
+
+
+def test_drop_sliver_shells_reindexes_faces():
+    v, f = drop_sliver_shells(*_shells())
+    assert f.max() == len(v) - 1 and _edge_use(f) == {2}
