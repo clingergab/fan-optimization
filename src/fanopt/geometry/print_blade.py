@@ -7,9 +7,10 @@ aero skin re-imposed at voxel resolution (seals element-edge pinholes), and the 
 features — the pivot hub (solid within the clamped hub radius, the TO's support region) with the pin
 bore, the LE/TE rib walls restored to a fixed width, and a thin tip-end cap — then drops floating specks.
 All of it lives inside the TO domain, so the part never grows past the design envelope. The surface mesh
-then gets exact CAD solids (:func:`apply_cad_solids`): the flat boss rebuilt as an exact ring (voxel
-ripple on the boss faces would otherwise add to every layer of the folded stack) and, optionally, the
-hold-detent bumps (added) and recesses (cut).
+then gets exact CAD solids (:func:`apply_cad_solids`): the flat boss rebuilt as an exact slab between two
+planes (voxel ripple on the boss faces would otherwise add to every layer of the folded stack) and,
+optionally, the hold-detent bumps (added) and recesses (cut). :func:`boss_slab_at_junction_m` sizes and
+places that slab to match the blade right where it leaves the boss, so neighbouring blades touch there.
 
 Frames: the TO/CAD frame has the pin on +z, radial along +x, chord along y (LE/TE side walls face ±y).
 The print frame stands the blade on its −y edge (on-edge): the −y side wall is rotated about the pin
@@ -28,13 +29,15 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from skimage.measure import marching_cubes
 
+from fanopt.geometry.blade_detent import surface_z_range
+
 __all__ = [
     "VoxelGrid",
     "BladePrintFeatures",
     "PrintBlade",
     "build_print_blade",
     "apply_cad_solids",
-    "flat_boss_radius_m",
+    "boss_slab_at_junction_m",
     "drop_sliver_shells",
     "simplify_manifold",
     "SOLID_DENSITY_LEVEL",
@@ -371,11 +374,40 @@ def simplify_manifold(
     )
 
 
-def flat_boss_radius_m(nodes: np.ndarray, half_height_m: float, tol_m: float = 1e-7) -> float:
-    """Radius (about the pin) inside which the design stays within the boss faces ``|z| ≤ half_height``."""
-    r = np.hypot(nodes[:, 0], nodes[:, 1])
-    outside = np.abs(nodes[:, 2]) > half_height_m + tol_m
-    return float(r[outside].min()) if outside.any() else float(r.max())
+def boss_slab_at_junction_m(
+    nodes: np.ndarray,
+    facets: np.ndarray,
+    boss_radius_m: float,
+    design_half_height_m: float,
+    *,
+    band_m: float = 1.0e-3,
+    step_deg: float = 0.5,
+) -> tuple[float, float]:
+    """``(z_low, z_high)`` of a boss slab matching the blade where it leaves the boss.
+
+    Samples the blade on a ring band just outside ``boss_radius_m`` (the blade is dished, so it must be
+    sampled right at the boss edge); the slab is the thickest sample, centred on the median mid-surface
+    there and shifted (if needed) to stay inside the design's own boss faces ``|z| ≤
+    design_half_height_m``. Raises if the band never crosses the blade.
+    """
+    edges = nodes[facets] - nodes[np.roll(facets, 1, axis=1)]
+    search = max(3.0e-3, float(np.linalg.norm(edges, axis=2).max()))
+    thick, mid = [], []
+    for r in boss_radius_m + band_m * (np.arange(4) + 0.5) / 4:
+        for t in np.radians(np.arange(-180.0, 180.0, step_deg)):
+            try:
+                zb, zt = surface_z_range(nodes, facets, r * np.cos(t), r * np.sin(t), search)
+            except ValueError:
+                continue
+            thick.append(zt - zb)
+            mid.append((zt + zb) / 2.0)
+    if not thick:
+        raise ValueError("the junction band never crosses the blade")
+    s = float(max(thick))
+    if s > 2.0 * design_half_height_m:
+        raise ValueError("blade at the junction is thicker than the design boss")
+    lo = float(np.clip(np.median(mid) - s / 2.0, -design_half_height_m, design_half_height_m - s))
+    return lo, lo + s
 
 
 def _spheres(rows: np.ndarray, segments: int) -> list[manifold3d.Manifold]:
@@ -397,11 +429,9 @@ def apply_cad_solids(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Exact CAD-frame solids applied to the print-frame mesh (manifold booleans).
 
-    ``boss = (half_height, bore_radius, boss_radius, flat_radius)``: everything within ``flat_radius`` of
-    the pin and beyond ``|z| = half_height`` is cut off (the design has nothing there), and the boss
-    cylinder ring ``bore < r ≤ boss_radius, |z| ≤ half_height`` is filled — so the boss faces are exact
-    planes at the design layer spacing. Only the boss is a full cylinder; the root beyond it is the
-    narrower blade planform, so it is trimmed but never filled. Then ``add_spheres`` are
+    ``boss = (z_low, z_high, bore_radius, boss_radius)``: within ``boss_radius`` of the pin everything
+    outside ``z_low ≤ z ≤ z_high`` is cut off and the ring ``bore < r ≤ boss_radius`` is filled — so the
+    boss faces are exact planes one layer spacing apart. The blade outside the boss is untouched. Then ``add_spheres`` are
     unioned and ``cut_spheres`` subtracted (rows ``[x, y, z, radius]``, CAD frame).
     """
     v = np.asarray(verts, dtype=np.float64)
@@ -414,17 +444,17 @@ def apply_cad_solids(
     to_print = np.hstack([print_from_cad, np.asarray(print_offset_m, dtype=float).reshape(3, 1)])
     cad: list[manifold3d.Manifold] = []
     if boss is not None:
-        half, bore_r, boss_r, flat_r = boss
+        z_lo, z_hi, bore_r, boss_r = boss
         tall = 0.05
         cyl = manifold3d.Manifold.cylinder
-        beyond = cyl(tall, flat_r, circular_segments=4 * segments).translate(
-            (0.0, 0.0, half)
-        ) + cyl(tall, flat_r, circular_segments=4 * segments).translate((0.0, 0.0, -half - tall))
-        ring = cyl(2 * half, boss_r, circular_segments=4 * segments) - cyl(
-            2 * half + 1e-3, bore_r, circular_segments=segments
+        beyond = cyl(tall, boss_r, circular_segments=4 * segments).translate(
+            (0.0, 0.0, z_hi)
+        ) + cyl(tall, boss_r, circular_segments=4 * segments).translate((0.0, 0.0, z_lo - tall))
+        ring = cyl(z_hi - z_lo, boss_r, circular_segments=4 * segments) - cyl(
+            z_hi - z_lo + 1e-3, bore_r, circular_segments=segments
         ).translate((0.0, 0.0, -5e-4))
         man = man - beyond.transform(to_print)
-        man = man + ring.translate((0.0, 0.0, -half)).transform(to_print)
+        man = man + ring.translate((0.0, 0.0, z_lo)).transform(to_print)
     if add_spheres is not None and len(add_spheres):
         cad = _spheres(np.asarray(add_spheres), segments)
         man = man + manifold3d.Manifold.batch_boolean(cad, manifold3d.OpType.Add).transform(
@@ -496,7 +526,7 @@ def build_print_blade(
     pitch_m: float,
     smooth_sigma_vox: float = 0.6,
     simplify_tol_m: float = 3.0e-5,
-    boss_half_height_m: float | None = None,
+    boss_z_m: tuple[float, float] | None = None,
     boss_radius_m: float | None = None,
     bump_spheres: np.ndarray | None = None,
     recess_spheres: np.ndarray | None = None,
@@ -505,8 +535,8 @@ def build_print_blade(
 
     ``face_centers``/``face_normals`` are the mesh's outward boundary facets (CAD frame), used to fit the
     LE/TE side-wall planes. The print frame is centred in x and y with the bed at z = 0.
-    ``boss_half_height_m`` (half the design layer spacing) + ``boss_radius_m`` make the flat boss exact
-    (see :func:`apply_cad_solids`); ``bump_spheres`` /
+    ``boss_z_m`` (the slab's two face heights) + ``boss_radius_m`` make the flat
+    boss exact (see :func:`apply_cad_solids`); ``bump_spheres`` /
     ``recess_spheres`` (CAD rows ``[x, y, z, r]``) add / cut the hold detent.
     """
     nodes = np.asarray(nodes, dtype=float)
@@ -538,9 +568,8 @@ def build_print_blade(
     verts, faces = solid_surface_mesh(solid, grid, smooth_sigma_vox=smooth_sigma_vox)
     verts, faces = simplify_manifold(verts, faces, simplify_tol_m)
     boss = None
-    if boss_half_height_m is not None and boss_radius_m is not None:
-        flat_r = flat_boss_radius_m(nodes, boss_half_height_m)
-        boss = (boss_half_height_m, bore_radius_m, min(boss_radius_m, flat_r), flat_r)
+    if boss_z_m is not None and boss_radius_m is not None:
+        boss = (*boss_z_m, bore_radius_m, boss_radius_m)
     if boss is not None or bump_spheres is not None or recess_spheres is not None:
         verts, faces = apply_cad_solids(
             verts,

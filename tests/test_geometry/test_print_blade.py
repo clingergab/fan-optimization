@@ -19,11 +19,11 @@ from fanopt.geometry.print_blade import (  # noqa: E402
     VoxelGrid,
     apply_cad_solids,
     bed_contact_fraction,
+    boss_slab_at_junction_m,
     boundary_shell,
     build_print_blade,
     drop_sliver_shells,
     edge_leveling_transform,
-    flat_boss_radius_m,
     grid_for_points,
     keep_largest_component,
     layer_thin_fraction,
@@ -376,16 +376,6 @@ def test_build_print_blade_counts_the_domain(built_box):
     assert built_box.voxel_counts["domain"] > built_box.voxel_counts["to_solid"]
 
 
-def test_flat_boss_radius_is_the_nearest_node_beyond_the_faces():
-    nodes = np.array([[1, 0, 1], [0, 3, -1], [5, 0, 2], [0, 7, -3]], dtype=float) * MM
-    assert flat_boss_radius_m(nodes, 1 * MM) == pytest.approx(5 * MM)
-
-
-def test_flat_boss_radius_when_everything_is_flat():
-    nodes = np.array([[1, 0, 1], [0, 3, -1]], dtype=float) * MM
-    assert flat_boss_radius_m(nodes, 1 * MM) == pytest.approx(3 * MM)
-
-
 def _slab(half_z_m, size_m=40 * MM):
     m = manifold3d.Manifold.cube((size_m, size_m, 2 * half_z_m), center=True).to_mesh()
     return np.asarray(m.vert_properties, dtype=float)[:, :3], np.asarray(
@@ -398,23 +388,23 @@ def _z_extent_within(verts, radius_m):
     return float(verts[near, 2].min()), float(verts[near, 2].max())
 
 
-BOSS = (1.0 * MM, 0.5 * MM, 5.0 * MM, 8.0 * MM)  # half height, bore, boss radius, flat radius
+BOSS = (-1.0 * MM, 1.0 * MM, 0.5 * MM, 5.0 * MM)  # z low/high, bore radius, boss radius
 
 
 def test_boss_trims_material_beyond_the_faces():
     v, f = apply_cad_solids(*_slab(1.06 * MM), *_identity_frame(), boss=BOSS)
-    trimmed = 2 * np.pi * (8 * MM) ** 2 * 0.06 * MM
+    trimmed = 2 * np.pi * (5 * MM) ** 2 * 0.06 * MM
     assert mesh_volume(v, f) == pytest.approx((40 * MM) ** 2 * 2.12 * MM - trimmed, rel=1e-4)
 
 
-def test_boss_trim_leaves_nothing_above_the_faces_inside_the_flat_radius():
+def test_boss_trim_leaves_nothing_above_the_faces_inside_the_boss():
     v, f = apply_cad_solids(*_slab(1.06 * MM), *_identity_frame(), boss=BOSS)
-    assert np.abs(v[np.hypot(v[:, 0], v[:, 1]) < 7.9 * MM, 2]).max() <= 1.0 * MM + 1e-6
+    assert np.abs(v[np.hypot(v[:, 0], v[:, 1]) < 4.9 * MM, 2]).max() <= 1.0 * MM + 1e-6
 
 
-def test_boss_leaves_the_root_beyond_the_flat_radius():
+def test_boss_leaves_the_blade_outside_the_boss_untouched():
     v, f = apply_cad_solids(*_slab(1.06 * MM), *_identity_frame(), boss=BOSS)
-    far = np.hypot(v[:, 0], v[:, 1]) > 9 * MM
+    far = np.hypot(v[:, 0], v[:, 1]) > 6 * MM
     assert v[far, 2].max() == pytest.approx(1.06 * MM, abs=1e-6)
 
 
@@ -425,6 +415,14 @@ def test_boss_fills_dips_only_inside_the_boss_radius():
     ) and mesh_volume(v, f) == pytest.approx(
         (40 * MM) ** 2 * 1.8 * MM + np.pi * (5 * MM) ** 2 * 0.2 * MM, rel=2e-3
     )
+
+
+def test_off_centre_boss_trims_to_its_own_faces():
+    v, f = apply_cad_solids(
+        *_slab(1.06 * MM), *_identity_frame(), boss=(-0.6 * MM, 0.8 * MM, *BOSS[2:])
+    )
+    trimmed = np.pi * (5 * MM) ** 2 * (0.26 + 0.46) * MM  # 1.06 - 0.8 on top, 1.06 - 0.6 below
+    assert mesh_volume(v, f) == pytest.approx((40 * MM) ** 2 * 2.12 * MM - trimmed, rel=1e-3)
 
 
 def test_boss_ring_keeps_the_bore_open():
@@ -480,7 +478,7 @@ def built_box_with_boss():
     blade = build_print_blade(
         nodes, tets, np.ones(len(tets)), c, n, hub_radius_m=10 * MM, bore_radius_m=1.5 * MM,
         rib_width_m=1.0 * MM, tip_cap_m=0.6 * MM, skin_m=0.5 * MM, pitch_m=0.25 * MM,
-        boss_half_height_m=2.0 * MM, boss_radius_m=4.0 * MM, bump_spheres=bump,
+        boss_z_m=(-2.0 * MM, 2.0 * MM), boss_radius_m=4.0 * MM, bump_spheres=bump,
     )  # fmt: skip
     cad = (blade.verts - blade.print_offset_m) @ blade.print_from_cad
     return blade, cad
@@ -526,3 +524,49 @@ def test_drop_sliver_shells_keeps_the_sealed_void():
 def test_drop_sliver_shells_reindexes_faces():
     v, f = drop_sliver_shells(*_shells())
     assert f.max() == len(v) - 1 and _edge_use(f) == {2}
+
+
+def _sheet(z_bot, z_top, step=1.0):
+    """Bottom + top triangulated sheets over x 0..40 mm, y -20..20 mm; z_* are functions of (x, y) in m."""
+    xs, ys = np.arange(0, 40 + 1e-9, step) * MM, np.arange(-20, 20 + 1e-9, step) * MM
+    gx, gy = np.meshgrid(xs, ys, indexing="ij")
+    nx, ny = gx.shape
+    x, y = gx.ravel(), gy.ravel()
+    nodes = np.vstack([np.column_stack([x, y, z_bot(x, y)]), np.column_stack([x, y, z_top(x, y)])])
+    tris = []
+    for i in range(nx - 1):
+        for j in range(ny - 1):
+            a, b, c, d = i * ny + j, (i + 1) * ny + j, (i + 1) * ny + j + 1, i * ny + j + 1
+            tris += [[a, b, c], [a, c, d]]
+    tris = np.array(tris)
+    return nodes, np.vstack([tris, tris + len(x)])
+
+
+def _const(z_mm):
+    return lambda x, y: np.full_like(x, z_mm * MM)
+
+
+def test_junction_slab_is_flush_with_the_blade():
+    sheet = _sheet(_const(-1.8), _const(1.0))
+    assert boss_slab_at_junction_m(*sheet, 5 * MM, 2 * MM) == pytest.approx((-1.8 * MM, 1.0 * MM))
+
+
+def test_junction_slab_stays_inside_the_design_boss():
+    sheet = _sheet(_const(-2.5), _const(0.3))
+    assert boss_slab_at_junction_m(*sheet, 5 * MM, 2 * MM) == pytest.approx((-2.0 * MM, 0.8 * MM))
+
+
+def test_junction_slab_takes_the_thickest_sample():
+    sheet = _sheet(_const(-1.8), lambda x, y: 1.0 * MM + 0.02 * x)  # top rises 0.02 mm per mm of x
+    lo, hi = boss_slab_at_junction_m(*sheet, 5 * MM, 2 * MM)
+    assert hi - lo == pytest.approx(2.8 * MM + 0.02 * 5.875 * MM, abs=0.01 * MM)
+
+
+def test_junction_thicker_than_the_design_boss_is_rejected():
+    with pytest.raises(ValueError, match="thicker than the design boss"):
+        boss_slab_at_junction_m(*_sheet(_const(-2.5), _const(2.0)), 5 * MM, 2 * MM)
+
+
+def test_junction_band_off_the_blade_is_rejected():
+    with pytest.raises(ValueError, match="never crosses"):
+        boss_slab_at_junction_m(*_sheet(_const(-1.8), _const(1.0)), 100 * MM, 2 * MM)

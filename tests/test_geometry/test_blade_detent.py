@@ -94,15 +94,21 @@ def test_bump_apex_crosses_the_gap_plus_interference(geo):
     assert z + r == pytest.approx(3 * MM + 0.8 * MM + 0.3 * MM)
 
 
-def test_bump_meets_the_top_face_at_its_base_diameter(geo):
+def test_bump_is_cut_from_the_fixed_sphere(geo):
+    assert geo.bumps[0][3] == pytest.approx(1.6 * MM)
+
+
+def test_report_records_the_bump_base_width(geo):
     _x, _y, z, r = geo.bumps[0]
-    assert 2 * math.sqrt(r**2 - (3 * MM - z) ** 2) == pytest.approx(3 * MM)
+    assert geo.seats[0]["bump_base_diameter_mm"] == pytest.approx(
+        2 * math.sqrt(r**2 - (3 * MM - z) ** 2) / MM
+    )
 
 
 def test_seated_bump_clears_the_recess_floor(geo):
     bump_apex = geo.bumps[0][2] + geo.bumps[0][3]
     recess_floor_above = SPACING + geo.recesses[0][2] + geo.recesses[0][3]  # neighbour layer
-    assert recess_floor_above - bump_apex == pytest.approx(0.1 * MM)
+    assert recess_floor_above - bump_apex == pytest.approx(0.05 * MM)
 
 
 def test_recess_is_wider_than_the_bump(geo):
@@ -119,7 +125,7 @@ def test_report_records_sizes(geo):
     assert (row["gap_closed_mm"], row["bump_height_mm"], row["recess_depth_open_mm"]) == (
         pytest.approx(0.8),
         pytest.approx(1.1),
-        pytest.approx(0.4),
+        pytest.approx(0.35),
     )
 
 
@@ -135,11 +141,34 @@ def test_bump_that_would_poke_through_a_thin_blade_is_rejected():
 
 def test_recess_too_deep_for_the_blade_is_rejected(plate):
     with pytest.raises(ValueError, match="recess would leave"):
-        detent_geometry([SEAT], *plate, SPACING, DetentSpec(interference_m=2.5 * MM))
+        detent_geometry([SEAT], *plate, SPACING, DetentSpec(seat_clearance_m=2.0 * MM))
+
+
+def test_bump_taller_than_its_sphere_is_rejected(plate):
+    with pytest.raises(ValueError, match="taller than its sphere"):
+        detent_geometry([SEAT], *plate, SPACING, DetentSpec(interference_m=1.0 * MM))
+
+
+@pytest.fixture(scope="module")
+def pressed(plate):
+    """Spacing 2.8 mm < the 3 mm plate: the blades press together (gap -0.2 mm)."""
+    return detent_geometry([SEAT], *plate, 2.8 * MM)
+
+
+def test_pressed_blades_report_the_negative_gap(pressed):
+    assert pressed.seats[0]["gap_closed_mm"] == pytest.approx(-0.2)
+
+
+def test_pressed_blades_get_a_bump_of_just_the_interference(pressed):
+    assert pressed.seats[0]["bump_height_mm"] == pytest.approx(0.3)
+
+
+def test_pressed_blades_recess_takes_the_bump_plus_clearance(pressed):
+    assert pressed.seats[0]["recess_depth_closed_mm"] == pytest.approx(0.35)
 
 
 def test_report_records_the_wall_under_the_recess(geo):
-    assert geo.seats[0]["wall_under_recess_mm"] == pytest.approx(3.0 - 0.4)
+    assert geo.seats[0]["wall_under_recess_mm"] == pytest.approx(3.0 - 0.35)
 
 
 def test_no_seats_gives_empty_arrays(plate):

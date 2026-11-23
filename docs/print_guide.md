@@ -8,7 +8,7 @@ printed as its own fan and judged in the blinded A/B feel test against the print
 > **Do not print the `_ribadd` files** (or `_ribadd_clean`, `_supported`, `_raft`, or any project made
 > from them). They are a ~0.25 mm skin, not the designed blade: an Aug-7 post-processing step replaced
 > every solid region with a hollow shell thinner than the nozzle, and they print as spaghetti. Use the
-> `_rebuilt` files below. The image above and the previews in [`docs/models/`](models/) were made from
+> rebuilt files below. The image above and the previews in [`docs/models/`](models/) were made from
 > the old files and predate the rebuild.
 
 ## 1. Files
@@ -20,9 +20,12 @@ holds the old `_ribadd` files.
 
 | Print file | Role | Edge rib | Folded stack | Pin |
 |---|---|---|---|---|
-| `P2C_blade_00_rebuilt.3mf` | **best wind** — marginal on stress (FOS ≈ 1.9) and fold (0.5 mm under the 90 mm cap) | 2.0 mm | 89.5 mm | Ø3 × 60 mm |
-| `P2C_blade_02_rebuilt.3mf` | **best structure** | 1.5 mm | 88.1 mm | Ø3 × 59 mm |
-| `P2C_blade_03_rebuilt.3mf` | **clean** all-rounder | 2.0 mm | 86.1 mm | Ø3 × 57 mm |
+| `P2C_blade_00_2026-11-22_boss-flush_recess-0.35.3mf` | **best wind** — marginal on stress (FOS ≈ 1.9) | 2.0 mm | 79.4 mm | Ø3 × ~49 mm |
+| `P2C_blade_02_2026-11-22_boss-flush_recess-0.35.3mf` | **best structure** | 1.5 mm | 78.3 mm | Ø3 × ~48 mm |
+| `P2C_blade_03_2026-11-22_boss-flush_recess-0.35.3mf` | **clean** all-rounder | 2.0 mm | 78.8 mm | Ø3 × ~49 mm |
+
+Pin length = the 12 stacked bosses (37.5 / 36.2 / 37.5 mm) + the same ~12 mm for end caps the earlier
+60 / 59 / 57 mm pins allowed. The longer pins still work if you already have them.
 
 Print the `.3mf` (Bambu Studio project, H2C settings below). Each has a matching `.stl` (same blade, for
 other slicers) and a `.json` report (volumes, mass, checks). "P2C" in the filenames is a historical typo;
@@ -40,8 +43,10 @@ rebuild adds only what the design specified:
 - the solid hub (r ≤ 20 mm) with a Ø3.0 mm through-bore for the pin;
 - the leading/trailing-edge ribs (width in the table), where the TO had carved them away near the tip;
 - a 0.6 mm tip-end cap;
-- the pivot boss trimmed and filled to **exactly** the design layer spacing (4.038 / 3.904 / 3.784 mm for
-  00 / 02 / 03), so surface ripple cannot make the 12-blade folded stack grow;
+- the Ø12 mm pivot boss made **flush with the blade where it joins the boss** — the same thickness
+  (3.126 / 3.017 / 3.122 mm for 00 / 02 / 03) at the same height, both faces within 0.1 mm of the blade
+  at the boss edge — so neighbouring blades touch with no gap (§4b). The original design spacing
+  (4.038 / 3.904 / 3.784 mm) left a 0.65–0.9 mm gap next to the hub;
 - the **open/closed hold detent** (§4a) — added after the TO, not part of it.
 
 The hollow is intentional. Under 0.01 % of the area is thinner than the 0.4 mm nozzle.
@@ -62,6 +67,11 @@ The hollow is intentional. Under 0.01 % of the area is thinner than the 0.4 mm n
 | Raft | none |
 | Placement | centred in the bed region both H2C nozzles reach (x 25–325 mm) |
 
+Bambu Studio may warn that the object "has floating regions" (00 and 02; it comes and goes between
+slices). It flags sub-nozzle slivers on the inside wall of the sealed hollow, each within 0.35 mm of
+the wall below, which merge into the wall or are too small to print. Ignore it and keep supports
+**off** — supports would grow inside the sealed hollow, where they can never be removed.
+
 ## 2a. Material: PETG or PLA
 
 Either filament works with the same print file; only the filament profile changes. Pick it in Bambu
@@ -77,15 +87,15 @@ re-optimized; these are typical-datasheet trade-offs, not measured on our prints
 | Stiffness | baseline (FDM 1.3 GPa in-plane) | roughly 1.5–2× stiffer → less flex |
 | Failure | bends before breaking | stronger but brittle — snaps on a drop or a hard fold |
 | Heat | softens ≈ 70–80 °C | softens ≈ 55–60 °C (a hot car can warp it) |
-| Flexing parts (the detent flexes the blade 0.3 mm, §4a) | suited | likely to crack or fatigue |
+| Flexing parts (the blades press and flex, §4a–4b) | suited | likely to crack or fatigue |
 
-Rebuilt-blade masses (`print_ready/P2C_blade_0N_rebuilt.json`, solid volume × filament density):
+Rebuilt-blade masses (`print_ready/P2C_blade_0N_2026-11-22_boss-flush_recess-0.35.json`, solid volume × filament density):
 
 | Design | Volume | PETG blade / 12-blade fan | PLA blade / 12-blade fan |
 |---|---|---|---|
-| 00 | 17.38 cm³ | 22.1 g / 265 g | 21.6 g / 259 g |
-| 02 | 16.81 cm³ | 21.3 g / 256 g | 20.8 g / 250 g |
-| 03 | 16.84 cm³ | 21.4 g / 257 g | 20.9 g / 251 g |
+| 00 | 17.25 cm³ | 21.9 g / 263 g | 21.4 g / 257 g |
+| 02 | 16.67 cm³ | 21.2 g / 254 g | 20.7 g / 248 g |
+| 03 | 16.74 cm³ | 21.3 g / 255 g | 20.8 g / 249 g |
 
 All are under the 300 g fan cap. To have the build report the mass in a given filament, pass
 `--material petg|pla` to `scripts/build_print_blades.py` (default `petg`). This changes only the
@@ -97,9 +107,9 @@ Bambu Studio CLI slice of each `.3mf` as shipped (H2C, Generic PETG, one blade p
 
 | Design | Time per blade | Filament per blade | 12 blades (one at a time) |
 |---|---|---|---|
-| 00 | 1 h 35 m | 24.2 g | ~19 h, ~290 g |
-| 02 | 1 h 35 m | 23.6 g | ~19 h, ~283 g |
-| 03 | 1 h 32 m | 23.5 g | ~18 h, ~282 g |
+| 00 | 1 h 35 m | 24.0 g | ~19 h, ~288 g |
+| 02 | 1 h 35 m | 23.4 g | ~19 h, ~281 g |
+| 03 | 1 h 31 m | 23.4 g | ~18 h, ~280 g |
 
 Slicer filament is ~2 g above the blade's own mass: the brim (0.9 g) and the H2C PETG profile's flow
 ratio (0.97 vs the P2S's 0.95) account for most of it. 254 layers at 0.20 mm. Several blades per plate
@@ -114,7 +124,7 @@ fit on the H2C bed and save heat-up/homing time per blade, but have not been sli
 3. Thread 12 blades on a Ø3 mm steel/brass pin (length per §1), **all the same way up** — bumps all
    facing the same way — so they nest in a clean z-stack and each bump meets the recesses above it.
 4. Cap both ends (cap / washer / push-nut) with light axial preload. Do not over-tighten: the blades
-   must be able to flex 0.3 mm apart for the detent to click.
+   already press on each other (§4b) and must still flex 0.3 mm apart for the detent to click.
 
 ## 4a. Open/closed hold detent
 
@@ -124,16 +134,14 @@ above it:
 
 - **Folded:** each bump sits in the blade above's *closed* recess, right over it.
 - **Open:** turning the blade above one 13.3° pitch slides the bump 19–28 mm into its *open* recess.
-- **The hold:** each bump is 0.3 mm taller than the gap between the blades, so the blade above must flex
-  up 0.3 mm to slide off a recess. The blade's own flex is the spring.
+- **The hold:** the blades touch at every seat (§4b), and each bump stands 0.3 mm proud of the blade
+  face, so the blade above must flex up 0.3 mm to slide off a recess. The blade's own flex is the spring.
 
-| Design | Bump height (Ø3 mm base) | Gap crossed | Recess depth | Blade left under a recess |
-|---|---|---|---|---|
-| 00 | 0.94–1.13 mm | 0.64–0.83 mm | 0.40–0.49 mm | ≥ 2.81 mm |
-| 02 | 0.93–1.06 mm | 0.63–0.76 mm | 0.40–0.44 mm | ≥ 2.75 mm |
-| 03 | 0.83–0.94 mm | 0.53–0.64 mm | 0.40–0.46 mm | ≥ 2.75 mm |
-
-Recesses are 0.15 mm wider than the bump and leave 0.1 mm under a seated bump. Sizes are measured on
+Every seat on all three designs: bump **0.30 mm** tall, 1.9 mm across, cut from a 1.6 mm-radius sphere
+(the same dome shape as the first printed bumps, which were ~1 mm tall because they had to cross the old
+gap). Recess **0.35 mm** deep, ~2.1 mm across — 0.05 mm of room under a seated bump and ~0.1 mm around
+it, so the bump seats fully without play (extra depth would add rattle, not hold: the hold is set by
+the 0.3 mm the bump must climb). At least 2.8 mm of blade is left under a recess. Sizes are measured on
 each blade's own surface at each seat (`detent.seats` in the `.json` report).
 
 **The detent works in one opening direction only.** With the pin at the bottom, the fan opens **to the
@@ -146,13 +154,31 @@ weak or too stiff, rebuild with a different `DetentSpec.interference_m` (`src/fa
 A detent on the pivot boss is not possible (13.3° × 6 mm boss ≈ 0.8 mm of travel, smaller than any bump),
 which is why it sits out on the blade.
 
+## 4b. Blades touch, and press where they are thicker
+
+The boss sets how far apart neighbouring blades sit on the pin. It is now as thick as the blade where the
+blade joins it, so there is no gap next to the hub. The blade is not the same thickness everywhere — it
+thickens toward the tip ribs — so where it is thicker than the boss, each blade pushes its neighbour
+away and both flex:
+
+| Design | Thickest point | Press when folded/open | Tip corners mid-swing |
+|---|---|---|---|
+| 00 | 3.64 mm | up to 0.51 mm | up to ~0.77 mm |
+| 02 | 3.50 mm | up to 0.49 mm | up to ~0.82 mm |
+| 03 | 3.38 mm | up to 0.26 mm | up to ~0.35 mm |
+
+The blades are flexible, so this costs some friction when opening (set by the end-cap preload), not
+strength. It leaves far smaller gaps for air to leak through than the original spacing
+did, and the 12-blade folded stack is 7–10 mm thinner.
+
 ## 5. Before committing 36 blades
 
 1. Print **one** blade: check the first layer runs the full length and the tip skins close.
 2. Print a **pair** + pin: check that the blades nest when folded, that the fan opens to the right
-   (§4a), and that it clicks into the open and closed positions and holds there without forcing.
-3. Design 00 in particular is 0.5 mm under the fold cap — confirm 12 of them actually stack before
-   printing the full run.
+   (§4a), that the bumps seat fully in the recesses, and that it clicks into the open and closed
+   positions and holds there without forcing.
+3. Print a few more and stack them: the blades press on each other (§4b) — check that opening still
+   feels smooth with several on the pin.
 
 ## 6. Known V1 limitations
 
@@ -181,8 +207,12 @@ The TO densities and campaign shards are recovered from Drive into `print_ready/
    ```
    python3 scripts/build_print_blades.py --name 00_ffe19f9e3e7fa81ba847bbe8 --rib-width-mm 2.0 \
        --shards print_ready/drive_recovery/campaign_trapezoid --to-dir print_ready/drive_recovery \
-       --out print_ready/P2C_blade_00_rebuilt.stl --template print_ready/rebuild/H2C_petg_template.3mf
+       --out print_ready/P2C_blade_00_<YYYY-MM-DD>_<what-changed>.stl \
+       --template print_ready/rebuild/H2C_petg_template.3mf
    ```
+
+   Every build gets a new, dated name: the script refuses to overwrite an existing `.stl`, `.json` or
+   `.3mf`, so earlier versions (including ones already printed) are always kept.
 
    Design names: `00_ffe19f9e3e7fa81ba847bbe8`, `02_248e298991dfd83a3f7bdfe0`,
    `03_1be42b2b86422ad222fb548a`. Each build takes ~5 min (the three run in parallel fine).

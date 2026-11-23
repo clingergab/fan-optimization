@@ -3,9 +3,11 @@
 :func:`fanopt.geometry.rib_detent.rib_detent_seats` places each seat (radius + bump / closed / open
 angles). This module samples the design surface there and turns each seat into solids (CAD frame, m):
 
-- a **bump** — a spherical dome on the blade's TOP face at the bump angle, tall enough to cross the gap to
-  the neighbour above plus ``interference_m``: the neighbour must flex up that much to slide past, which
-  is the hold;
+- a **bump** — a spherical dome (fixed sphere radius) on the blade's TOP face at the bump angle, tall
+  enough to cross the gap to the neighbour above plus ``interference_m``: the neighbour must flex up
+  that much to slide past, which is the hold. Where the blades are thicker than the layer spacing the
+  "gap" is negative: the blades press together there, so it counts as zero (the bump stands
+  ``interference_m`` proud of the contact);
 - two **recesses** — spherical dimples in the blade's UNDERSIDE at the closed and open angles, each deep
   enough that the neighbour-below's bump drops in with ``seat_clearance_m`` to spare.
 
@@ -31,16 +33,19 @@ __all__ = [
     "detent_geometry",
 ]
 
-_SPHERE_FLOOR_MARGIN_M = 0.1e-3
+_SPHERE_FLOOR_MARGIN_M = 0.05e-3  # keep the buried sphere off the underside (no sliver faces)
 
 
 @dataclass(frozen=True)
 class DetentSpec:
     """Feature sizing (metres)."""
 
-    bump_base_diameter_m: float = 3.0e-3
+    # The first printed bumps (Ø3 mm base, 0.9–1.1 mm tall) were cut from a ~1.6 mm sphere; keeping
+    # the sphere fixed keeps the tested dome shape whatever the bump height.
+    bump_radius_m: float = 1.6e-3
     interference_m: float = 0.3e-3
-    seat_clearance_m: float = 0.1e-3
+    # Recess depth past the bump: the hold is the bump height it must climb; extra depth only adds play.
+    seat_clearance_m: float = 0.05e-3
     recess_radial_clearance_m: float = 0.15e-3
     min_wall_m: float = 0.8e-3
 
@@ -89,10 +94,6 @@ def _xy(r: float, angle_deg: float) -> tuple[float, float]:
     return r * math.cos(t), r * math.sin(t)
 
 
-def _cap_sphere_radius(base_radius: float, height: float) -> float:
-    return (base_radius**2 + height**2) / (2.0 * height)
-
-
 def detent_geometry(
     seats: list[DetentSeat],
     nodes: np.ndarray,
@@ -107,7 +108,6 @@ def detent_geometry(
     would leave less than ``spec.min_wall_m`` of blade under the top face.
     """
     bumps, recesses, report = [], [], []
-    a = spec.bump_base_diameter_m / 2.0
     for s in seats:
         bx, by = _xy(s.radius_m, s.bump_angle_deg)
         ox, oy = _xy(s.radius_m, s.open_recess_angle_deg)
@@ -117,11 +117,16 @@ def detent_geometry(
             "closed": layer_spacing_m + z_bot_b - z_top_b,
             "open": layer_spacing_m + z_bot_o - z_top_b,
         }
-        h = max(gap.values()) + spec.interference_m
-        rb = _cap_sphere_radius(a, h)
+        seat = {k: max(g, 0.0) for k, g in gap.items()}
+        h = max(seat.values()) + spec.interference_m
+        rb = spec.bump_radius_m
+        if h > rb:
+            raise ValueError(
+                f"r={s.radius_m * 1e3:.0f} mm: bump {h * 1e3:.2f} mm is taller than its sphere radius"
+            )
         bumps.append([bx, by, z_top_b + h - rb, rb])
         rr = rb + spec.recess_radial_clearance_m
-        depth = {k: h - g + spec.seat_clearance_m for k, g in gap.items()}
+        depth = {k: h - g + spec.seat_clearance_m for k, g in seat.items()}
         for (x, y, zb), k in (((bx, by, z_bot_b), "closed"), ((ox, oy, z_bot_o), "open")):
             recesses.append([x, y, zb + depth[k] - rr, rr])
         sphere_floor = (z_top_b + h - 2.0 * rb) - z_bot_b
@@ -146,6 +151,7 @@ def detent_geometry(
                 "gap_closed_mm": gap["closed"] * 1e3,
                 "gap_open_mm": gap["open"] * 1e3,
                 "bump_height_mm": h * 1e3,
+                "bump_base_diameter_mm": 2.0 * math.sqrt(2.0 * rb * h - h * h) * 1e3,
                 "recess_depth_closed_mm": depth["closed"] * 1e3,
                 "recess_depth_open_mm": depth["open"] * 1e3,
                 "wall_under_recess_mm": wall * 1e3,

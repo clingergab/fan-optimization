@@ -142,9 +142,27 @@ def test_unknown_material_is_rejected(tmp_path):
                                  "--rib-width-mm", "1", "--material", "abs"])  # fmt: skip
 
 
-def test_boss_is_exactly_the_design_layer_spacing(outputs):
+def test_boss_is_exactly_the_layer_spacing(outputs):
     rep = _report(outputs[1])
-    assert rep["boss_thickness_mm"] == pytest.approx(rep["design_layer_spacing_mm"], abs=1e-3)
+    assert rep["boss_thickness_mm"] == pytest.approx(rep["layer_spacing_mm"], abs=1e-3)
+
+
+def test_boss_matches_the_blade_so_it_is_thinner_than_the_design_spacing(outputs):
+    rep = _report(outputs[1])
+    assert rep["layer_spacing_mm"] < rep["design_layer_spacing_mm"]
+
+
+def test_tighter_boss_folds_thinner(outputs):
+    rep = _report(outputs[1])
+    assert rep["folded_stack_mm"] == pytest.approx(
+        rep["design_folded_stack_mm"]
+        - 11 * (rep["design_layer_spacing_mm"] - rep["layer_spacing_mm"])
+    )
+
+
+def test_boss_slab_is_recorded(outputs):
+    lo, hi = _report(outputs[1])["boss_z_mm"]
+    assert hi - lo == pytest.approx(_report(outputs[1])["layer_spacing_mm"])
 
 
 def test_detent_can_be_turned_off(outputs):
@@ -164,6 +182,17 @@ def test_detent_bumps_cross_the_gap_by_the_interference(detent_outputs):
     d = detent_outputs[1]["detent"]
     assert all(
         s["bump_height_mm"]
-        == pytest.approx(max(s["gap_closed_mm"], s["gap_open_mm"]) + d["spec_mm"]["interference_m"])
+        == pytest.approx(
+            max(s["gap_closed_mm"], s["gap_open_mm"], 0.0) + d["spec_mm"]["interference_m"]
+        )
         for s in d["seats"]
     )
+
+
+@pytest.mark.parametrize("suffix", [".stl", ".json", ".3mf"])
+def test_existing_output_is_never_overwritten(tmp_path, suffix):
+    (tmp_path / f"blade{suffix}").write_text("keep me")
+    with pytest.raises(FileExistsError, match="already exists"):
+        build_print_blades.run(name="x", shards=tmp_path, to_dir=tmp_path, out=tmp_path / "blade.stl",
+                               rib_width_m=1e-3)  # fmt: skip
+    assert (tmp_path / f"blade{suffix}").read_text() == "keep me"

@@ -25,12 +25,12 @@ from scipy.spatial import cKDTree
 from fanopt.bo.blade_codec import decode
 from fanopt.cfd.blade_verify import load_campaign_rows
 from fanopt.geometry.bambu_3mf import write_bambu_project
-from fanopt.geometry.blade import folded_stack_height_m, layer_spacing_m
+from fanopt.geometry.blade import blade_z_envelope_m, folded_stack_height_m, layer_spacing_m
 from fanopt.geometry.blade_detent import DEFAULT_DETENT_SPEC, DetentSpec, detent_geometry
 from fanopt.geometry.print_blade import (
     bed_contact_fraction,
+    boss_slab_at_junction_m,
     build_print_blade,
-    flat_boss_radius_m,
     layer_thin_fraction,
     mesh_volume,
 )
@@ -85,7 +85,13 @@ def run(
     deploy_direction: int = DEFAULT_DEPLOY_DIRECTION,
     detent_spec: DetentSpec = DEFAULT_DETENT_SPEC,
 ) -> dict:
-    """Build one blade's STL (+ .json report, + .3mf when ``template`` is given); returns the report."""
+    """Build one blade's STL (+ .json report, + .3mf when ``template`` is given); returns the report.
+
+    Never overwrites: raises if any of the outputs already exists, so every build keeps its own file.
+    """
+    taken = [q for q in (out, out.with_suffix(".json"), out.with_suffix(".3mf")) if q.exists()]
+    if taken:
+        raise FileExistsError(f"build output already exists (pick a new --out name): {taken[0]}")
     rho_material = MATERIAL_DENSITY_KG_PER_M3[material]
     rows = {str(r["design_hash"]): r for r in load_campaign_rows(shards)}
     params = decode(np.asarray(rows[name.split("_", 1)[1]]["vector"], dtype=float))
@@ -96,7 +102,12 @@ def run(
     rho = saved_rho[idx]
     facets, opposite = boundary_facets(mesh.tets)
     centers, normals, _areas = facet_geometry(mesh.nodes, facets, opposite)
-    spacing = layer_spacing_m(params)
+    design_spacing = layer_spacing_m(params)
+    # The boss is the stack spacer: as thick as the blade where it joins the boss, so neighbours touch
+    # there; where the blade is thicker further out, neighbours press and flex (the operator's choice
+    # over the design spacing, which kept every blade apart and left a gap at the hub).
+    boss_z = boss_slab_at_junction_m(mesh.nodes, facets, PIVOT_BOSS_RADIUS_M, design_spacing / 2.0)
+    spacing = boss_z[1] - boss_z[0]
     detent = None
     if detent_seats > 0:
         seats = rib_detent_seats(params, deploy_direction=deploy_direction, n_seats=detent_seats)
@@ -106,13 +117,12 @@ def run(
         mesh.nodes, mesh.tets, rho, centers, normals,
         hub_radius_m=HUB_RADIUS_M, bore_radius_m=PIVOT_PIN_DIAMETER_M / 2.0,
         rib_width_m=rib_width_m, tip_cap_m=tip_cap_m, skin_m=skin_m, pitch_m=pitch_m,
-        boss_half_height_m=spacing / 2.0, boss_radius_m=PIVOT_BOSS_RADIUS_M,
+        boss_z_m=boss_z, boss_radius_m=PIVOT_BOSS_RADIUS_M,
         bump_spheres=None if detent is None else detent.bumps,
         recess_spheres=None if detent is None else detent.recesses,
     )  # fmt: skip
-    boss_r = flat_boss_radius_m(mesh.nodes, spacing / 2.0)
     cad_verts = (blade.verts - blade.print_offset_m) @ blade.print_from_cad
-    in_boss = np.hypot(cad_verts[:, 0], cad_verts[:, 1]) < boss_r - 0.5e-3
+    in_boss = np.hypot(cad_verts[:, 0], cad_verts[:, 1]) < PIVOT_BOSS_RADIUS_M - 0.5e-3
     write_binary_stl(blade.verts, blade.faces, out)
     project = None
     if template is not None:
@@ -153,8 +163,15 @@ def run(
         "mass_g": volume_m3 * rho_material * 1e3,
         "fan_mass_12_blades_g": 12 * volume_m3 * rho_material * 1e3,
         "design_folded_stack_mm": folded_stack_height_m(params) * 1e3,
-        "design_layer_spacing_mm": spacing * 1e3,
-        "boss_flat_radius_mm": boss_r * 1e3,
+        "design_layer_spacing_mm": design_spacing * 1e3,
+        "layer_spacing_mm": spacing * 1e3,
+        "folded_stack_mm": folded_stack_height_m(
+            params, clearance_m=spacing - blade_z_envelope_m(params)
+        )
+        * 1e3,
+        "max_blade_press_folded_mm": max(0.0, blade_z_envelope_m(params) - spacing) * 1e3,
+        "boss_z_mm": [z * 1e3 for z in boss_z],
+        "boss_radius_mm": PIVOT_BOSS_RADIUS_M * 1e3,
         "boss_thickness_mm": float(np.ptp(cad_verts[in_boss, 2]) * 1e3),
         "detent": (
             None
@@ -193,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         "--out",
         type=Path,
         required=True,
-        help="output STL path (a .json report is written beside it)",
+        help="output STL path (a .json report is written beside it); must not exist yet",
     )
     ap.add_argument("--rib-width-mm", type=float, required=True)
     ap.add_argument("--mesh-size-mm", type=float, default=0.6, help="must match the TO run")
