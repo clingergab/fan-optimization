@@ -47,8 +47,10 @@ topopt = [
     "scikit-fem>=9",
 ]
 stl = [
-    # marching cubes for the TO density field -> printable watertight STL (geometry/to_stl.py).
+    # marching cubes for the TO density field -> printable watertight STL (geometry/to_stl.py, print_blade.py).
     "scikit-image>=0.22",
+    # manifold-preserving mesh simplification for the print blade (geometry/print_blade.py).
+    "manifold3d>=3.0",
 ]
 dev = [
     "pytest>=8",
