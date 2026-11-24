@@ -120,3 +120,22 @@ def test_bad_count_raises():
 
 def test_default_direction_matches_the_notebook():
     assert DEFAULT_DEPLOY_DIRECTION == -1
+
+
+def test_smaller_open_pitch_moves_the_open_recess_closer():
+    full = rib_detent_seats(_params())
+    less = rib_detent_seats(_params(), open_pitch_rad=INTER_BLADE_ANGLE_RAD - math.radians(0.2))
+    assert [
+        b.open_recess_angle_deg - a.open_recess_angle_deg for a, b in zip(full, less, strict=True)
+    ] == [pytest.approx(-0.2)] * len(full)
+
+
+def test_smaller_open_pitch_shortens_the_travel():
+    less = rib_detent_seats(_params(), open_pitch_rad=math.radians(13.0), n_seats=1)
+    assert less[0].travel_mm == pytest.approx(0.08 * math.radians(13.0) * 1e3)
+
+
+@pytest.mark.parametrize("pitch", [0.0, INTER_BLADE_ANGLE_RAD + 0.01])
+def test_open_pitch_outside_range_raises(pitch):
+    with pytest.raises(ValueError, match="open_pitch_rad"):
+        rib_detent_seats(_params(), open_pitch_rad=pitch)
