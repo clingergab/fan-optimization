@@ -75,12 +75,15 @@ def rib_detent_seats(
     r_min_m: float = DEFAULT_R_MIN_M,
     r_max_m: float = DEFAULT_R_MAX_M,
     edge_margin_rad: float = DEFAULT_EDGE_MARGIN_RAD,
+    open_pitch_rad: float = INTER_BLADE_ANGLE_RAD,
 ) -> list[DetentSeat]:
     """Placements for the open/closed hold detent: ``n_seats`` bump+recess sites along the overlapping rib.
 
     ``deploy_direction`` (±1) picks which rib overlaps the neighbour and MUST match the assembled fan's
     open direction. Seats are spaced over ``[r_min_m, r_max_m]``. Raises if the band/count is invalid or a
     seat's open landing would fall off the neighbour (no overlap → cannot hold open there).
+    ``open_pitch_rad`` is how far each blade turns from its neighbour when open (default: the locked
+    design pitch); a smaller value opens the fan slightly less and widens the overlap at the tip.
     """
     if deploy_direction not in (1, -1):
         raise ValueError("deploy_direction must be +1 or -1")
@@ -88,8 +91,10 @@ def rib_detent_seats(
         raise ValueError("n_seats must be >= 1")
     if not 0.0 < r_min_m <= r_max_m:
         raise ValueError("require 0 < r_min_m <= r_max_m")
+    if not 0.0 < open_pitch_rad <= INTER_BLADE_ANGLE_RAD:
+        raise ValueError("open_pitch_rad must be in (0, the design pitch]")
 
-    pitch_deg = math.degrees(INTER_BLADE_ANGLE_RAD)
+    pitch_deg = math.degrees(open_pitch_rad)
     edge_deg = math.degrees(edge_margin_rad)
     radii = (
         [r_min_m]

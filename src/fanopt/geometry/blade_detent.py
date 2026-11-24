@@ -43,7 +43,9 @@ class DetentSpec:
     # The first printed bumps (Ø3 mm base, 0.9–1.1 mm tall) were cut from a ~1.6 mm sphere; keeping
     # the sphere fixed keeps the tested dome shape whatever the bump height.
     bump_radius_m: float = 1.6e-3
-    interference_m: float = 0.3e-3
+    # Bump height above the blade face where the blades touch: ~1 mm, the size of the first printed bumps
+    # (the operator's choice); the recess is cut to take all of it.
+    interference_m: float = 1.0e-3
     # Recess depth past the bump: the hold is the bump height it must climb; extra depth only adds play.
     seat_clearance_m: float = 0.05e-3
     recess_radial_clearance_m: float = 0.15e-3

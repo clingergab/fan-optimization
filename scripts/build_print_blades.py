@@ -25,7 +25,12 @@ from scipy.spatial import cKDTree
 from fanopt.bo.blade_codec import decode
 from fanopt.cfd.blade_verify import load_campaign_rows
 from fanopt.geometry.bambu_3mf import write_bambu_project
-from fanopt.geometry.blade import blade_z_envelope_m, folded_stack_height_m, layer_spacing_m
+from fanopt.geometry.blade import (
+    blade_z_envelope_m,
+    folded_rib_bow_extent_m,
+    folded_stack_height_m,
+    layer_spacing_m,
+)
 from fanopt.geometry.blade_detent import DEFAULT_DETENT_SPEC, DetentSpec, detent_geometry
 from fanopt.geometry.print_blade import (
     bed_contact_fraction,
@@ -37,11 +42,13 @@ from fanopt.geometry.print_blade import (
 from fanopt.geometry.rib_detent import DEFAULT_DEPLOY_DIRECTION, rib_detent_seats
 from fanopt.geometry.schema import (
     HUB_RADIUS_M,
+    INTER_BLADE_ANGLE_RAD,
     PIVOT_BOSS_RADIUS_M,
     PIVOT_PIN_DIAMETER_M,
     RHO_PETG_KG_PER_M3,
     RHO_PLA_KG_PER_M3,
 )
+from fanopt.geometry.thickness_squeeze import cap_thickness_in_overlap, squeeze_toward_mid_surface
 from fanopt.geometry.to_stl import write_binary_stl
 from fanopt.topopt.blade_fea_mesh import (
     FeaMeshParams,
@@ -84,6 +91,9 @@ def run(
     detent_seats: int = 5,
     deploy_direction: int = DEFAULT_DEPLOY_DIRECTION,
     detent_spec: DetentSpec = DEFAULT_DETENT_SPEC,
+    thickness_scale: float = 1.0,
+    open_pitch_rad: float = INTER_BLADE_ANGLE_RAD,
+    flatten_overlap: bool = False,
 ) -> dict:
     """Build one blade's STL (+ .json report, + .3mf when ``template`` is given); returns the report.
 
@@ -96,25 +106,38 @@ def run(
     rows = {str(r["design_hash"]): r for r in load_campaign_rows(shards)}
     params = decode(np.asarray(rows[name.split("_", 1)[1]]["vector"], dtype=float))
     mesh = build_blade_fea_mesh(params, mesh_params=FeaMeshParams(mesh_size_m=mesh_size_m))
-    centroids, volumes = tet_centroids_and_volumes(mesh.nodes, mesh.tets)
+    centroids, _ = tet_centroids_and_volumes(mesh.nodes, mesh.tets)
     saved_rho = np.load(to_dir / f"{name}_density.npy")
     remap, idx = cKDTree(np.load(to_dir / f"{name}_centroids.npy")).query(centroids)
     rho = saved_rho[idx]
     facets, opposite = boundary_facets(mesh.tets)
-    centers, normals, _areas = facet_geometry(mesh.nodes, facets, opposite)
+    # Density is mapped on the TO's own mesh first, then the mesh is thinned: each tet keeps its density.
+    nodes = squeeze_toward_mid_surface(mesh.nodes, facets, thickness_scale)
+    _, volumes = tet_centroids_and_volumes(nodes, mesh.tets)
+    centers, normals, _areas = facet_geometry(nodes, facets, opposite)
     design_spacing = layer_spacing_m(params)
     # The boss is the stack spacer: as thick as the blade where it joins the boss, so neighbours touch
     # there; where the blade is thicker further out, neighbours press and flex (the operator's choice
     # over the design spacing, which kept every blade apart and left a gap at the hub).
-    boss_z = boss_slab_at_junction_m(mesh.nodes, facets, PIVOT_BOSS_RADIUS_M, design_spacing / 2.0)
+    boss_z = boss_slab_at_junction_m(nodes, facets, PIVOT_BOSS_RADIUS_M, design_spacing / 2.0)
     spacing = boss_z[1] - boss_z[0]
+    if flatten_overlap:
+        # Where open neighbours overlap, no thicker than the boss: they lie flat instead of propping apart.
+        nodes = cap_thickness_in_overlap(nodes, facets, spacing, open_pitch_rad)
+        _, volumes = tet_centroids_and_volumes(nodes, mesh.tets)
+        centers, normals, _areas = facet_geometry(nodes, facets, opposite)
     detent = None
     if detent_seats > 0:
-        seats = rib_detent_seats(params, deploy_direction=deploy_direction, n_seats=detent_seats)
-        detent = detent_geometry(seats, mesh.nodes, facets, spacing, detent_spec)
+        seats = rib_detent_seats(
+            params,
+            deploy_direction=deploy_direction,
+            n_seats=detent_seats,
+            open_pitch_rad=open_pitch_rad,
+        )
+        detent = detent_geometry(seats, nodes, facets, spacing, detent_spec)
 
     blade = build_print_blade(
-        mesh.nodes, mesh.tets, rho, centers, normals,
+        nodes, mesh.tets, rho, centers, normals,
         hub_radius_m=HUB_RADIUS_M, bore_radius_m=PIVOT_PIN_DIAMETER_M / 2.0,
         rib_width_m=rib_width_m, tip_cap_m=tip_cap_m, skin_m=skin_m, pitch_m=pitch_m,
         boss_z_m=boss_z, boss_radius_m=PIVOT_BOSS_RADIUS_M,
@@ -135,6 +158,7 @@ def run(
             settings=PROJECT_SETTINGS,
         )
 
+    envelope = blade_z_envelope_m(params) * thickness_scale
     voxel_cm3 = pitch_m**3 * 1e6
     volume_m3 = mesh_volume(blade.verts, blade.faces)
     areas = blade.solid.sum(axis=(0, 1)).astype(float)
@@ -147,6 +171,9 @@ def run(
         "rib_width_mm": rib_width_m * 1e3,
         "skin_mm": skin_m * 1e3,
         "tip_cap_mm": tip_cap_m * 1e3,
+        "thickness_scale": thickness_scale,
+        "open_pitch_deg": float(np.degrees(open_pitch_rad)),
+        "flatten_overlap": flatten_overlap,
         "voxel_pitch_mm": pitch_m * 1e3,
         "density_remap_mm": {
             q: float(np.percentile(remap, p) * 1e3)
@@ -165,11 +192,12 @@ def run(
         "design_folded_stack_mm": folded_stack_height_m(params) * 1e3,
         "design_layer_spacing_mm": design_spacing * 1e3,
         "layer_spacing_mm": spacing * 1e3,
-        "folded_stack_mm": folded_stack_height_m(
-            params, clearance_m=spacing - blade_z_envelope_m(params)
+        # Nested dishes: 11 layer spacings + the top blade's dish depth + its (thinned) thickest section.
+        "folded_stack_mm": (
+            (params.blade_count - 1) * spacing + folded_rib_bow_extent_m(params) + envelope
         )
         * 1e3,
-        "max_blade_press_folded_mm": max(0.0, blade_z_envelope_m(params) - spacing) * 1e3,
+        "max_blade_press_folded_mm": max(0.0, envelope - spacing) * 1e3,
         "boss_z_mm": [z * 1e3 for z in boss_z],
         "boss_radius_mm": PIVOT_BOSS_RADIUS_M * 1e3,
         "boss_thickness_mm": float(np.ptp(cad_verts[in_boss, 2]) * 1e3),
@@ -238,12 +266,31 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_DEPLOY_DIRECTION,
         help="fan-out sense the fan is assembled to open in (sets which rib carries the bumps)",
     )
+    ap.add_argument(
+        "--thickness-scale",
+        type=float,
+        default=1.0,
+        help="thin the blade about its mid-surface by this factor (0.8 = 20%% thinner); shape unchanged",
+    )
+    ap.add_argument(
+        "--open-pitch-deg",
+        type=float,
+        default=float(np.degrees(INTER_BLADE_ANGLE_RAD)),
+        help="how far each blade turns from its neighbour when open (default: the design pitch)",
+    )
+    ap.add_argument(
+        "--flatten-overlap",
+        action="store_true",
+        help="thin the open-fan overlap strips to the boss thickness so neighbours lie flat there",
+    )
     a = ap.parse_args(argv)
     report = run(
         name=a.name, shards=a.shards, to_dir=a.to_dir, out=a.out, rib_width_m=a.rib_width_mm / 1e3,
         mesh_size_m=a.mesh_size_mm / 1e3, skin_m=a.skin_mm / 1e3, tip_cap_m=a.tip_cap_mm / 1e3,
         pitch_m=a.pitch_mm / 1e3, template=a.template, material=a.material,
         detent_seats=a.detent_seats, deploy_direction=a.deploy_direction,
+        thickness_scale=a.thickness_scale, open_pitch_rad=float(np.radians(a.open_pitch_deg)),
+        flatten_overlap=a.flatten_overlap,
     )  # fmt: skip
     print(json.dumps({k: v for k, v in report.items() if k not in ("print_from_cad",)}, indent=2))
     return 0

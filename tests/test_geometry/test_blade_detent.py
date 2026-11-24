@@ -21,6 +21,8 @@ from fanopt.geometry.rib_detent import DetentSeat
 
 MM = 1e-3
 SPACING = 3.8 * MM
+# The plate's 0.8 mm gap + the default 1 mm bump would outgrow the 1.6 mm sphere.
+GAPPED = DetentSpec(interference_m=0.3 * MM)
 SEAT = DetentSeat(
     radius_m=100 * MM,
     bump_angle_deg=-5.0,
@@ -59,7 +61,7 @@ def plate():
 
 @pytest.fixture(scope="module")
 def geo(plate):
-    return detent_geometry([SEAT], *plate, SPACING)
+    return detent_geometry([SEAT], *plate, SPACING, GAPPED)
 
 
 def _xy(angle_deg):
@@ -136,12 +138,14 @@ def test_interference_is_configurable(plate):
 
 def test_bump_that_would_poke_through_a_thin_blade_is_rejected():
     with pytest.raises(ValueError, match="pokes out"):
-        detent_geometry([SEAT], *_plate(thickness_m=1.5 * MM), SPACING - 1.5 * MM)
+        detent_geometry([SEAT], *_plate(thickness_m=1.5 * MM), SPACING - 1.5 * MM, GAPPED)
 
 
 def test_recess_too_deep_for_the_blade_is_rejected(plate):
     with pytest.raises(ValueError, match="recess would leave"):
-        detent_geometry([SEAT], *plate, SPACING, DetentSpec(seat_clearance_m=2.0 * MM))
+        detent_geometry(
+            [SEAT], *plate, SPACING, DetentSpec(interference_m=0.3 * MM, seat_clearance_m=2.0 * MM)
+        )
 
 
 def test_bump_taller_than_its_sphere_is_rejected(plate):
@@ -159,16 +163,20 @@ def test_pressed_blades_report_the_negative_gap(pressed):
     assert pressed.seats[0]["gap_closed_mm"] == pytest.approx(-0.2)
 
 
-def test_pressed_blades_get_a_bump_of_just_the_interference(pressed):
-    assert pressed.seats[0]["bump_height_mm"] == pytest.approx(0.3)
+def test_pressed_blades_get_the_default_1mm_bump(pressed):
+    assert pressed.seats[0]["bump_height_mm"] == pytest.approx(1.0)
 
 
 def test_pressed_blades_recess_takes_the_bump_plus_clearance(pressed):
-    assert pressed.seats[0]["recess_depth_closed_mm"] == pytest.approx(0.35)
+    assert pressed.seats[0]["recess_depth_closed_mm"] == pytest.approx(1.05)
 
 
 def test_report_records_the_wall_under_the_recess(geo):
     assert geo.seats[0]["wall_under_recess_mm"] == pytest.approx(3.0 - 0.35)
+
+
+def test_pressed_blades_recess_leaves_the_rest_of_the_blade(pressed):
+    assert pressed.seats[0]["wall_under_recess_mm"] == pytest.approx(3.0 - 1.05)
 
 
 def test_no_seats_gives_empty_arrays(plate):

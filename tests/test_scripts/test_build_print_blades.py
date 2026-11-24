@@ -196,3 +196,60 @@ def test_existing_output_is_never_overwritten(tmp_path, suffix):
         build_print_blades.run(name="x", shards=tmp_path, to_dir=tmp_path, out=tmp_path / "blade.stl",
                                rib_width_m=1e-3)  # fmt: skip
     assert (tmp_path / f"blade{suffix}").read_text() == "keep me"
+
+
+@pytest.fixture(scope="module")
+def thin_outputs(tmp_path_factory):
+    rc, out = _build(
+        tmp_path_factory.mktemp("print_blades_thin"),
+        "--detent-seats", "0", "--thickness-scale", "0.8",
+    )  # fmt: skip
+    return rc, _report(out)
+
+
+def test_thinner_build_records_the_scale(thin_outputs):
+    assert thin_outputs[1]["thickness_scale"] == 0.8
+
+
+def test_thinner_build_thins_the_boss_by_the_scale(outputs, thin_outputs):
+    assert thin_outputs[1]["layer_spacing_mm"] == pytest.approx(
+        0.8 * _report(outputs[1])["layer_spacing_mm"], rel=0.03
+    )
+
+
+def test_thinner_build_is_lighter(outputs, thin_outputs):
+    assert thin_outputs[1]["volume_cm3"] < _report(outputs[1])["volume_cm3"]
+
+
+def test_thinner_build_folds_thinner(outputs, thin_outputs):
+    assert thin_outputs[1]["folded_stack_mm"] < _report(outputs[1])["folded_stack_mm"]
+
+
+@pytest.fixture(scope="module")
+def flat_outputs(tmp_path_factory):
+    rc, out = _build(
+        tmp_path_factory.mktemp("print_blades_flat"),
+        "--open-pitch-deg", "13.0", "--flatten-overlap", mesh_mm="2",
+    )  # fmt: skip
+    return rc, _report(out)
+
+
+def test_open_pitch_is_recorded(flat_outputs):
+    assert flat_outputs[1]["open_pitch_deg"] == pytest.approx(13.0)
+
+
+def test_smaller_open_pitch_shortens_the_detent_travel(detent_outputs, flat_outputs):
+    assert all(
+        a["travel_mm"] > b["travel_mm"]
+        for a, b in zip(
+            detent_outputs[1]["detent"]["seats"], flat_outputs[1]["detent"]["seats"], strict=True
+        )
+    )
+
+
+def test_flatten_overlap_is_recorded(flat_outputs):
+    assert flat_outputs[1]["flatten_overlap"] is True
+
+
+def test_flattened_overlap_removes_material(detent_outputs, flat_outputs):
+    assert flat_outputs[1]["volume_cm3"] < detent_outputs[1]["volume_cm3"]
