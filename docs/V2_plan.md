@@ -42,12 +42,12 @@ So V2 settles the objective and the space **before** spending GPU time on data. 
 
 | # | Decision | Notes |
 |---|---|---|
-| **D1** | **Objective: wind ÷ effort per cycle** (`J_fan / W_cycle`) | `J_fan` = signed cycle-mean thrust (ADR-0004). `W_cycle` (new in sim) = work per cycle at the wrist: inertial torque (blade mass × distance² from the wrist, from the CAD mass distribution incl. TO/infill) + aero torque (from the CFD moment about the wrist axis). Decide whether negative work counts (muscles don't recover it well → integrate positive power, `∫ max(τω, 0) dt`, or `∫ |τω| dt`). Keep wind and effort as two Pareto objectives as well as the ratio. |
-| **D2** | **Design space and representation** | Thickness floor from printing, not 3 mm (set by the §3 W0 thickness-series print; expect ~1.5–2 mm); thickness × inside fill as one question; more meridian knots (5 → 7–9); finer panel grid; developed (arc) length held at 220 mm; rib width free (H12 relaxation). Then choose: (a) extended codec (hundreds of dims) or (b) free-form (neural implicit / SDF). Thinner blades free fold budget → allow a larger meridian range. |
+| **D1** | **Objective: wind ÷ effort per cycle** (`J_fan / W_cycle`) | `J_fan` = signed cycle-mean thrust (ADR-0004). `W_cycle` (new in sim) = work per cycle at the wrist: inertial torque (blade mass × distance² from the wrist, from the CAD mass distribution incl. TO/infill) + aero torque (from the CFD moment about the wrist axis). **Operator decision (2026-11-24):** compute both push-only `∫ max(τω, 0) dt` and push + brake `∫ |τω| dt` for every design; if they rank designs the same the choice is moot, if not decide then with the data. Keep wind and effort as two Pareto objectives as well as the ratio. |
+| **D2** | **Design space and representation** | Thickness floor from printing, not 3 mm (set by the §3 W0 thickness-series print; expect ~1.5–2 mm); thickness × inside fill as one question; more meridian knots (5 → 7–9); finer panel grid; developed (arc) length held at 220 mm; rib width free (H12 relaxation). Thinner blades free fold budget → allow a larger meridian range. **Operator decision (2026-11-24): two stages** — (1) an extended codec (hundreds of knobs: finer meridian + finer panel grid, independent top and bottom faces), feasible by construction; then (2) free-form (neural implicit / SDF), seeded from the stage-1 best and required to beat it. **Two-face asymmetry is in V2** (free in both stages). |
 | **D3** | **CFD regime** — ADR-0006 incompressible (Proposed) | Expected 2–5× faster and no divergence class; accept or reject at V2 kickoff. |
 | **D4** | **Fidelity ladder** | Coarse CFD is usable for training/screening only if coarse-vs-fine R² > 0.75 on a design spread (audit 2026-08). Else single-fidelity. |
 | **D5** | **TO formulation** | `min mass s.t. stiffness, buckling λ ≥ λ_min, stress ≤ σ_allow` (not compliance at a fixed 0.6); infill-aware material (walls + sparse core with measured stiffness); clamp + skin-freeze at the boss (~9 mm), not the retired 20 mm band; run to convergence. |
-| **D6** | **Compute** | GPU for surrogate training/inference and TO (port SIMP/FEA to a GPU array library); CFD stays CPU (SU2) unless a GPU solver passes the D4 correlation check. Shrink the campaign first; move to a bigger substrate only if it stays large. |
+| **D6** | **Compute** | **A100 / G4-class GPUs available (operator, 2026-11-24).** GPU for surrogate training/inference and TO (port SIMP/FEA to a GPU array library); CFD stays CPU (SU2) unless a GPU solver passes the D4 correlation check. Shrink the campaign first; move to a bigger substrate only if it stays large. |
 
 ## 3. Workstreams, in order
 
@@ -103,12 +103,18 @@ the ±40°, 2 Hz stroke; a pin pivot through the boss (no hole through the rib);
 blade surface (they leak air — the porosity sweet-spot entry is the one deliberate exception to test in a
 free-form search); single-material FDM printability; the open/closed hold detent.
 
-## 5. Open questions for the operator
+## 5. Operator questions
 
-1. Effort: does negative work count (D1)?
-2. Free-form shapes in V2, or an extended codec first and free-form later (D2)?
-3. Compute budget and substrate for W5 (Colab GPU hours vs a rented box).
-4. Asymmetric strokes and two-face blades (`V2_backlog.md` Optional) — in V2 or after?
+Answered 2026-11-24 (recorded in §2):
+
+1. ~~Does negative (braking) work count?~~ → compute push-only and push + brake; decide only if they disagree (D1).
+2. ~~Free-form or extended codec first?~~ → extended codec first, then free-form seeded from its best (D2).
+3. ~~Compute?~~ → A100 / G4-class GPUs; exact budget and substrate settled at W5 (D6).
+4. ~~Asymmetry in V2?~~ → yes, two-face asymmetry is optimized in V2 (D2; `V2_backlog.md` "Effort-minimizing
+   asymmetric two-face blade" moves into V2 scope).
+
+Still open: whether the stroke itself becomes asymmetric in the objective (`V2_backlog.md` "Asymmetric-stroke
+physics in J_fan") — needs the W0/W1 measurements first.
 
 ## 6. Backlog entries by workstream
 
