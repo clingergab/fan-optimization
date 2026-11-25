@@ -1,6 +1,6 @@
 # V2 Backlog
 
-Canonical, expanded V2 plan. The in-spec summary lives at `../report-final.md` §13; this file is the authoritative location for V2 work descriptions, triggers, and acceptance criteria.
+Canonical, expanded V2 plan. The in-spec summary lives at `../report-final.md` §13; this file is the authoritative location for V2 work descriptions, triggers, and acceptance criteria. The ordered V2 roadmap (decisions, workstreams, starting data) is **`V2_plan.md`**.
 
 ---
 
@@ -426,16 +426,16 @@ of design freedom:
   valid designs from data and generate novel topologies the codec cannot express.
 
 **What still binds (NOT simplifications to remove):** the architectural +
-manufacturing locks — panel-pivot architecture, m < 100 g, single-material PETG
-printability, the click mechanism, blade-count range, the kinematic load cases.
+manufacturing locks — panel-pivot architecture, the fan mass cap (`MAX_TOTAL_MASS_KG`, 300 g),
+single-material FDM printability (PLA or PETG), the hold detent, 12 blades, the kinematic load cases.
 These **define a valid, buildable fan**; free-form search explores shapes *within*
 them, and the physics gate (§59.5 + real SU2/FEA) verifies buildability. Distinguish
 a **compute-driven basis simplification** (escape it) from a **product-defining
 constraint** (keep it).
 
 **The hard part = data + GPU (be honest about this):** ML TO/AO needs thousands of
-(design → response) pairs from SIMP/SU2. V1 has a *seed* (208 aero evals + 1 rib
-TO), not a training set, and the fan is bespoke (no off-the-shelf dataset). **Data
+(design → response) pairs from SIMP/SU2. V1 has a *seed* (838 3D CFD runs — 751 valid, scalars
+only — + 8 unconverged blade TOs; `V2_plan.md` §1), not a training set, and the fan is bespoke (no off-the-shelf dataset). **Data
 generation is the dominant cost** and is GPU/compute-heavy. Mitigations: active
 learning (sample only where the surrogate is uncertain), transfer learning, and
 physics-informed operators (PINN / DeepONet / Fourier Neural Operator) that need
@@ -445,8 +445,8 @@ less data. **Physics stays ground truth** — the surrogate proposes; SU2/FEA + 
 **Staged path (highest ROI first):**
 1. **ML aero surrogate** — biggest win (CFD is the bottleneck). Train a model
    (CNN/GNN on the flow field, or an FNO for the PDE operator) on the accumulated
-   SU2 evals to predict J_fan / pressure. Bootstrap from the existing Phase-4
-   ledger (`evaluations.jsonl` + design vectors) via active learning; replace most
+   SU2 evals to predict J_fan / pressure. Bootstrap from the V1 trapezoid-campaign
+   ledgers (`evaluations_colab-*.jsonl` + design vectors) via active learning; replace most
    SU2 calls in the BO inner loop, keep periodic SU2 spot-checks.
 2. **ML TO surrogate** — CNN/FNO predicting the rib compliance/stress field, to
    accelerate the V1.5 staggered inner loop (the §6.3 "iterative TO↔ASO" case).
