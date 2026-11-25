@@ -76,7 +76,7 @@ The hollow is intentional. Under 0.01 % of the area is thinner than the 0.4 mm n
 | Nozzle / bed (PLA) | 220 °C / 55 °C |
 | Plate | Textured PEI |
 | Walls | 2 loops |
-| Infill | **100 % zig-zag** — the TO sized and stress-checked the blade as solid plastic |
+| Infill | **100 % zig-zag** in the file — the TO sized and stress-checked the blade as solid plastic. The V1 fans are printed at **15 % grid** instead (§2b) |
 | Supports | **off** — on-edge, only ~15–25 mm² per blade faces down |
 | Brim | outer only, 8 mm (steadies the tall thin wall) |
 | Raft | none |
@@ -117,6 +117,28 @@ Current-file masses (`.json` reports, solid volume × filament density):
 
 All are under the 300 g fan cap. `--material petg|pla` on `scripts/build_print_blades.py` sets the
 filament for the reported mass only; the `.3mf` takes its filament profile from `--template`.
+
+## 2b. Infill as printed: 15 % grid (operator choice, 2026-11-24)
+
+Every print so far, and the V1 fans, used Bambu Studio's default **15 % grid** sparse infill with 2 walls,
+not the 100 % the file sets (the setting reset when the blades were placed on a new plate). The operator
+kept it on purpose: the blades are lighter, and strength and flex have been fine, including at 20 %
+thinner.
+
+- **Slicer infill is not the TO hollow.** The TO void toward the tip is part of the blade's shape and stays
+  empty at any infill. 15 % only turns the solid core (between the walls, toward the hub) into a lattice.
+- **It saves little, because the blade is mostly walls.** The blade is ~2.5 mm thick and prints on edge,
+  so its two 2-loop walls (~0.8 mm each) leave a core under 1 mm wide over most of it. Bending stiffness
+  comes mostly from those outer walls.
+- **Reference print:** `print_ready/H2C_blade_00_2026-11-23_thin-20pct_open-13.09_flat-overlap_PLA-15%infill.gcode.3mf`
+  — 12 × blade 00 on one plate, Bambu PLA Matte, auto brim, **214.6 g, 12 h 18 m** (≈ 17.9 g per blade
+  with brim, against ≈ 20.0 g at 100 %, §3).
+- **Masses in §2a assume solid blades,** so a 15 % fan is ~10 % lighter; use the scale. Print 00 and 02 at
+  the same infill and record it with every measurement.
+- **What 15 % weakens:** the solid spots that take concentrated loads — the hub around the pin (bolt
+  clamp, pivot twist), the edge ribs and the area under the detent bumps. Watch them for cracks; 4 wall
+  loops make the ring around the pin solid for almost no weight.
+- **For 100 %:** Bambu Studio refuses 100 % with grid or zig-zag; use **rectilinear**.
 
 ## 3. Estimates
 

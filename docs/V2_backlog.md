@@ -361,6 +361,37 @@ within a 1.5–2 mm rib strip) plus a 0.6 mm cosmetic tip-end cap; +15–20 % ma
 filled. Print files: `P2C_blade_{00,02,03}_ribadd.stl` (see `docs/print_guide.md`). Re-running the TO
 with a stiffness/buckling objective is the V1.5 effort.
 
+
+### V1 fans printed at 15 % sparse infill — the TO kept core material it didn't need (found 2026-11-24)
+
+**Finding:** every operator print, and the V1 fans, used the slicer's default **15 % grid** infill (2 walls),
+not the 100 % the build files set. Blades were sturdy, with no strength or flex issues, even after the 20 %
+thinning. Reference: `print_ready/H2C_blade_00_2026-11-23_thin-20pct_open-13.09_flat-overlap_PLA-15%infill.gcode.3mf`
+— 12 × blade 00, **214.6 g** (≈ 17.9 g/blade with brim vs ≈ 20.0 g at 100 %); see `print_guide.md` §2b.
+
+**What it does and doesn't show:** the saving is only ~10 %, because the ~2.5 mm blade is mostly its walls.
+It shows the solid core the TO left mid-span is not needed for hand-feel stiffness — consistent with the
+entry above (compliance-only objective, and every design fell back to the fixed 0.6 volume fraction, so the
+kept material was a setting, not a minimum). It is a hand test, not a load-case check: the hub, pin bore and
+detent bumps under a full stack, bolt preload and many open/close cycles are not yet exercised.
+
+**V1.5 / V2 use:**
+1. **Infill-aware TO** — give the TO the material the printer actually makes: solid walls + a sparse core
+   with known (lower) stiffness and density, so it chooses solid only where loads concentrate (hub, bumps,
+   ribs) and sparse elsewhere.
+2. **Mass-minimizing formulation** (the entry above): `min mass s.t. stiffness, buckling, stress` instead of
+   a fixed volume fraction.
+3. **Calibrate with a tip-deflection test** before re-running the TO: clamp a printed blade at the hub, hang a
+   known weight at the tip, measure the drop; repeat at 15 % and 100 %. That gives a measured stiffness to
+   correct the FEA material model (FDM 15 % grid is not in `schema.py`).
+
+**Objective framing (operator, 2026-11-24):** maximize wind and minimize effort over a sustained wave (about a
+minute) — the plan's `J_fan / W_cycle` (airflow per unit work per cycle). Effort is (a) **inertial**: blade
+mass × distance² from the wrist, so mass near the tip costs most; (b) **aerodynamic**: the air's push back on
+the blade, the same force that makes the wind, which the return stroke can reduce (asymmetric-blade entry
+below); and (c) partly offset by **flex** storing and returning energy. Blade mass is set by outer size and
+thickness × how full the inside is (TO hollow + slicer infill) × material density.
+
 ---
 
 ## ML-driven TO + AO (research track — V2/V3)
