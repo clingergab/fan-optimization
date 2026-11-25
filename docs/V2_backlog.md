@@ -613,6 +613,39 @@ middle. Negligible → dead; large → earns a V2.5+ effort. Relates to the `dir
 and `Asymmetric-stroke physics in J_fan` items above (both about squeezing more directed wind
 from the same stroke).
 
+## V2.5 — Lit blades (after the V2 optimization; operator idea 2026-11-24)
+
+**Order (operator decision):** V2 first finds the design — thickness, shapes, curves — that maximizes wind
+and minimizes effort. Lights come after, fitted to that design, and must not compromise it.
+
+**The hard part is the pivot:** each blade turns relative to its neighbours (top to bottom ~144° open), so
+power can't simply run on fixed wires from one battery. Options, simplest first:
+- **A. Light at the hub, carried by a translucent blade** (e.g. PETG Trans): an LED shines into each hub and
+  the blade glows; infill and the TO hollow show as a pattern. No wires along the blade.
+- **B. One source in the pin:** a clear or slotted hollow pin with an LED or side-glow fibre lights every hub
+  the same at any angle. One battery, no twisting wires; needs a stronger, larger pin and a hub redesign.
+- **C. Shared battery + slack wire loops** (enamelled fairy-light wire): simple, but fatigue over open/close
+  cycles and clutter at the hub.
+- **D. A coin cell per blade:** no joints, but a ~2 mm cell barely fits the ~2.5 mm hub; 12 batteries.
+
+**Light sources:** micro fairy-light wire, sub-mm SMD LEDs, side-glow optical fibre (one LED at the hub,
+light along the fibre), or the translucent blade itself. An open-position contact could switch the lights on
+when the fan opens (ties in with the hold detent).
+
+**Constraints from the design:** no holes in the blade (leak airflow) — use translucent skin, not windows;
+nothing in the overlap strips (blades press there); nothing that thickens the folded stack. The existing TO
+hollow toward the tip is free room for lights (lights in the hollow, not filling it). Battery mass belongs
+at the hub: effort scales with mass × distance² from the wrist.
+
+**Thickness:** an enclosed channel needs ~2 walls per side (~1.6 mm) plus ~0.6–1 mm for a wire or fibre,
+~2.2–2.6 mm in all — about today's thickness at the hub. So embedded lights compete with thinning; surface
+grooves (outside the overlap strips) or the TO hollow avoid that. The real minimum thickness comes from the
+V2 optimization plus the tip-deflection test, not from this entry.
+
+**First experiments when V2.5 starts:** (1) one PETG Trans blade, light into the hub in the dark — does
+option A glow, and how far along; (2) tape fairy-light wire or side-glow fibre along a blade — weight and
+flex; (3) embedding by pause-at-layer (sealed channel) vs a glued surface groove (repairable).
+
 ## Out-of-scope (V3+ or research)
 
 Items that are not in the V1 or V2 roadmap, queued for either a V3 effort or a research follow-on.
