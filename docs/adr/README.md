@@ -24,6 +24,7 @@ current-decision table are enough to avoid confusion.
 | **Locked constants** (geometry / kinematics / CFD) | unchanged by the pivot | [`../locks_index.md`](../locks_index.md) |
 | **Unsteady CFD regime** | **MACH=1e-9 compressible** (V1, `../locks_index.md §9.4.1`); switch to incompressible **proposed for V2** | [`0006-unsteady-cfd-regime-incompressible.md`](0006-unsteady-cfd-regime-incompressible.md) |
 | **Product scope / V1↔V2 split** | unchanged | [`../phase_logs/phase_0_signoff.md`](../phase_logs/phase_0_signoff.md) |
+| **V2 roadmap** | ordered plan: decisions D1–D6, workstreams W0–W8 | [`../V2_plan.md`](../V2_plan.md) |
 | **V2 / deferred ideas** | backlog | [`../V2_backlog.md`](../V2_backlog.md) |
 
 If two docs seem to conflict, the table above wins.
