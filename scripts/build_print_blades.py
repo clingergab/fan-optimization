@@ -32,6 +32,7 @@ from fanopt.geometry.blade import (
     layer_spacing_m,
 )
 from fanopt.geometry.blade_detent import DEFAULT_DETENT_SPEC, DetentSpec, detent_geometry
+from fanopt.geometry.meridian_flatten import flat_meridian_params, flatten_meridian
 from fanopt.geometry.print_blade import (
     bed_contact_fraction,
     boss_slab_at_junction_m,
@@ -94,6 +95,8 @@ def run(
     thickness_scale: float = 1.0,
     open_pitch_rad: float = INTER_BLADE_ANGLE_RAD,
     flatten_overlap: bool = False,
+    flat_meridian: bool = False,
+    template_settings_only: bool = False,
 ) -> dict:
     """Build one blade's STL (+ .json report, + .3mf when ``template`` is given); returns the report.
 
@@ -111,8 +114,13 @@ def run(
     remap, idx = cKDTree(np.load(to_dir / f"{name}_centroids.npy")).query(centroids)
     rho = saved_rho[idx]
     facets, opposite = boundary_facets(mesh.tets)
+    nodes = mesh.nodes
+    if flat_meridian:
+        # The flat control: same planform, reach, true wall and TO structure, the meridian unbent.
+        nodes = flatten_meridian(nodes, params)
+        params = flat_meridian_params(params)
     # Density is mapped on the TO's own mesh first, then the mesh is thinned: each tet keeps its density.
-    nodes = squeeze_toward_mid_surface(mesh.nodes, facets, thickness_scale)
+    nodes = squeeze_toward_mid_surface(nodes, facets, thickness_scale)
     _, volumes = tet_centroids_and_volumes(nodes, mesh.tets)
     centers, normals, _areas = facet_geometry(nodes, facets, opposite)
     design_spacing = layer_spacing_m(params)
@@ -155,7 +163,7 @@ def run(
             blade.verts * 1e3,
             blade.faces,
             name=out.name,
-            settings=PROJECT_SETTINGS,
+            settings={} if template_settings_only else PROJECT_SETTINGS,
         )
 
     envelope = blade_z_envelope_m(params) * thickness_scale
@@ -174,6 +182,8 @@ def run(
         "thickness_scale": thickness_scale,
         "open_pitch_deg": float(np.degrees(open_pitch_rad)),
         "flatten_overlap": flatten_overlap,
+        "flat_meridian": flat_meridian,
+        "template_settings_only": template_settings_only,
         "voxel_pitch_mm": pitch_m * 1e3,
         "density_remap_mm": {
             q: float(np.percentile(remap, p) * 1e3)
@@ -283,6 +293,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="thin the open-fan overlap strips to the boss thickness so neighbours lie flat there",
     )
+    ap.add_argument(
+        "--flat-meridian",
+        action="store_true",
+        help="build the flat control: the design unbent at the same reach and true wall thickness",
+    )
+    ap.add_argument(
+        "--template-settings-only",
+        action="store_true",
+        help="keep every template setting (e.g. a printed .gcode.3mf); apply no infill/brim overrides",
+    )
     a = ap.parse_args(argv)
     report = run(
         name=a.name, shards=a.shards, to_dir=a.to_dir, out=a.out, rib_width_m=a.rib_width_mm / 1e3,
@@ -290,7 +310,8 @@ def main(argv: list[str] | None = None) -> int:
         pitch_m=a.pitch_mm / 1e3, template=a.template, material=a.material,
         detent_seats=a.detent_seats, deploy_direction=a.deploy_direction,
         thickness_scale=a.thickness_scale, open_pitch_rad=float(np.radians(a.open_pitch_deg)),
-        flatten_overlap=a.flatten_overlap,
+        flatten_overlap=a.flatten_overlap, flat_meridian=a.flat_meridian,
+        template_settings_only=a.template_settings_only,
     )  # fmt: skip
     print(json.dumps({k: v for k, v in report.items() if k not in ("print_from_cad",)}, indent=2))
     return 0

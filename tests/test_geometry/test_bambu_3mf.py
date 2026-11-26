@@ -46,10 +46,10 @@ _STALE = (
 )
 
 
-def _template(path, *, with_rels=False, bed=None):
+def _template(path, *, with_rels=False, bed=None, root=_ROOT):
     cfg = {"brim_type": "auto_brim", "keep": "me", "printable_area": _P2S_BED, **(bed or {})}
     with zipfile.ZipFile(path, "w") as z:
-        z.writestr("3D/3dmodel.model", _ROOT)
+        z.writestr("3D/3dmodel.model", root)
         z.writestr("Metadata/project_settings.config", json.dumps(cfg))
         z.writestr("Metadata/model_settings.config", "<config/>")
         z.writestr("_rels/.rels", '<Relationships><Relationship Target="/Metadata/plate_1.png"/>')
@@ -142,6 +142,15 @@ def test_project_centres_on_the_region_both_h2c_nozzles_reach(tmp_path):
     t = _template(tmp_path / "t.3mf", bed=_H2C)
     out = write_bambu_project(t, tmp_path / "o.3mf", _TET_V, _TET_F, name="b", settings={})
     assert _item_transform(zipfile.ZipFile(out))[9:11] == [175.0, 160.0]
+
+
+def test_sliced_template_with_self_closed_root_places_the_object(tmp_path):
+    # A sliced .gcode.3mf saves an empty model as <resources/> and <build/>.
+    root = re.sub(r"<resources>.*</resources>", "<resources/>", _ROOT, flags=re.S)
+    root = re.sub(r"<build>.*</build>", "<build/>", root, flags=re.S)
+    t = _template(tmp_path / "t.3mf", root=root)
+    out = write_bambu_project(t, tmp_path / "o.3mf", _TET_V, _TET_F, name="b", settings={})
+    assert _item_transform(zipfile.ZipFile(out))[9:11] == [128.0, 128.0]
 
 
 def test_project_explicit_plate_position_wins(tmp_path):
