@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from fanopt.geometry.bambu_3mf import (
+    filament_density_kg_m3,
     model_settings_xml,
     object_model_xml,
     plate_centre_mm,
@@ -226,3 +227,8 @@ def test_sliced_filament_sums_every_plate():
 def test_sliced_filament_rejects_a_failed_slice():
     with pytest.raises(ValueError, match="slice failed"):
         sliced_filament_g(_result(code=250))
+
+
+def test_filament_density_is_read_in_kg_per_m3(tmp_path):
+    t = _template(tmp_path / "t.3mf", bed={"filament_density": ["1.32"]})
+    assert filament_density_kg_m3(t) == pytest.approx(1320.0)

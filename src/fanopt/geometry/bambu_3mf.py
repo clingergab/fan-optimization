@@ -24,6 +24,7 @@ __all__ = [
     "write_bambu_project",
     "with_project_settings",
     "sliced_filament_g",
+    "filament_density_kg_m3",
 ]
 
 _OBJECT_PATH = "3D/Objects/object_1.model"
@@ -198,3 +199,10 @@ def sliced_filament_g(result: dict) -> float:
     return float(
         sum(f["main_used_g"] for plate in result["sliced_plates"] for f in plate["filaments"])
     )
+
+
+def filament_density_kg_m3(project: Path) -> float:
+    """Density of the project's first filament (Bambu stores it in g/cm³), the one its slices weigh with."""
+    with zipfile.ZipFile(project) as z:
+        cfg = json.loads(z.read(_SETTINGS_PATH))
+    return float(cfg["filament_density"][0]) * 1000.0

@@ -83,8 +83,8 @@ thinning, the flat overlap strips, the 13.09° opening, the hold detent (same se
 220 mm reach) and its thickness was laid out vertically, so on a slope its real wall is thinner by the
 cosine of the slope (6 % on average, up to 16 % at the steepest 32°). Unbending keeps that real wall, so
 the flat blade has less material: 13.21 vs 13.93 cm³ solid (−5.2 %). After slicing at 15 % infill the
-difference is small because walls dominate: **17.69 g and 48 min per blade** (with brim) vs 17.88 g for
-00, so about 2 g lighter per fan. The folded fan is only ~30 mm tall (no curve to nest).
+difference is small because walls dominate: **17.69 g and 48 min per blade** vs 17.9 g for 00 (Bambu's
+auto brim adds no brim to these blades), so about 2 g lighter per fan. The folded fan is only ~30 mm tall (no curve to nest).
 
 Weigh both fans before the test and record the weights; the effort side of the V2 objective uses them.
 
@@ -153,8 +153,9 @@ thinner.
   so its two 2-loop walls (~0.8 mm each) leave a core under 1 mm wide over most of it. Bending stiffness
   comes mostly from those outer walls.
 - **Reference print:** `print_ready/H2C_blade_00_2026-11-23_thin-20pct_open-13.09_flat-overlap_PLA-15%infill.gcode.3mf`
-  — 12 × blade 00 on one plate, Bambu PLA Matte, auto brim, **214.6 g, 12 h 18 m** (≈ 17.9 g per blade
-  with brim, against ≈ 20.0 g at 100 %, §3).
+  — 12 × blade 00 on one plate, Bambu PLA Matte, auto brim (none generated), **214.6 g sliced, 12 h 18 m**
+  (≈ 17.9 g per blade, against ≈ 20.0 g at 100 %, §3). **Weighed: 212 g for the 12 blades** (17.7 g each,
+  2026-11-25).
 - **Masses in §2a assume solid blades,** so a 15 % fan is ~10 % lighter; use the scale. Print 00 and 02 at
   the same infill and record it with every measurement.
 - **What 15 % weakens:** the solid spots that take concentrated loads — the hub around the pin (bolt
