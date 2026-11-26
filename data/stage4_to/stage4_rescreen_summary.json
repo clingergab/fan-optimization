@@ -1,0 +1,170 @@
+{
+  "n_designs": 4,
+  "n_succeeded": 4,
+  "skin_thickness_m": 0.0005,
+  "mesh_size_m": 0.0006,
+  "n_workers": 4,
+  "rescreened": true,
+  "designs": [
+    {
+      "name": "01_25797c1047cf72f945aa5a73",
+      "design_hash": "25797c1047cf72f945aa5a73",
+      "uniform": false,
+      "volume_removed_frac": 0.2773319669361427,
+      "design_volume_fraction": 0.6000577604032626,
+      "mass_kg": 0.020543138233312948,
+      "u_tip_max_mm": 6.269941674192608,
+      "max_von_mises_mpa": 3.068548296966603,
+      "max_von_mises_solid_mpa": 3.068548296966603,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.459041708322582,
+        "return_stroke": 1.459041708322582,
+        "inertial": 6.269941674192608,
+        "click_engagement": 2.313386299098215
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 0.654051837171774,
+        "return_stroke": 0.654051837171774,
+        "inertial": 2.9230431873073033,
+        "click_engagement": 3.068548296966603
+      },
+      "vm_solid_by_load_mpa": {
+        "productive_stroke": 0.654051837171774,
+        "return_stroke": 0.654051837171774,
+        "inertial": 2.9230431873073033,
+        "click_engagement": 3.068548296966603
+      },
+      "converged": false,
+      "iterations": 0,
+      "compliance_initial": null,
+      "compliance_final": null,
+      "n_design": 382998.0,
+      "n_frozen": 241879.0,
+      "accepted_volfrac": null,
+      "screen_passed": null,
+      "ladder_trace": null,
+      "remap_max_dist_m": 0.0,
+      "j_fan_3d": 9326258733274.516
+    },
+    {
+      "name": "02_248e298991dfd83a3f7bdfe0",
+      "design_hash": "248e298991dfd83a3f7bdfe0",
+      "uniform": false,
+      "volume_removed_frac": 0.2777262240683054,
+      "design_volume_fraction": 0.6000570045868443,
+      "mass_kg": 0.02064847662429764,
+      "u_tip_max_mm": 5.663243396431106,
+      "max_von_mises_mpa": 1.8659832970720285,
+      "max_von_mises_solid_mpa": 1.8659832970720285,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.2947256663261484,
+        "return_stroke": 1.2947256663261484,
+        "inertial": 5.663243396431106,
+        "click_engagement": 1.7719693526399372
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 0.41264252022933734,
+        "return_stroke": 0.41264252022933734,
+        "inertial": 1.8659832970720285,
+        "click_engagement": 1.3079515478477373
+      },
+      "vm_solid_by_load_mpa": {
+        "productive_stroke": 0.41264252022933734,
+        "return_stroke": 0.41264252022933734,
+        "inertial": 1.8659832970720285,
+        "click_engagement": 1.3079515478477373
+      },
+      "converged": false,
+      "iterations": 0,
+      "compliance_initial": null,
+      "compliance_final": null,
+      "n_design": 381088.0,
+      "n_frozen": 240158.0,
+      "accepted_volfrac": null,
+      "screen_passed": null,
+      "ladder_trace": null,
+      "remap_max_dist_m": 0.0,
+      "j_fan_3d": 9341233404353.25
+    },
+    {
+      "name": "03_1be42b2b86422ad222fb548a",
+      "design_hash": "1be42b2b86422ad222fb548a",
+      "uniform": false,
+      "volume_removed_frac": 0.277455269837797,
+      "design_volume_fraction": 0.6000584590333358,
+      "mass_kg": 0.020411103708110105,
+      "u_tip_max_mm": 5.82234644557432,
+      "max_von_mises_mpa": 3.1041119421386525,
+      "max_von_mises_solid_mpa": 3.1041119421386525,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.4002673769327658,
+        "return_stroke": 1.4002673769327658,
+        "inertial": 5.82234644557432,
+        "click_engagement": 2.2468667079403337
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 0.6961904323794305,
+        "return_stroke": 0.6961904323794305,
+        "inertial": 3.0141860695544196,
+        "click_engagement": 3.1041119421386525
+      },
+      "vm_solid_by_load_mpa": {
+        "productive_stroke": 0.6961904323794305,
+        "return_stroke": 0.6961904323794305,
+        "inertial": 3.0141860695544196,
+        "click_engagement": 3.1041119421386525
+      },
+      "converged": false,
+      "iterations": 0,
+      "compliance_initial": null,
+      "compliance_final": null,
+      "n_design": 379498.0,
+      "n_frozen": 239787.0,
+      "accepted_volfrac": null,
+      "screen_passed": null,
+      "ladder_trace": null,
+      "remap_max_dist_m": 0.0,
+      "j_fan_3d": 9518827400293.5
+    },
+    {
+      "name": "00_ffe19f9e3e7fa81ba847bbe8",
+      "design_hash": "ffe19f9e3e7fa81ba847bbe8",
+      "uniform": false,
+      "volume_removed_frac": 0.2810597282434564,
+      "design_volume_fraction": 0.6000569396811143,
+      "mass_kg": 0.021094028778166244,
+      "u_tip_max_mm": 5.60539102242184,
+      "max_von_mises_mpa": 15.760249163191308,
+      "max_von_mises_solid_mpa": 15.760249163191308,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.2857602313888026,
+        "return_stroke": 1.2857602313888026,
+        "inertial": 5.60539102242184,
+        "click_engagement": 1.9352575217699859
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 3.483767546204331,
+        "return_stroke": 3.483767546204331,
+        "inertial": 15.760249163191308,
+        "click_engagement": 2.3960086923675057
+      },
+      "vm_solid_by_load_mpa": {
+        "productive_stroke": 3.483767546204331,
+        "return_stroke": 3.483767546204331,
+        "inertial": 15.760249163191308,
+        "click_engagement": 2.3960086923675057
+      },
+      "converged": false,
+      "iterations": 0,
+      "compliance_initial": null,
+      "compliance_final": null,
+      "n_design": 407251.0,
+      "n_frozen": 244067.0,
+      "accepted_volfrac": null,
+      "screen_passed": null,
+      "ladder_trace": null,
+      "remap_max_dist_m": 0.0,
+      "j_fan_3d": 9657412951755.707
+    }
+  ]
+}

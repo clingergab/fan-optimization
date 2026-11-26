@@ -22,6 +22,8 @@ __all__ = [
     "plate_centre_mm",
     "resolve_bambu_preset",
     "write_bambu_project",
+    "with_project_settings",
+    "sliced_filament_g",
 ]
 
 _OBJECT_PATH = "3D/Objects/object_1.model"
@@ -174,3 +176,25 @@ def write_bambu_project(
         z.writestr(_RELS_PATH, _rels_xml(f"/{_OBJECT_PATH}"))
         z.writestr(_OBJECT_PATH, object_model_xml(v, faces))
     return out
+
+
+def with_project_settings(src: Path, out: Path, settings: dict[str, object]) -> Path:
+    """Copy the project ``src`` to ``out`` with ``settings`` applied to its project config."""
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == _SETTINGS_PATH:
+                cfg = json.loads(data)
+                cfg.update(settings)
+                data = json.dumps(cfg, indent=4).encode("utf-8")
+            z.writestr(item, data)
+    return out
+
+
+def sliced_filament_g(result: dict) -> float:
+    """Filament (g) of every plate in a Bambu Studio CLI ``result.json``; raises unless it succeeded."""
+    if result.get("return_code") != 0:
+        raise ValueError(f"slice failed: {result.get('error_string')!r}")
+    return float(
+        sum(f["main_used_g"] for plate in result["sliced_plates"] for f in plate["filaments"])
+    )

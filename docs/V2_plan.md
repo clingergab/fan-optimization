@@ -95,6 +95,9 @@ designs and thicknesses (the slicer weighs a blade in seconds without printing) 
 W0 printed weights; inertia about the wrist from the as-printed mass distribution, validated against the
 analytic `i_wrist_assembly` and, if available, a phone-IMU swing. *Done when* `J_fan / W_inertial` is
 computed for all 751 designs and its ranking is compared with `J_fan` alone (§3a hypothesis H1).
+**Done 2026-11-25** (`docs/phase_logs/v2_w1_inertial_effort.md`): slicer-calibrated mass model (0.13 g
+RMSE); fans 224–266 g on the recipe, inertial effort ±4 % across designs; the ranking barely moves
+(Spearman 0.999, best design unchanged). The printed-fan weighing (W0) is still the final check.
 
 **W2 — Rebuild the CFD run once.** Incompressible (D3), pitching about the wrist (D7), physical units
 (D9), and saving rich outputs every run: surface pressure, **force + moment histories** (the moment gives
@@ -151,8 +154,8 @@ for every shape**. If so, V2 splits into two nearly independent problems:
   structural check, no CFD.
 
 The link between them is **flex** (a thinner blade bends more, and bending changes the wind), measured in
-W3. W1 tests the first half (expect `J_fan / W_inertial` to rank the V1 designs almost the same as
-`J_fan`); W2 and W3 test the rest. If H1 holds, W6 can spend its CFD budget on shape alone and W7 can
+W3. W1 tested the first half and it held: `J_fan / W_inertial` ranks the V1 designs almost the same
+as `J_fan` (Spearman 0.999). W2 and W3 test the rest. If H1 holds, W6 can spend its CFD budget on shape alone and W7 can
 size thickness without CFD in the loop.
 
 ## 4. What still binds

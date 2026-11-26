@@ -16,14 +16,21 @@ the blade shape, then 3D topology optimization hollows each winning blade into a
 3. **Optimization** — BoTorch (qLogNEHVI + TuRBO) over wind ↑, mass ↓, deflection ↓, run across parallel Colab sessions.
 4. **Verification** — top designs re-run at fine CFD resolution.
 5. **Topology optimization** — per-blade 3D SIMP carves the interior while keeping the aero surface.
-6. **Print** — marching cubes → watertight STL → Bambu Studio.
+6. **Print** — TO density → voxels → marching cubes → on-edge watertight STL + Bambu Studio project.
 
 ## Status
 
-V1 is done computationally: three blades are ready to print ([print guide](docs/print_guide.md),
-[STL files](https://github.com/clingergab/fan-optimization/releases/tag/v1.0-print),
-[3D previews](docs/models/)). Next is printing and a blinded feel test against a flat-blade baseline.
-V2 plans are in the [backlog](docs/V2_backlog.md).
+**V1 is printed.** Fans of blade designs 00 and 02 are printed in PLA (15 % grid infill, 20 % thinner
+than designed, with a hold detent) — see the [print guide](docs/print_guide.md). A **flat control fan**
+(blade 00 with its curve taken out, same everything else) is built for the physical tests, which are next:
+a blinded feel test and a directional wind test (kitchen scale + card) of curved vs flat vs a store-bought
+fan. The print files are generated into `print_ready/` by `scripts/build_print_blades.py`; the older
+[release files](https://github.com/clingergab/fan-optimization/releases/tag/v1.0-print) are superseded.
+
+**V2** optimizes wind per unit effort with ML surrogates and GPUs, shape and structure together — see the
+[V2 plan](docs/V2_plan.md). It starts by checking the simulation against the printed fans and fixing the
+known CFD gaps (wrist pivot, whole fan, physical units) before growing the design space. The V1 campaign
+data is in [`data/campaign_trapezoid/`](data/campaign_trapezoid/README.md).
 
 <p align="center"><img src="docs/images/v1_blades.png" alt="The three V1 blades" width="600"></p>
 

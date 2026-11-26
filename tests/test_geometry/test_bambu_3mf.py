@@ -15,6 +15,8 @@ from fanopt.geometry.bambu_3mf import (
     object_model_xml,
     plate_centre_mm,
     resolve_bambu_preset,
+    sliced_filament_g,
+    with_project_settings,
     write_bambu_project,
 )
 
@@ -196,3 +198,31 @@ def test_project_without_template_rels_still_links_the_object(tmp_path):
     )
     rels = zipfile.ZipFile(out).read("3D/_rels/3dmodel.model.rels").decode()
     assert "/3D/Objects/object_1.model" in rels
+
+
+def test_with_project_settings_applies_overrides(tmp_path):
+    out = with_project_settings(
+        _template(tmp_path / "t.3mf"), tmp_path / "o.3mf", {"brim_type": "no_brim"}
+    )
+    cfg = json.loads(zipfile.ZipFile(out).read("Metadata/project_settings.config"))
+    assert (cfg["brim_type"], cfg["keep"]) == ("no_brim", "me")
+
+
+def test_with_project_settings_keeps_every_other_entry(tmp_path):
+    src = _template(tmp_path / "t.3mf")
+    out = with_project_settings(src, tmp_path / "o.3mf", {})
+    assert zipfile.ZipFile(out).namelist() == zipfile.ZipFile(src).namelist()
+
+
+def _result(code=0, grams=(1.5, 2.0)):
+    plates = [{"filaments": [{"main_used_g": g}]} for g in grams]
+    return {"return_code": code, "error_string": "x", "sliced_plates": plates}
+
+
+def test_sliced_filament_sums_every_plate():
+    assert sliced_filament_g(_result()) == pytest.approx(3.5)
+
+
+def test_sliced_filament_rejects_a_failed_slice():
+    with pytest.raises(ValueError, match="slice failed"):
+        sliced_filament_g(_result(code=250))

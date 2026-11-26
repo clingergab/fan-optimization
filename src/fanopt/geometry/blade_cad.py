@@ -59,6 +59,7 @@ __all__ = [
     "fold_collision_volume_m3",
     "fold_penetration_m",
     "fold_collision_clear",
+    "surface_top_bottom_m",
 ]
 
 N_RADIAL_SECTIONS: int = 40
@@ -434,6 +435,11 @@ def _surface_top_bot(params: BladeParams, x: float, y: float) -> tuple[float, fl
     mean = rib_z_at(params, rho) + _root_taper(rho) * panel_disp
     h = _half_thickness_m(params, r, rho, v)
     return mean + h, mean - h
+
+
+def surface_top_bottom_m(params: BladeParams, x: float, y: float) -> tuple[float, float] | None:
+    """Top and bottom surface z at planform ``(x, y)`` (the CAD height field), ``None`` off the blade."""
+    return _surface_top_bot(params, x, y)
 
 
 def fold_penetration_m(

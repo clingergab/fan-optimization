@@ -1,0 +1,222 @@
+{
+  "template": "print_ready/H2C_blade_00_2026-11-23_thin-20pct_open-13.09_flat-overlap_PLA-15%infill.gcode.3mf",
+  "brim": "off (no_brim) so the brim is not counted",
+  "model": {
+    "wall_mm": 2.0466570438394958,
+    "core_fraction": 0.09858137798971023,
+    "base_g": 0.9645087063495558,
+    "rho_kg_m3": 1240.0
+  },
+  "rmse_g": 0.1348726913644001,
+  "loo_rmse_g": 0.15340288711423625,
+  "loo_max_abs_g": 0.3941157656730532,
+  "samples": [
+    {
+      "design_hash": "ffe19f9e3e7fa81ba847bbe8",
+      "target_mean_wall_mm": 1.6,
+      "design_mean_wall_mm": 3.084248401307676,
+      "built_mean_wall_mm": 1.5960183572182882,
+      "sliced_g": 15.564901351928711,
+      "model_g": 15.60785659016874,
+      "loo_error_g": 0.04909462905536621
+    },
+    {
+      "design_hash": "ffe19f9e3e7fa81ba847bbe8",
+      "target_mean_wall_mm": 2.0,
+      "design_mean_wall_mm": 3.084248401307676,
+      "built_mean_wall_mm": 1.995024488647061,
+      "sliced_g": 19.131906509399414,
+      "model_g": 19.05565836191685,
+      "loo_error_g": -0.08323526356094035
+    },
+    {
+      "design_hash": "ffe19f9e3e7fa81ba847bbe8",
+      "target_mean_wall_mm": 2.5,
+      "design_mean_wall_mm": 3.084248401307676,
+      "built_mean_wall_mm": 2.493778297622525,
+      "sliced_g": 20.036243438720703,
+      "model_g": 20.146843259168097,
+      "loo_error_g": 0.12751629895109673
+    },
+    {
+      "design_hash": "ffe19f9e3e7fa81ba847bbe8",
+      "target_mean_wall_mm": 3.0,
+      "design_mean_wall_mm": 3.084248401307676,
+      "built_mean_wall_mm": 2.9925351908463904,
+      "sliced_g": 20.74789047241211,
+      "model_g": 20.59795724677015,
+      "loo_error_g": -0.1848760652533521
+    },
+    {
+      "design_hash": "151da4f69021d2be1b8a5d99",
+      "target_mean_wall_mm": 1.6,
+      "design_mean_wall_mm": 2.710974133032186,
+      "built_mean_wall_mm": 1.5805846707300215,
+      "sliced_g": 16.164335250854492,
+      "model_g": 16.357550763803307,
+      "loo_error_g": 0.22088136740412523
+    },
+    {
+      "design_hash": "151da4f69021d2be1b8a5d99",
+      "target_mean_wall_mm": 2.0,
+      "design_mean_wall_mm": 2.710974133032186,
+      "built_mean_wall_mm": 1.9757308384125267,
+      "sliced_g": 20.10750961303711,
+      "model_g": 19.74945632662129,
+      "loo_error_g": -0.3941157656730532
+    },
+    {
+      "design_hash": "151da4f69021d2be1b8a5d99",
+      "target_mean_wall_mm": 2.5,
+      "design_mean_wall_mm": 2.710974133032186,
+      "built_mean_wall_mm": 2.469664903502725,
+      "sliced_g": 21.170337677001953,
+      "model_g": 21.218733414443502,
+      "loo_error_g": 0.053102525828421676
+    },
+    {
+      "design_hash": "52a0e80837c85bd0f167d525",
+      "target_mean_wall_mm": 1.6,
+      "design_mean_wall_mm": 3.1770684495067862,
+      "built_mean_wall_mm": 1.6000002647876628,
+      "sliced_g": 15.43514347076416,
+      "model_g": 15.559807050497762,
+      "loo_error_g": 0.1423870737287789
+    },
+    {
+      "design_hash": "52a0e80837c85bd0f167d525",
+      "target_mean_wall_mm": 2.0,
+      "design_mean_wall_mm": 3.1770684495067862,
+      "built_mean_wall_mm": 1.9999995367174666,
+      "sliced_g": 18.870437622070312,
+      "model_g": 18.775499343584443,
+      "loo_error_g": -0.10276498863581196
+    },
+    {
+      "design_hash": "52a0e80837c85bd0f167d525",
+      "target_mean_wall_mm": 2.5,
+      "design_mean_wall_mm": 3.1770684495067862,
+      "built_mean_wall_mm": 2.5000002151639453,
+      "sliced_g": 19.874645233154297,
+      "model_g": 20.041912724518692,
+      "loo_error_g": 0.1910311249245531
+    },
+    {
+      "design_hash": "52a0e80837c85bd0f167d525",
+      "target_mean_wall_mm": 3.0,
+      "design_mean_wall_mm": 3.1770684495067862,
+      "built_mean_wall_mm": 3.0000008936104243,
+      "sliced_g": 20.361923217773438,
+      "model_g": 20.49154595487913,
+      "loo_error_g": 0.16002673782336885
+    },
+    {
+      "design_hash": "c83eea7e7f5db0157d0b3c35",
+      "target_mean_wall_mm": 1.6,
+      "design_mean_wall_mm": 3.47492550881785,
+      "built_mean_wall_mm": 1.6000016511311084,
+      "sliced_g": 15.545002937316895,
+      "model_g": 15.572226982558309,
+      "loo_error_g": 0.031063600439598105
+    },
+    {
+      "design_hash": "c83eea7e7f5db0157d0b3c35",
+      "target_mean_wall_mm": 2.0,
+      "design_mean_wall_mm": 3.47492550881785,
+      "built_mean_wall_mm": 2.000000326451131,
+      "sliced_g": 19.07268524169922,
+      "model_g": 18.909644074576658,
+      "loo_error_g": -0.1757153917428944
+    },
+    {
+      "design_hash": "c83eea7e7f5db0157d0b3c35",
+      "target_mean_wall_mm": 2.5,
+      "design_mean_wall_mm": 3.47492550881785,
+      "built_mean_wall_mm": 2.5000004080639138,
+      "sliced_g": 19.926794052124023,
+      "model_g": 20.058130353399612,
+      "loo_error_g": 0.15067187160929052
+    },
+    {
+      "design_hash": "c83eea7e7f5db0157d0b3c35",
+      "target_mean_wall_mm": 3.0,
+      "design_mean_wall_mm": 3.47492550881785,
+      "built_mean_wall_mm": 3.000000489676697,
+      "sliced_g": 20.66704750061035,
+      "model_g": 20.50814527400576,
+      "loo_error_g": -0.19671797797818158
+    },
+    {
+      "design_hash": "882580c9a75c3354b871e9ff",
+      "target_mean_wall_mm": 1.6,
+      "design_mean_wall_mm": 3.842555352286486,
+      "built_mean_wall_mm": 1.6000016231385699,
+      "sliced_g": 15.437774658203125,
+      "model_g": 15.37104164979793,
+      "loo_error_g": -0.07597937705695657
+    },
+    {
+      "design_hash": "882580c9a75c3354b871e9ff",
+      "target_mean_wall_mm": 2.0,
+      "design_mean_wall_mm": 3.842555352286486,
+      "built_mean_wall_mm": 2.000000107645536,
+      "sliced_g": 18.536277770996094,
+      "model_g": 18.479433273939588,
+      "loo_error_g": -0.060998187892572275
+    },
+    {
+      "design_hash": "882580c9a75c3354b871e9ff",
+      "target_mean_wall_mm": 2.5,
+      "design_mean_wall_mm": 3.842555352286486,
+      "built_mean_wall_mm": 2.5000010951957585,
+      "sliced_g": 19.73069953918457,
+      "model_g": 19.778560097351637,
+      "loo_error_g": 0.05382611354099254
+    },
+    {
+      "design_hash": "882580c9a75c3354b871e9ff",
+      "target_mean_wall_mm": 3.0,
+      "design_mean_wall_mm": 3.842555352286486,
+      "built_mean_wall_mm": 2.9999982401906284,
+      "sliced_g": 20.2979793548584,
+      "model_g": 20.241019595271084,
+      "loo_error_g": -0.0700622825557744
+    },
+    {
+      "design_hash": "7748dc288493ba0d8a8a83e5",
+      "target_mean_wall_mm": 1.6,
+      "design_mean_wall_mm": 5.124797483201772,
+      "built_mean_wall_mm": 1.600038646217841,
+      "sliced_g": 14.582554817199707,
+      "model_g": 14.765370012352118,
+      "loo_error_g": 0.20893269373893553
+    },
+    {
+      "design_hash": "7748dc288493ba0d8a8a83e5",
+      "target_mean_wall_mm": 2.0,
+      "design_mean_wall_mm": 5.124797483201772,
+      "built_mean_wall_mm": 2.0000495889716725,
+      "sliced_g": 18.04399299621582,
+      "model_g": 17.92964675617289,
+      "loo_error_g": -0.12488632506437014
+    },
+    {
+      "design_hash": "7748dc288493ba0d8a8a83e5",
+      "target_mean_wall_mm": 2.5,
+      "design_mean_wall_mm": 5.124797483201772,
+      "built_mean_wall_mm": 2.50006070501522,
+      "sliced_g": 18.90707015991211,
+      "model_g": 19.003128801843086,
+      "loo_error_g": 0.10841322641727658
+    },
+    {
+      "design_hash": "7748dc288493ba0d8a8a83e5",
+      "target_mean_wall_mm": 3.0,
+      "design_mean_wall_mm": 5.124797483201772,
+      "built_mean_wall_mm": 3.0000718210587674,
+      "sliced_g": 19.434303283691406,
+      "model_g": 19.428286711352747,
+      "loo_error_g": -0.007286947598796445
+    }
+  ]
+}
