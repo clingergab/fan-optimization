@@ -22,14 +22,22 @@ for _dep in ("gmsh", "cadquery", "skimage", "manifold3d"):
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import build_print_blades  # noqa: E402
-from fanopt.bo.blade_codec import bounds, clip_to_bounds, decode  # noqa: E402
+from fanopt.bo.blade_codec import SEARCH_SPACE, bounds, clip_to_bounds, decode  # noqa: E402
 from fanopt.geometry.schema import RHO_PETG_KG_PER_M3, RHO_PLA_KG_PER_M3  # noqa: E402
 from fanopt.utils.ledger import design_hash  # noqa: E402
 
+# A bowed meridian (the mid-bounds design is flat: the bow range is symmetric about 0).
+_BOW_KNOTS_M = (0.010, 0.020, 0.020, 0.010, 0.0)
 
-def _build(tmp: Path, *extra: str, mesh_mm: str = "6") -> tuple[int, Path]:
+
+def _build(tmp: Path, *extra: str, mesh_mm: str = "6", bowed: bool = False) -> tuple[int, Path]:
     low, high = bounds()
-    vec = clip_to_bounds(low + (high - low) * 0.5)
+    vec = low + (high - low) * 0.5
+    if bowed:
+        for i, var in enumerate(SEARCH_SPACE):
+            if var.name.startswith("rib_bow_k"):
+                vec[i] = _BOW_KNOTS_M[int(var.name.removeprefix("rib_bow_k"))]
+    vec = clip_to_bounds(vec)
     h = design_hash(decode(vec).to_dict())
     (tmp / "evaluations_c0.jsonl").write_text(
         json.dumps({"design_hash": h, "vector": vec.tolist(), "j_fan": 1.0}) + "\n"
@@ -49,10 +57,9 @@ def _report(out: Path) -> dict:
     return json.loads(out.with_suffix(".json").read_text())
 
 
-@pytest.fixture(scope="module")
-def outputs(tmp_path_factory):
-    tmp = tmp_path_factory.mktemp("print_blades")
-    with zipfile.ZipFile(tmp / "template.3mf", "w") as z:
+def _write_template(tmp: Path) -> Path:
+    path = tmp / "template.3mf"
+    with zipfile.ZipFile(path, "w") as z:
         z.writestr("3D/3dmodel.model", '<model xmlns="x"><resources/><build/></model>')
         z.writestr(
             "Metadata/project_settings.config",
@@ -64,6 +71,13 @@ def outputs(tmp_path_factory):
             ),
         )
         z.writestr("Metadata/model_settings.config", "<config/>")
+    return path
+
+
+@pytest.fixture(scope="module")
+def outputs(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("print_blades")
+    _write_template(tmp)
     # A 6 mm mesh is too coarse to measure the detent surfaces; the detent has its own fixture below.
     return _build(tmp, "--template", str(tmp / "template.3mf"), "--detent-seats", "0")
 
@@ -253,3 +267,49 @@ def test_flatten_overlap_is_recorded(flat_outputs):
 
 def test_flattened_overlap_removes_material(detent_outputs, flat_outputs):
     assert flat_outputs[1]["volume_cm3"] < detent_outputs[1]["volume_cm3"]
+
+
+@pytest.fixture(scope="module")
+def bowed_outputs(tmp_path_factory):
+    rc, out = _build(
+        tmp_path_factory.mktemp("print_blades_bowed"), "--detent-seats", "0", bowed=True
+    )
+    return rc, _report(out)
+
+
+@pytest.fixture(scope="module")
+def unbent_outputs(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("print_blades_unbent")
+    rc, out = _build(
+        tmp, "--detent-seats", "0", "--flat-meridian", "--template-settings-only",
+        "--template", str(_write_template(tmp)), bowed=True,
+    )  # fmt: skip
+    return rc, out
+
+
+def test_flat_meridian_build_succeeds(unbent_outputs):
+    assert unbent_outputs[0] == 0
+
+
+def test_flat_meridian_is_recorded(unbent_outputs):
+    assert _report(unbent_outputs[1])["flat_meridian"] is True
+
+
+def test_flat_meridian_folds_without_the_bow(bowed_outputs, unbent_outputs):
+    assert (
+        _report(unbent_outputs[1])["design_folded_stack_mm"]
+        < bowed_outputs[1]["design_folded_stack_mm"]
+    )
+
+
+def test_flat_meridian_keeps_the_true_wall_so_it_uses_less_material(bowed_outputs, unbent_outputs):
+    assert _report(unbent_outputs[1])["volume_cm3"] < bowed_outputs[1]["volume_cm3"]
+
+
+def test_template_settings_only_keeps_the_template_infill(unbent_outputs):
+    cfg = json.loads(
+        zipfile.ZipFile(unbent_outputs[1].with_suffix(".3mf")).read(
+            "Metadata/project_settings.config"
+        )
+    )
+    assert cfg["sparse_infill_density"] == "15%"

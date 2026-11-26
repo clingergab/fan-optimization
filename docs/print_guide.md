@@ -66,6 +66,28 @@ the whole blade 20% thinner, the overlap strips no thicker than the boss, and 0.
 
 The hollow is intentional. Under 0.01 % of the area is thinner than the 0.4 mm nozzle.
 
+## 1a. Flat control fan (2026-11-25)
+
+`P2C_blade_00-FLAT-CONTROL_2026-11-25_thin-20pct_open-13.09_flat-overlap_PLA-15pct.3mf` is blade 00 with
+its curve taken out, for the W0 test in `V2_plan.md`: a printed fan identical to 00 except for the shape,
+so a feel test and a directional wind test (scale + card, or a vane anemometer on AVG) check whether the
+curve is what the simulation says makes the wind.
+
+**Same as the printed 00:** planform and the 220 mm reach (pin to tip, straight), the TO inner hollow
+(the same tets with the same density), the true wall thickness (measured normal to the surface), the 20 %
+thinning, the flat overlap strips, the 13.09° opening, the hold detent (same seats and sizes), the boss
+(2.50 mm), and **every slicer setting** — the project was made from the printed
+`H2C_blade_00_…_PLA-15%infill.gcode.3mf` (Bambu PLA Matte, 15 % grid, textured PEI, auto brim).
+
+**Different:** the blade is flat. The curved 00 is 232.5 mm long along its surface (5.7 % longer than its
+220 mm reach) and its thickness was laid out vertically, so on a slope its real wall is thinner by the
+cosine of the slope (6 % on average, up to 16 % at the steepest 32°). Unbending keeps that real wall, so
+the flat blade has less material: 13.21 vs 13.93 cm³ solid (−5.2 %). After slicing at 15 % infill the
+difference is small because walls dominate: **17.69 g and 48 min per blade** (with brim) vs 17.88 g for
+00, so about 2 g lighter per fan. The folded fan is only ~30 mm tall (no curve to nest).
+
+Weigh both fans before the test and record the weights; the effort side of the V2 objective uses them.
+
 ## 2. Slicer settings (in the `.3mf`)
 
 | Setting | Value |
@@ -289,6 +311,11 @@ The TO densities and campaign shards are recovered from Drive into `print_ready/
    `--thickness-scale 0.8` builds the blade 20% thinner about its mid-surface; `--flatten-overlap` caps
    the open-fan overlap strips at the boss thickness; `--open-pitch-deg` sets the open angle per blade
    (default the design's 13.29°). All three are off by default (§4c).
+
+   The flat control (§1a) is the 00 command plus `--flat-meridian --template-settings-only`, with
+   `--template` set to the printed `.gcode.3mf`: `--flat-meridian` unbends the blade at the same reach and
+   true wall thickness, and `--template-settings-only` keeps every template setting (no 100 % infill or
+   brim override).
 
    The detent is on by default: `--detent-seats 5` (`0` builds the blade without it) and
    `--deploy-direction -1` (fan opens to the right, §4a; `1` reverses it).

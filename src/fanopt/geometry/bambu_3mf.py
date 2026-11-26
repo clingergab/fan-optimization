@@ -123,8 +123,9 @@ def _root_model(template_root: str, plate_xy_mm: tuple[float, float], lift_mm: f
     if "xmlns:p=" not in s.split(">", 2)[1]:
         s = s.replace("<model ", f"<model {_P_NS} ", 1)
     s = re.sub(r' *<metadata name="Thumbnail_[^"]*">[^<]*</metadata>\n?', "", s)
-    s = re.sub(r"<resources>.*</resources>", lambda _m: resources, s, flags=re.S)
-    return re.sub(r"<build[^>]*>.*</build>", lambda _m: build, s, flags=re.S)
+    # A sliced project (.gcode.3mf) saves the empty elements self-closed: <resources/>, <build/>.
+    s = re.sub(r"<resources\s*/>|<resources>.*</resources>", lambda _m: resources, s, flags=re.S)
+    return re.sub(r"<build\b[^>]*/>|<build\b[^>]*>.*</build>", lambda _m: build, s, flags=re.S)
 
 
 def _rels_xml(target: str) -> str:
