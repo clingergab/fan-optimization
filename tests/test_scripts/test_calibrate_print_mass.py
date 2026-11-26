@@ -78,7 +78,10 @@ class _Fake:
 def setup(tmp_path, monkeypatch):
     hashes = _write_shards(tmp_path)
     with zipfile.ZipFile(tmp_path / "t.3mf", "w") as z:
-        z.writestr("Metadata/project_settings.config", json.dumps({"brim_type": "auto_brim"}))
+        z.writestr(
+            "Metadata/project_settings.config",
+            json.dumps({"brim_type": "auto_brim", "filament_density": ["1.24"]}),
+        )
     fake = _Fake()
     monkeypatch.setattr(calibrate_print_mass.subprocess, "run", fake)
     return tmp_path, hashes, fake
@@ -98,6 +101,11 @@ def test_fit_recovers_the_model_the_slices_came_from(setup):
     assert (m["wall_mm"], m["core_fraction"], m["base_g"]) == pytest.approx(
         (1.2, 0.2, 3.0), rel=1e-3
     )
+
+
+def test_fit_uses_the_template_filament_density(setup):
+    tmp, hashes, _ = setup
+    assert _run(tmp, [hashes[0]])["model"]["rho_kg_m3"] == pytest.approx(1240.0)
 
 
 def test_leave_one_out_error_is_reported(setup):

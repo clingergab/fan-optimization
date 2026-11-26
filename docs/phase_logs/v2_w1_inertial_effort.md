@@ -4,7 +4,8 @@
 fan is to swing (its inertia about the wrist), and see whether ranking by wind ÷ effort differs from
 ranking by wind alone. No CFD.
 
-**Result:** a fitted slicer mass model (error 0.13 g per blade) puts every V1 fan at 224–266 g on the
+**Result:** a fitted slicer mass model (error 0.11 g per blade; the slicer itself is within 1.2 % of the
+weighed fan) puts every V1 fan at 224–267 g on the
 recipe, and the inertial effort varies by only ±4 % between designs. Ranking by wind ÷ inertial effort
 is almost the same as ranking by wind: Spearman 0.999, the best design (00) unchanged, 9 of the top 10
 kept. The first half of hypothesis H1 (V2 plan §3a) holds on V1 data.
@@ -29,10 +30,11 @@ Studio with the printed settings and the brim off, and fitted
 
 | Fitted | Value | Meaning |
 |---|---|---|
-| Solid shell | **2.05 mm** | up to this wall thickness the slicer prints solid (2 wall loops per face + gap fill) |
-| Core fill | **10 %** | effective fill of the wall beyond 2.05 mm |
-| Base | 0.96 g / blade | hub and boss beyond the sampled sheet |
-| Error | **RMSE 0.13 g**, leave-one-out 0.15 g (max 0.39 g) | on ~15–21 g blades (~0.7 %) |
+| Solid shell | **2.01 mm** | up to this wall thickness the slicer prints solid (2 wall loops per face + gap fill) |
+| Core fill | **10 %** | effective fill of the wall beyond 2.01 mm |
+| Base | ≈ 0 g / blade | the sampled sheet already covers the hub and boss |
+| Error | **RMSE 0.11 g**, leave-one-out 0.13 g (max 0.30 g) | on ~15–21 g blades (~0.6 %) |
+| Density | 1.32 g/cm³ | the printed profile's (Bambu PLA Matte), read from the template — the slicer weighs with it |
 
 The wall material is priced per unit of **surface** area (the curve's extra length counts); a first fit
 per unit of planform area missed it and was off by up to ±1.5 g per design.
@@ -47,8 +49,9 @@ Below ~2 mm every 0.1 mm of wall costs ~0.9 g per blade (~11 g per fan); above i
 thinner than ~2 mm is where the mass (and the inertial effort) drops**, which is why the W0 thickness
 series and its stiffness test matter for V2.
 
-For comparison, the printed 00 (TO hollow, flat overlap strips, detent, 15 % infill) slices to 17.88 g per
-blade **with** its brim; the same design solid-inside on this recipe is 20.1 g without a brim. The TO
+For comparison, the printed 00 (TO hollow, flat overlap strips, detent, 15 % infill) slices to 17.9 g per
+blade (Bambu's auto brim adds none to these blades) and **weighs 17.7 g** (212 g for 12, W0); the same
+design solid-inside on this recipe is 20.1 g. The TO
 hollow and the overlap flattening save at least ~2.2 g per blade (≥ 11 %).
 
 ## 3. Effort of the 750 valid designs
@@ -58,13 +61,13 @@ hollow and the overlap flattening save at least ~2.2 g per blade (≥ 11 %).
 
 | Per fan | Min | Median | Max | Spread (CV) |
 |---|---|---|---|---|
-| Mass | 224 g | 237 g | 266 g | 2.9 % |
-| Inertia about the wrist | 0.0051 kg·m² | 0.0054 kg·m² | 0.0062 kg·m² | 3.8 % |
-| Inertial work per cycle, push-only | 0.39 J | 0.42 J | 0.48 J | 3.8 % |
-| Centre of mass from the wrist | 137 mm | 140 mm | 143 mm | 0.7 % |
+| Mass | 224 g | 237 g | 267 g | 3.0 % |
+| Inertia about the wrist | 0.0054 kg·m² | 0.0057 kg·m² | 0.0065 kg·m² | 3.8 % |
+| Inertial work per cycle, push-only | 0.41 J | 0.44 J | 0.50 J | 3.8 % |
+| Centre of mass from the wrist | 141 mm | 144 mm | 148 mm | 0.7 % |
 
 All are under the 300 g cap and the 160 mm centre-of-mass limit. Push + brake is exactly twice push-only
-(V2 plan D1), so it ranks identically. At 2 Hz, the median fan's push-only inertial work is ~50 J per
+(V2 plan D1), so it ranks identically. At 2 Hz, the median fan's push-only inertial work is ~52 J per
 minute of waving.
 
 ## 4. Re-ranking
@@ -74,7 +77,7 @@ minute of waving.
 | `J_fan` ÷ inertial work (this recipe) | **0.999** | 0.976 | 9 / 10 | 45 / 50 | 00 (unchanged) |
 | `J_fan` ÷ ledger solid mass (for contrast) | 0.995 | 0.946 | 8 / 10 | 45 / 50 | 00 (unchanged) |
 
-Median rank move 4 places, largest 49. Within the top 10, designs swap a few places (e.g. 03 moves from
+Median rank move 4 places, largest 50. Within the top 10, designs swap a few places (e.g. 03 moves from
 4th to 2nd, 02 from 3rd to 5th): the top 10 span only 10 % in `J_fan`, inside the ~15 % the coarse CFD
 resolves, so these swaps are within the CFD's own error.
 
@@ -85,8 +88,9 @@ effort (the air pushing back on the blade), which needs the CFD moment history (
 
 ## 5. Limits
 
-- **Slicer weights, not scale weights.** The model is fitted to Bambu Studio's estimates; the W0 weighing
-  of the printed fans is the check (the 214.6 g fan figure is also a slicer estimate).
+- **Slicer weights, checked once.** The model is fitted to Bambu Studio's estimates; the first W0 weighing
+  (fan 00: 212 g on the scale vs 214.6 g sliced, −1.2 %) says the slicer is close. The flat control and
+  the thickness series will check it across thickness.
 - **Inertia only.** No aero torque yet (W2); the hand and arm are not included (same for every design).
 - **No TO hollow** in the recipe (slicer infill instead), so absolute masses are ~11 % above the printed
   00; the ranking is unaffected because every design gets the same inside.

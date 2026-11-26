@@ -28,8 +28,11 @@ import numpy as np
 
 from fanopt.bo.blade_codec import decode
 from fanopt.cfd.blade_verify import load_campaign_rows
-from fanopt.geometry.bambu_3mf import sliced_filament_g, with_project_settings
-from fanopt.geometry.schema import RHO_PLA_KG_PER_M3
+from fanopt.geometry.bambu_3mf import (
+    filament_density_kg_m3,
+    sliced_filament_g,
+    with_project_settings,
+)
 from fanopt.physical.print_effort import (
     blade_mass_kg,
     blade_sheet,
@@ -139,12 +142,14 @@ def run(
         for (h, _), (_, used) in zip(samples, results, strict=True)
     ]
     masses = [g * 1e-3 for g in grams]
-    model = fit_print_mass_model(fit_sheets, masses, rho_kg_m3=RHO_PLA_KG_PER_M3)
+    # The slicer weighs with the template's filament density (Bambu PLA Matte: 1.32 g/cm³), so fit with it.
+    rho = filament_density_kg_m3(template)
+    model = fit_print_mass_model(fit_sheets, masses, rho_kg_m3=rho)
     loo = []
     for i in range(len(samples)):
         rest = [j for j in range(len(samples)) if j != i]
         m = fit_print_mass_model(
-            [fit_sheets[j] for j in rest], [masses[j] for j in rest], rho_kg_m3=RHO_PLA_KG_PER_M3
+            [fit_sheets[j] for j in rest], [masses[j] for j in rest], rho_kg_m3=rho
         )
         loo.append(blade_mass_kg(fit_sheets[i], m) * 1e3 - grams[i])
     pred = [blade_mass_kg(s, model) * 1e3 for s in fit_sheets]

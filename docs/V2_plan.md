@@ -32,7 +32,7 @@ together instead of one after the other.
 | 3D CFD campaign (`print_ready/drive_recovery/campaign_trapezoid/evaluations_colab-*.jsonl`) | **838 runs, 805 designs**, 33-knob codec; 751 with a finite `j_fan`, 87 failed (NaN); 179 Sobol + 610 BO + 49 explore. BO's best 9.65e12 vs Sobol's 6.33e12, failures 32 % → 5 %; best found at run 377, nothing better after. Rigid single blade; **scalars only** (`j_fan`, solid `mass_kg`, analytic plate `deflection_m`) — no flow/pressure fields kept (confirm on Drive). Solid masses 349–598 g (median 413 g): every design is over the 300 g cap as a solid; none is the blade as printed | First surrogate + failure classifier; prior / validation set for the V1 corner of the V2 space; effort re-ranking (W1) |
 | Stage-4 TO (`stage4_summary.json`, 00/02/03 densities) | **8 designs**, one setup, 40 iterations (not converged); all 8 failed the 1 mm tip screen and fell back to volume fraction 0.6 | Not training data; baseline to beat |
 | Printed V1 fans (00, 02; PLA, 15 % grid infill, 20 % thinned; 00 ≈ 215 g sliced) | Feel test + measurements pending | **Ground truth** for the simulations |
-| Flat control (`print_guide.md` §1a, built 2026-11-25) | Blade 00 unbent: same reach, true wall, TO hollow, detent and slicer settings; 17.69 g vs 17.88 g per blade sliced | The control that isolates the shape (W0) |
+| Flat control (`print_guide.md` §1a, built 2026-11-25) | Blade 00 unbent: same reach, true wall, TO hollow, detent and slicer settings; 17.69 g vs 17.9 g per blade sliced (00 weighs 17.7 g) | The control that isolates the shape (W0) |
 | Code | Codec, analytic fold gate, 3D CFD objective, distributed BO, per-design 3D SIMP, print path | Reused; extended per §3 |
 
 **Gaps V1 leaves open** (each closed by a workstream below):
@@ -99,9 +99,9 @@ designs and thicknesses (the slicer weighs a blade in seconds without printing) 
 W0 printed weights; inertia about the wrist from the as-printed mass distribution, validated against the
 analytic `i_wrist_assembly` and, if available, a phone-IMU swing. *Done when* `J_fan / W_inertial` is
 computed for all 751 designs and its ranking is compared with `J_fan` alone (§3a hypothesis H1).
-**Done 2026-11-25** (`docs/phase_logs/v2_w1_inertial_effort.md`): slicer-calibrated mass model (0.13 g
-RMSE); fans 224–266 g on the recipe, inertial effort ±4 % across designs; the ranking barely moves
-(Spearman 0.999, best design unchanged). The printed-fan weighing (W0) is still the final check.
+**Done 2026-11-25** (`docs/phase_logs/v2_w1_inertial_effort.md`): slicer-calibrated mass model (0.11 g
+RMSE; slicer within 1.2 % of the weighed fan 00); fans 224–267 g on the recipe, inertial effort ±4 % across designs; the ranking barely moves
+(Spearman 0.999, best design unchanged).
 
 **W2 — Rebuild the CFD run once.** Incompressible (D3), pitching about the wrist (D7), physical units
 (D9), and saving rich outputs every run: surface pressure, **force + moment histories** (the moment gives
@@ -148,7 +148,7 @@ control.
 
 ### 3a. Working hypothesis H1 — shape and thickness split
 
-Under a common print recipe, shape barely moves mass (curved 00 vs the flat control: 17.88 vs 17.69 g per
+Under a common print recipe, shape barely moves mass (curved 00 vs the flat control: 17.9 vs 17.69 g per
 blade, ~1 %), and every design has the same planform, so the **inertial part of effort is nearly the same
 for every shape**. If so, V2 splits into two nearly independent problems:
 
