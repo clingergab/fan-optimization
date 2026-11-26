@@ -1,0 +1,60 @@
+{
+  "name": "00_ffe19f9e3e7fa81ba847bbe8",
+  "design_hash": "ffe19f9e3e7fa81ba847bbe8",
+  "uniform": false,
+  "volume_removed_frac": 0.28105972824345615,
+  "design_volume_fraction": 0.6000569396811143,
+  "mass_kg": 0.021094028778166244,
+  "u_tip_max_mm": 9.812917217976032,
+  "max_von_mises_mpa": 26.43080702362662,
+  "u_tip_by_load_mm": {
+    "productive_stroke": 1.2857602296124013,
+    "return_stroke": 1.2857602296124013,
+    "inertial": 9.812917217976032,
+    "click_engagement": 1.93525752209695
+  },
+  "vm_by_load_mpa": {
+    "productive_stroke": 3.4837675411209026,
+    "return_stroke": 3.4837675411209026,
+    "inertial": 26.43080702362662,
+    "click_engagement": 2.396008692526754
+  },
+  "converged": false,
+  "iterations": 40,
+  "compliance_initial": 0.004135165622819342,
+  "compliance_final": 0.003203884931223957,
+  "n_design": 407251.0,
+  "n_frozen": 244067.0,
+  "accepted_volfrac": 0.6,
+  "screen_passed": false,
+  "ladder_trace": [
+    {
+      "volfrac": 0.25,
+      "u_tip_mm": 12.117652750916868,
+      "vm_mpa": 28.710711939308098,
+      "removed_pct": 52.70197132387524,
+      "passed": false
+    },
+    {
+      "volfrac": 0.35,
+      "u_tip_mm": 10.535028118259863,
+      "vm_mpa": 26.730199742852445,
+      "removed_pct": 45.674583301544494,
+      "passed": false
+    },
+    {
+      "volfrac": 0.45,
+      "u_tip_mm": 10.045335222519148,
+      "vm_mpa": 26.49782665089784,
+      "removed_pct": 38.64715294994051,
+      "passed": false
+    },
+    {
+      "volfrac": 0.6,
+      "u_tip_mm": 9.812917217976032,
+      "vm_mpa": 26.43080702362662,
+      "removed_pct": 28.105972824345614,
+      "passed": false
+    }
+  ]
+}

@@ -1,27 +1,31 @@
 # CLAUDE.md — Project rules manual
 
 This file is binding instruction for Claude Code working in this repo. Read it
-before any session. The plan (`docs/report-final.md`) is the source of truth
-for **what** the project builds; this file is the source of truth for **how**
-code is allowed to be written, tested, and shipped here.
+before any session. The plans are the source of truth for **what** the project
+builds — `docs/report-final.md` for V1 (now history: V1 is built and printed)
+and `docs/V2_plan.md` for V2 (the current roadmap); this file is the source of
+truth for **how** code is allowed to be written, tested, and shipped here.
 
 ---
 
 ## 1. Project
 
-A 3D-printed folding hand fan optimized in two stages:
+A 3D-printed folding hand fan of 12 identical blades on a pin, optimized
+aero-first:
 
-1. **Rib topology optimization** — SIMP / Reissner-Mindlin plate-bending under
-   four locked load cases (productive stroke, return stroke, inertial, click
-   engagement).
-2. **Panel aerodynamic shape optimization** — CadQuery generative geometry +
-   SU2 CFD inside a BoTorch Bayesian optimization loop over the panel/rib shape
-   codec (blade count is NOT a variable — fixed at exactly 12 per ADR-0005; the
-   rib-mode ribbed/uniform categorical remains).
+1. **Blade shape (AO)** — CadQuery blade from a 33-knob codec (rib meridian,
+   panel offsets, thickness) + SU2 unsteady 3D CFD of the ±40°, 2 Hz stroke
+   inside a BoTorch Bayesian optimization loop (blade count is NOT a variable —
+   fixed at exactly 12 per ADR-0005; the rib-mode ribbed/uniform categorical
+   remains).
+2. **Blade structure (TO)** — per-design 3D SIMP on the blade's own tet mesh
+   (`topopt/blade_topopt.py`, ADR-0007), aero skin frozen; the result is
+   rebuilt into an on-edge print blade (`scripts/build_print_blades.py`).
 
-V1 scope: ship a printable optimized fan judged by qualitative blinded A/B
-feel test against the printed flat-panel baseline. V2 scope: quantify the
-gain. See `docs/phase_logs/phase_0_signoff.md`.
+V1 (done): the optimized fans are printed (PLA, 15 % infill), with a flat
+control for the blinded feel test and a directional wind test
+(`docs/print_guide.md`). V2: wind per unit effort with ML surrogates and GPUs,
+shape and structure together — `docs/V2_plan.md`.
 
 ## 2. Stack
 
@@ -34,10 +38,11 @@ gain. See `docs/phase_logs/phase_0_signoff.md`.
 | Geometry | CadQuery (Layer 1–3 generator); Gmsh (CFD meshes); Fusion 360 (visual / cleanup, headless add-in) |
 | CFD | SU2 (CPU; G4 GPU for PyFR p=3 verification only — HIGH-11 lock) |
 | Optimization | BoTorch + GPyTorch (multi-fidelity GP + qMFKG + qNEHVI); TuRBO; SAASBO fallback |
-| Structural | FEniCSx / CalculiX (Phase 2 SIMP TO + Phase 5 verification FEA) |
+| Structural | In-house tet FEA + SIMP (`fanopt.topopt`, per-design 3D blade TO); FEniCSx / CalculiX for verification FEA |
+| Print | Voxel rebuild + marching cubes (`geometry/print_blade.py`); Bambu Studio projects (`geometry/bambu_3mf.py`) and its CLI for slicing; as-printed mass/effort model (`physical/print_effort.py`) |
 | Build / quality | pyproject.toml; pytest + pytest-cov; ruff + black; mypy; pre-commit |
 | Compute | MacBook Pro M3 for local dev / geometry / Phase 5 step 59.5 FEA / Phase 6 post-processing; Colab Pro CPU for SU2 Tier -1/0/1; Colab Pro G4 GPU (95 GB) for PyFR p=3 only |
-| Persistence | Drive/JSONL ledger with composite-key markers (H16 7-tuple lock); pre-sliced round-robin assignment |
+| Persistence | Drive/JSONL ledger with composite-key markers (H16 7-tuple lock); pre-sliced round-robin assignment. V1 campaign ledgers backed up in `data/campaign_trapezoid/` |
 
 ## 3. Architectural locks (non-negotiable)
 
@@ -231,10 +236,12 @@ If any of 1–4 fails, the work is not done. Fix and re-verify.
 
 ### 7.2 Plan and audit-catalog boundaries
 
-- `docs/report-final.md` is the plan. **Claude does not edit the plan**
+- `docs/report-final.md` is the V1 plan. **Claude does not edit the plan**
   except when the user explicitly authorizes a specific additive edit (e.g.,
   "add a deferral note in §13.0"). Never edit a locked decision. Never edit
   to make tests pass.
+- `docs/V2_plan.md` is the V2 roadmap. Claude edits it only to record what the
+  operator decided or asked for; never to change a decision on its own.
 - `docs/retired_phrases.yaml` is the audit-catalog source of truth. **Claude
   does not edit the catalog to silence the gate.** If a catalog entry fires
   on Claude's code, the right move is fix the code's phrasing — not widen

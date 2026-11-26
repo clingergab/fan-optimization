@@ -58,6 +58,13 @@ data/spike_0_*/*
 data/phase3_sweep/*
 !data/phase3_sweep/correlation.json
 
+# V1 3D campaign ledgers + Stage-4 TO summaries (the V2 training/validation data; small JSON/JSONL).
+# The TO density/centroid arrays (~70 MB) stay on Drive (My Drive/fanopt/stage4_blade_to).
+!data/campaign_trapezoid/
+!data/stage4_to/
+# V2 W1 inertial-effort results (calibration report, per-design CSV, summary).
+!data/v2_w1/
+
 # Local Drive sync
 gdrive/
 *.bak

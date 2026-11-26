@@ -1,0 +1,490 @@
+{
+  "n_designs": 8,
+  "n_succeeded": 8,
+  "volfrac": 0.4,
+  "skin_thickness_m": 0.0005,
+  "mesh_size_m": 0.0006,
+  "n_workers": 4,
+  "designs": [
+    {
+      "name": "02_248e298991dfd83a3f7bdfe0",
+      "design_hash": "248e298991dfd83a3f7bdfe0",
+      "uniform": false,
+      "volume_removed_frac": 0.2777262240683054,
+      "design_volume_fraction": 0.6000570045868443,
+      "mass_kg": 0.02064847662429764,
+      "u_tip_max_mm": 9.76942974584064,
+      "max_von_mises_mpa": 3.0859687016815833,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.294725665514484,
+        "return_stroke": 1.294725665514484,
+        "inertial": 9.76942974584064,
+        "click_engagement": 1.7719693528262968
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 0.41264251993531964,
+        "return_stroke": 0.41264251993531964,
+        "inertial": 3.0859687016815833,
+        "click_engagement": 1.3079515479825914
+      },
+      "converged": false,
+      "iterations": 40,
+      "compliance_initial": 0.0039652896193891046,
+      "compliance_final": 0.003078892720999238,
+      "n_design": 381088.0,
+      "n_frozen": 240158.0,
+      "accepted_volfrac": 0.6,
+      "screen_passed": false,
+      "ladder_trace": [
+        {
+          "volfrac": 0.25,
+          "u_tip_mm": 12.537358110544554,
+          "vm_mpa": 6.231858754390545,
+          "removed_pct": 52.076862895050745,
+          "passed": false
+        },
+        {
+          "volfrac": 0.35,
+          "u_tip_mm": 10.569743589549304,
+          "vm_mpa": 3.1434921374225415,
+          "removed_pct": 45.13283972235196,
+          "passed": false
+        },
+        {
+          "volfrac": 0.45,
+          "u_tip_mm": 10.017760405151666,
+          "vm_mpa": 3.0936437522848514,
+          "removed_pct": 38.18877219046528,
+          "passed": false
+        },
+        {
+          "volfrac": 0.6,
+          "u_tip_mm": 9.76942974584064,
+          "vm_mpa": 3.0859687016815833,
+          "removed_pct": 27.77262240683054,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "name": "01_25797c1047cf72f945aa5a73",
+      "design_hash": "25797c1047cf72f945aa5a73",
+      "uniform": false,
+      "volume_removed_frac": 0.2773319669361427,
+      "design_volume_fraction": 0.6000577604032626,
+      "mass_kg": 0.020543138233312948,
+      "u_tip_max_mm": 10.854302148942478,
+      "max_von_mises_mpa": 4.851938622958357,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.459041707086488,
+        "return_stroke": 1.459041707086488,
+        "inertial": 10.854302148942478,
+        "click_engagement": 2.3133862987598133
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 0.65405183670437,
+        "return_stroke": 0.65405183670437,
+        "inertial": 4.851938622958357,
+        "click_engagement": 3.068548296306695
+      },
+      "converged": false,
+      "iterations": 40,
+      "compliance_initial": 0.004490491922846476,
+      "compliance_final": 0.0035325526644621216,
+      "n_design": 382998.0,
+      "n_frozen": 241879.0,
+      "accepted_volfrac": 0.6,
+      "screen_passed": false,
+      "ladder_trace": [
+        {
+          "volfrac": 0.25,
+          "u_tip_mm": 13.400457908373962,
+          "vm_mpa": 6.3535018995837,
+          "removed_pct": 52.003021093031286,
+          "passed": false
+        },
+        {
+          "volfrac": 0.35,
+          "u_tip_mm": 11.648413610588946,
+          "vm_mpa": 4.879079089027868,
+          "removed_pct": 45.06882163572292,
+          "passed": false
+        },
+        {
+          "volfrac": 0.45,
+          "u_tip_mm": 11.105149332669669,
+          "vm_mpa": 4.858095020403389,
+          "removed_pct": 38.13458214846255,
+          "passed": false
+        },
+        {
+          "volfrac": 0.6,
+          "u_tip_mm": 10.854302148942478,
+          "vm_mpa": 4.851938622958357,
+          "removed_pct": 27.73319669361427,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "name": "03_1be42b2b86422ad222fb548a",
+      "design_hash": "1be42b2b86422ad222fb548a",
+      "uniform": false,
+      "volume_removed_frac": 0.277455269837797,
+      "design_volume_fraction": 0.6000584590333358,
+      "mass_kg": 0.020411103708110105,
+      "u_tip_max_mm": 10.23855451960312,
+      "max_von_mises_mpa": 5.055348781991274,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.4002673750985508,
+        "return_stroke": 1.4002673750985508,
+        "inertial": 10.23855451960312,
+        "click_engagement": 2.2468667078293727
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 0.6961904316565573,
+        "return_stroke": 0.6961904316565573,
+        "inertial": 5.055348781991274,
+        "click_engagement": 3.1041119419457766
+      },
+      "converged": false,
+      "iterations": 40,
+      "compliance_initial": 0.0042197628322649845,
+      "compliance_final": 0.003290800097822084,
+      "n_design": 379498.0,
+      "n_frozen": 239787.0,
+      "accepted_volfrac": 0.6,
+      "screen_passed": false,
+      "ladder_trace": [
+        {
+          "volfrac": 0.25,
+          "u_tip_mm": 12.794605010393473,
+          "vm_mpa": 6.604752647482275,
+          "removed_pct": 52.02617968922687,
+          "passed": false
+        },
+        {
+          "volfrac": 0.35,
+          "u_tip_mm": 11.07482991311585,
+          "vm_mpa": 5.085477743129078,
+          "removed_pct": 45.08888717707376,
+          "passed": false
+        },
+        {
+          "volfrac": 0.45,
+          "u_tip_mm": 10.520166932802047,
+          "vm_mpa": 5.063622264184555,
+          "removed_pct": 38.151549336082105,
+          "passed": false
+        },
+        {
+          "volfrac": 0.6,
+          "u_tip_mm": 10.23855451960312,
+          "vm_mpa": 5.055348781991274,
+          "removed_pct": 27.7455269837797,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "name": "00_ffe19f9e3e7fa81ba847bbe8",
+      "design_hash": "ffe19f9e3e7fa81ba847bbe8",
+      "uniform": false,
+      "volume_removed_frac": 0.28105972824345615,
+      "design_volume_fraction": 0.6000569396811143,
+      "mass_kg": 0.021094028778166244,
+      "u_tip_max_mm": 9.812917217976032,
+      "max_von_mises_mpa": 26.43080702362662,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.2857602296124013,
+        "return_stroke": 1.2857602296124013,
+        "inertial": 9.812917217976032,
+        "click_engagement": 1.93525752209695
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 3.4837675411209026,
+        "return_stroke": 3.4837675411209026,
+        "inertial": 26.43080702362662,
+        "click_engagement": 2.396008692526754
+      },
+      "converged": false,
+      "iterations": 40,
+      "compliance_initial": 0.004135165622819342,
+      "compliance_final": 0.003203884931223957,
+      "n_design": 407251.0,
+      "n_frozen": 244067.0,
+      "accepted_volfrac": 0.6,
+      "screen_passed": false,
+      "ladder_trace": [
+        {
+          "volfrac": 0.25,
+          "u_tip_mm": 12.117652750916868,
+          "vm_mpa": 28.710711939308098,
+          "removed_pct": 52.70197132387524,
+          "passed": false
+        },
+        {
+          "volfrac": 0.35,
+          "u_tip_mm": 10.535028118259863,
+          "vm_mpa": 26.730199742852445,
+          "removed_pct": 45.674583301544494,
+          "passed": false
+        },
+        {
+          "volfrac": 0.45,
+          "u_tip_mm": 10.045335222519148,
+          "vm_mpa": 26.49782665089784,
+          "removed_pct": 38.64715294994051,
+          "passed": false
+        },
+        {
+          "volfrac": 0.6,
+          "u_tip_mm": 9.812917217976032,
+          "vm_mpa": 26.43080702362662,
+          "removed_pct": 28.105972824345614,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "name": "08_39df570cfe4c499108d5d854",
+      "design_hash": "39df570cfe4c499108d5d854",
+      "uniform": false,
+      "volume_removed_frac": 0.27700496052079115,
+      "design_volume_fraction": 0.6000580203445172,
+      "mass_kg": 0.020215981939198963,
+      "u_tip_max_mm": 12.06257930237992,
+      "max_von_mises_mpa": 5.054163247670096,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.6478763914582113,
+        "return_stroke": 1.6478763914582113,
+        "inertial": 12.06257930237992,
+        "click_engagement": 2.9547619964329837
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 0.696559802923119,
+        "return_stroke": 0.696559802923119,
+        "inertial": 5.054163247670096,
+        "click_engagement": 3.580801259566374
+      },
+      "converged": false,
+      "iterations": 40,
+      "compliance_initial": 0.005012974033487158,
+      "compliance_final": 0.004003323316019419,
+      "n_design": 377521.0,
+      "n_frozen": 239549.0,
+      "accepted_volfrac": 0.6,
+      "screen_passed": false,
+      "ladder_trace": [
+        {
+          "volfrac": 0.25,
+          "u_tip_mm": 14.475641526299771,
+          "vm_mpa": 6.647857201260587,
+          "removed_pct": 51.94173344151562,
+          "passed": false
+        },
+        {
+          "volfrac": 0.35,
+          "u_tip_mm": 12.83780647988785,
+          "vm_mpa": 5.066986888318987,
+          "removed_pct": 45.01569644195662,
+          "passed": false
+        },
+        {
+          "volfrac": 0.45,
+          "u_tip_mm": 12.317168927022859,
+          "vm_mpa": 5.0569023702149565,
+          "removed_pct": 38.08962493297502,
+          "passed": false
+        },
+        {
+          "volfrac": 0.6,
+          "u_tip_mm": 12.06257930237992,
+          "vm_mpa": 5.054163247670096,
+          "removed_pct": 27.700496052079117,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "name": "09_439cce4faae5b3be8c901a09",
+      "design_hash": "439cce4faae5b3be8c901a09",
+      "uniform": false,
+      "volume_removed_frac": 0.2804462954906364,
+      "design_volume_fraction": 0.6000576915611793,
+      "mass_kg": 0.02110624657986609,
+      "u_tip_max_mm": 11.570001521952115,
+      "max_von_mises_mpa": 4.826032930703356,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.5006797570612476,
+        "return_stroke": 1.5006797570612476,
+        "inertial": 11.570001521952115,
+        "click_engagement": 2.5991178515276503
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 0.6349123497219271,
+        "return_stroke": 0.6349123497219271,
+        "inertial": 4.826032930703356,
+        "click_engagement": 3.6251961858576194
+      },
+      "converged": false,
+      "iterations": 40,
+      "compliance_initial": 0.004982077115977995,
+      "compliance_final": 0.003919562439910637,
+      "n_design": 393447.0,
+      "n_frozen": 241238.0,
+      "accepted_volfrac": 0.6,
+      "screen_passed": false,
+      "ladder_trace": [
+        {
+          "volfrac": 0.25,
+          "u_tip_mm": 14.118910437007042,
+          "vm_mpa": 6.434537231090594,
+          "removed_pct": 52.58702139136054,
+          "passed": false
+        },
+        {
+          "volfrac": 0.35,
+          "u_tip_mm": 12.4010676050498,
+          "vm_mpa": 4.840606685345733,
+          "removed_pct": 45.574928541671014,
+          "passed": false
+        },
+        {
+          "volfrac": 0.45,
+          "u_tip_mm": 11.84116328205636,
+          "vm_mpa": 4.829600496453545,
+          "removed_pct": 38.56281278462398,
+          "passed": false
+        },
+        {
+          "volfrac": 0.6,
+          "u_tip_mm": 11.570001521952115,
+          "vm_mpa": 4.826032930703356,
+          "removed_pct": 28.044629549063636,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "name": "06_7da07187f7860718e9d79b4d",
+      "design_hash": "7da07187f7860718e9d79b4d",
+      "uniform": false,
+      "volume_removed_frac": 0.2772356748087468,
+      "design_volume_fraction": 0.6000572094502381,
+      "mass_kg": 0.02063139555856835,
+      "u_tip_max_mm": 10.786776808457356,
+      "max_von_mises_mpa": 3.3607886501531032,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.3998891019801691,
+        "return_stroke": 1.3998891019801691,
+        "inertial": 10.786776808457356,
+        "click_engagement": 2.251828942568588
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 0.4474587137557885,
+        "return_stroke": 0.4474587137557885,
+        "inertial": 3.3607886501531032,
+        "click_engagement": 1.0483694347706616
+      },
+      "converged": false,
+      "iterations": 40,
+      "compliance_initial": 0.004440904381632423,
+      "compliance_final": 0.0034978539523848216,
+      "n_design": 382487.0,
+      "n_frozen": 244688.0,
+      "accepted_volfrac": 0.6,
+      "screen_passed": false,
+      "ladder_trace": [
+        {
+          "volfrac": 0.25,
+          "u_tip_mm": 13.876787884581988,
+          "vm_mpa": 6.238614333798627,
+          "removed_pct": 51.984884466371675,
+          "passed": false
+        },
+        {
+          "volfrac": 0.35,
+          "u_tip_mm": 11.568268735703887,
+          "vm_mpa": 3.801274871101589,
+          "removed_pct": 45.05311954842911,
+          "passed": false
+        },
+        {
+          "volfrac": 0.45,
+          "u_tip_mm": 11.026886761660085,
+          "vm_mpa": 3.3712239980704695,
+          "removed_pct": 38.121324116792586,
+          "passed": false
+        },
+        {
+          "volfrac": 0.6,
+          "u_tip_mm": 10.786776808457356,
+          "vm_mpa": 3.3607886501531032,
+          "removed_pct": 27.723567480874678,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "name": "05_57e345cfdd1695901fd18bd1",
+      "design_hash": "57e345cfdd1695901fd18bd1",
+      "uniform": false,
+      "volume_removed_frac": 0.27868431101953417,
+      "design_volume_fraction": 0.6000578292647334,
+      "mass_kg": 0.020395018770313585,
+      "u_tip_max_mm": 10.837508585376998,
+      "max_von_mises_mpa": 12.097405398833633,
+      "u_tip_by_load_mm": {
+        "productive_stroke": 1.4649052040088084,
+        "return_stroke": 1.4649052040088084,
+        "inertial": 10.837508585376998,
+        "click_engagement": 2.1486658174495035
+      },
+      "vm_by_load_mpa": {
+        "productive_stroke": 1.6621544876639454,
+        "return_stroke": 1.6621544876639454,
+        "inertial": 12.097405398833633,
+        "click_engagement": 8.486145837253888
+      },
+      "converged": false,
+      "iterations": 40,
+      "compliance_initial": 0.004401047024916888,
+      "compliance_final": 0.0034712762951060005,
+      "n_design": 384350.0,
+      "n_frozen": 239036.0,
+      "accepted_volfrac": 0.6,
+      "screen_passed": false,
+      "ladder_trace": [
+        {
+          "volfrac": 0.25,
+          "u_tip_mm": 13.136790656972744,
+          "vm_mpa": 14.336052814592552,
+          "removed_pct": 52.256626141898046,
+          "passed": false
+        },
+        {
+          "volfrac": 0.35,
+          "u_tip_mm": 11.591597695026026,
+          "vm_mpa": 12.572255412721951,
+          "removed_pct": 45.28860544197178,
+          "passed": false
+        },
+        {
+          "volfrac": 0.45,
+          "u_tip_mm": 11.080310161772418,
+          "vm_mpa": 12.216851515768962,
+          "removed_pct": 38.320544876619856,
+          "passed": false
+        },
+        {
+          "volfrac": 0.6,
+          "u_tip_mm": 10.837508585376998,
+          "vm_mpa": 12.097405398833633,
+          "removed_pct": 27.868431101953416,
+          "passed": false
+        }
+      ]
+    }
+  ]
+}

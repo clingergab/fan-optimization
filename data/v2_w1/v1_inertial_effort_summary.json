@@ -1,0 +1,70 @@
+{
+  "recipe": {
+    "mean_wall_mm": 2.467398721046141,
+    "from": "design ffe19f9e3e7fa81ba847bbe8 mean wall \u00d7 0.8",
+    "mass_model": {
+      "wall_mm": 2.0466570438394958,
+      "core_fraction": 0.09858137798971023,
+      "base_g": 0.9645087063495558,
+      "rho_kg_m3": 1240.0
+    },
+    "inside": "slicer infill, no TO hollow"
+  },
+  "kinematics": {
+    "theta_max_deg": 39.998183678082775,
+    "frequency_hz": 2.0,
+    "wrist_to_pin_m": 0.05,
+    "open_pitch_deg": 13.3,
+    "blade_count": 12
+  },
+  "fan_mass_kg": {
+    "min": 0.22443141151243562,
+    "median": 0.23716506981544266,
+    "max": 0.2658084013359594,
+    "cv": 0.02875827909606458
+  },
+  "inertia_wrist_kgm2": {
+    "min": 0.005120957617785793,
+    "median": 0.005438090375706714,
+    "max": 0.006180120553940889,
+    "cv": 0.037939558660794764
+  },
+  "work_push_j_per_cycle": {
+    "min": 0.3940997737915722,
+    "median": 0.41850574577705646,
+    "max": 0.47561106615169596,
+    "cv": 0.03793955866079476
+  },
+  "com_wrist_m": {
+    "min": 0.13672203104854203,
+    "median": 0.1396199952115556,
+    "max": 0.1429639287226657,
+    "cv": 0.00723896720782139
+  },
+  "over_mass_cap": 0,
+  "over_com_cap": 0,
+  "rerank_vs_j_fan": {
+    "by_inertial_work": {
+      "n": 750,
+      "spearman": 0.9988974344843279,
+      "kendall": 0.9762599020916778,
+      "top_k_kept": {
+        "10": 0.9,
+        "50": 0.9
+      },
+      "best_by_score": "ffe19f9e3e7fa81ba847bbe8",
+      "best_by_ratio": "ffe19f9e3e7fa81ba847bbe8"
+    },
+    "by_ledger_solid_mass": {
+      "n": 750,
+      "spearman": 0.9951549638310466,
+      "kendall": 0.9461753449043169,
+      "top_k_kept": {
+        "10": 0.8,
+        "50": 0.9
+      },
+      "best_by_score": "ffe19f9e3e7fa81ba847bbe8",
+      "best_by_ratio": "ffe19f9e3e7fa81ba847bbe8"
+    }
+  }
+}
