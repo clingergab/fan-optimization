@@ -91,7 +91,8 @@ flat blade is a straight 4 mm wall 51 mm tall, so auto brim runs a full brim alo
 (+0.56 g per blade, to peel off). Print the flat control from
 `print_ready/H2C_plate12_00-FLAT-CONTROL_2026-11-26_brim-ears.3mf` instead: all 12 blades on one plate
 in rows 16 mm apart, each with three small round brims (5 mm radius) only at the hub, the middle and the
-tip, and no support (`brim_type` = brim ears). Sliced: 205.5 g for the 12 (17.13 g each, ears included),
+tip, and no support. In Bambu Studio set **Process → Others → Brim type → Painted**: that uses the three
+ears saved in the file (the H2C's menu has no "Mouse ear"; an opened file can come up on another brim type). Sliced: 205.5 g for the 12 (17.13 g each, ears included),
 about 8.1 h. Built with `scripts/make_print_plate.py` (§7).
 
 Weigh both fans before the test and record the weights; the effort side of the V2 objective uses them.
