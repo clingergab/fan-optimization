@@ -83,8 +83,17 @@ thinning, the flat overlap strips, the 13.09° opening, the hold detent (same se
 220 mm reach) and its thickness was laid out vertically, so on a slope its real wall is thinner by the
 cosine of the slope (6 % on average, up to 16 % at the steepest 32°). Unbending keeps that real wall, so
 the flat blade has less material: 13.21 vs 13.93 cm³ solid (−5.2 %). After slicing at 15 % infill the
-difference is small because walls dominate: **17.69 g and 48 min per blade** vs 17.9 g for 00 (Bambu's
-auto brim adds no brim to these blades), so about 2 g lighter per fan. The folded fan is only ~30 mm tall (no curve to nest).
+difference is small because walls dominate: **17.1 g per blade** without brim vs 17.9 g for 00, so
+about 9 g lighter per fan. The folded fan is only ~30 mm tall (no curve to nest).
+
+**Brim: ears only.** The curved blade braces itself with its curve, so Bambu's auto brim adds none; the
+flat blade is a straight 4 mm wall 51 mm tall, so auto brim runs a full brim along its whole edge
+(+0.56 g per blade, to peel off). Print the flat control from
+`print_ready/H2C_plate12_00-FLAT-CONTROL_2026-11-26_brim-ears.3mf` instead: all 12 blades on one plate
+in rows 16 mm apart, each with three small round brims (5 mm radius) only at the hub, the middle and the
+tip, and no support. In Bambu Studio set **Process → Others → Brim type → Painted**: that uses the three
+ears saved in the file (the H2C's menu has no "Mouse ear"; an opened file can come up on another brim type). Sliced: 205.5 g for the 12 (17.13 g each, ears included),
+about 8.1 h. Built with `scripts/make_print_plate.py` (§7).
 
 Weigh both fans before the test and record the weights; the effort side of the V2 objective uses them.
 
@@ -317,6 +326,13 @@ The TO densities and campaign shards are recovered from Drive into `print_ready/
    `--template` set to the printed `.gcode.3mf`: `--flat-meridian` unbends the blade at the same reach and
    true wall thickness, and `--template-settings-only` keeps every template setting (no 100 % infill or
    brim override).
+
+   A plate of N copies with brim only at a few ears per blade (the flat control's plate, §1a):
+
+   ```
+   python3 scripts/make_print_plate.py --project print_ready/<single-blade>.3mf --copies 12 \
+       --out print_ready/H2C_plate12_<name>_<YYYY-MM-DD>_brim-ears.3mf   # --ears 3 --ear-radius-mm 5
+   ```
 
    The detent is on by default: `--detent-seats 5` (`0` builds the blade without it) and
    `--deploy-direction -1` (fan opens to the right, §4a; `1` reverses it).
